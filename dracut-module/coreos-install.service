@@ -1,0 +1,15 @@
+[Unit]
+Description=CoreOs Installer
+After=systemd-networkd-wait-online.service
+#After=getty@tty2.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/coreos-installer.sh
+StandardInput=tty
+TTYPath=/dev/tty2
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=default.target
