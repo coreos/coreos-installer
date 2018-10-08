@@ -21,6 +21,7 @@ install() {
     inst_multiple tee 
     inst_multiple gpg 
     inst_multiple wget
+    inst_multiple curl 
     inst_multiple mktemp 
     inst_multiple wipefs 
     inst_multiple mkfs

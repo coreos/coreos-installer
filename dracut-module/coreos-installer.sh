@@ -307,18 +307,17 @@ chvt 2
 ############################################################
 while true
 do
-	dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS Image URL to install" 5 75 "http://stable.release.core-os.net/amd64-usr/current/coreos_production_image.bin.bz2" 2>/tmp/image_url
+	dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS Image URL to install" 5 75 "https://stable.release.core-os.net/amd64-usr/current/coreos_production_image.bin.bz2" 2>/tmp/image_url
 
 	IMAGE_URL=$(cat /tmp/image_url)
 	SIG_URL=$IMAGE_URL.sig
-	wget --spider $IMAGE_URL >/tmp/image_info 2>&1
+	curl -sI $IMAGE_URL >/tmp/image_info 2>&1
 	RETCODE=$?
 	if [ $RETCODE -ne 0 ]
 	then
 		dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE" 5 40 
 	else
-		IMAGE_SIZE=$(cat /tmp/image_info | awk '/.*Length.*/ {print $2}')
-		echo $IMAGE_SIZE > /tmp/debug
+		IMAGE_SIZE=$(cat /tmp/image_info | awk '/.content-length.*/ {print $2}' | tr -d $'\r')
 		break;
 	fi
 done
@@ -350,16 +349,17 @@ dialog --clear
 mkdir -p /mnt/dl
 mount -t tmpfs -o size=512m tmpfs /mnt/dl
 
-wget -q -O /mnt/dl/imagefile.bz2 $IMAGE_URL &
+curl -s -o /mnt/dl/imagefile.bz2 $IMAGE_URL &
 
 while true
 do 
-	pidof wget
+	pidof curl 
 	if [ $? -ne 0 ]
 	then
 		break;
 	fi
 	PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.bz2 | awk '{print $5}')
+	echo $PART_FILE_SIZE $IMAGE_SIZE >> /tmp/debug
 	PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//")
 	echo $PCT >> /tmp/debug
 	echo $PCT  | dialog --title 'CoreOS Installer' --guage "Downloading Image" 10 70 
@@ -370,7 +370,7 @@ done
 #########################################################
 #Get the corresponding signaure file
 #########################################################
-wget -q -O /mnt/dl/imagefile.bz2.sig $SIG_URL
+curl -s -o /mnt/dl/imagefile.bz2.sig $SIG_URL
 if [ $? -ne 0 ]
 then
 	dialog --title 'CoreOS Installer' --msgbox "Unable to download sig file. Dropping to shell" 10 70
@@ -395,7 +395,6 @@ dialog --clear
 #Wipe any remaining disk labels
 #########################################################
 dialog --title 'CoreOS Installer' --infobox "Wiping ${DEST_DEV}" 10 70
-gpg --batch --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.bz2.sig
 dd conv=nocreat count=1024 if=/dev/zero of="${DEST_DEV}" \
         seek=$(($(blockdev --getsz "${DEST_DEV}") - 1024)) status=none
 
