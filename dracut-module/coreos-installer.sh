@@ -419,7 +419,7 @@ dd conv=nocreat count=1024 if=/dev/zero of="${DEST_DEV}" \
 #########################################################
 #And Write the image to disk
 #########################################################
-(bzip2 -dc /mnt/dl/imagefile.bz2 | pv -n -s $IMAGE_SIZE | dd bs=1M conv=nocreat of="${DEST_DEV}" status=none) 2>&1 |\
+(pv -n -s $IMAGE_SIZE /mnt/dl/imagefile.bz2 | bzip2 -dc | dd bs=1M conv=nocreat of="${DEST_DEV}" status=none) 2>&1 |\
  dialog --title 'CoreOS Installer' --guage "Writing image to disk" 10 70
 
 for try in 0 1 2 4; do
