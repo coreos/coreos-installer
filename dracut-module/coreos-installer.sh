@@ -307,7 +307,10 @@ chvt 2
 ############################################################
 while true
 do
-	dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS Image URL to install" 5 75 "https://stable.release.core-os.net/amd64-usr/current/coreos_production_image.bin.bz2" 2>/tmp/image_url
+	if [ ! -f /tmp/image_url ]
+	then
+		dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS Image URL to install" 5 75 "https://stable.release.core-os.net/amd64-usr/current/coreos_production_image.bin.bz2" 2>/tmp/image_url
+	fi
 
 	IMAGE_URL=$(cat /tmp/image_url)
 	SIG_URL=$IMAGE_URL.sig
@@ -320,6 +323,7 @@ do
 		IMAGE_SIZE=$(cat /tmp/image_info | awk '/.content-length.*/ {print $2}' | tr -d $'\r')
 		break;
 	fi
+	rm -f /tmp/image_url
 done
 dialog --clear 
 
@@ -336,10 +340,24 @@ done
 ##########################################################
 #Present the list to the user to select from
 #########################################################
-dialog --title 'CoreOS Installer' --menu "Select a Device to Install to" 45 45 35 $DEVLIST 2> /tmp/selected_dev
+while true
+do
+	if [ ! -f /tmp/selected_dev ]
+	then
+		dialog --title 'CoreOS Installer' --menu "Select a Device to Install to" 45 45 35 $DEVLIST 2> /tmp/selected_dev
+	fi
 
-DEST_DEV=$(cat /tmp/selected_dev)
-DEST_DEV=/dev/$DEST_DEV
+	DEST_DEV=$(cat /tmp/selected_dev)
+	DEST_DEV=/dev/$DEST_DEV
+
+	if [ ! -e $DEST_DEV ]
+	then
+		dialog --title 'CoreOS Installer' --msgbox "$DEST_DEV does not exist, reselect." 5 40
+		rm -f /tmp/selected_dev 
+	else
+		break;
+	fi
+done
 
 dialog --clear
 

@@ -21,7 +21,7 @@ install() {
     inst_multiple tee 
     inst_multiple gpg 
     inst_multiple wget
-    inst_multiple curl 
+    inst_multiple curl
     inst_multiple mktemp 
     inst_multiple wipefs 
     inst_multiple mkfs
@@ -35,6 +35,7 @@ install() {
     inst_multiple pv
     inst_simple "$moddir/coreos-installer.sh" /usr/bin/coreos-installer.sh
     inst_simple "$moddir/coreos-install.service" "${systemdsystemunitdir}/coreos-install.service"
+    inst_hook cmdline 90 "$moddir/parse-coreos.sh"
     mkdir -p "${initdir}${systemdsystemconfdir}/initrd.target.wants"
     ln_r "${systemdsystemunitdir}/coreos-install.service"\
         "${systemdsystemconfdir}/initrd.target.wants/coreos-install.service"
