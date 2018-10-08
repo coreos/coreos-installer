@@ -1,6 +1,6 @@
 [Unit]
 Description=CoreOs Installer
-After=systemd-networkd-wait-online.service
+After=dracut-initqueue.service
 #After=getty@tty2.service
 
 [Service]

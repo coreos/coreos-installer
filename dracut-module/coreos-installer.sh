@@ -318,7 +318,7 @@ do
 	RETCODE=$?
 	if [ $RETCODE -ne 0 ]
 	then
-		dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE" 5 40 
+		dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IMAGE_URL" 10 70 
 	else
 		IMAGE_SIZE=$(cat /tmp/image_info | awk '/.content-length.*/ {print $2}' | tr -d $'\r')
 		break;
@@ -427,3 +427,7 @@ for try in 0 1 2 4; do
         blockdev --rereadpt "${DEST_DEV}" && unset try && break
 done
 udevadm settle
+
+dialog --title 'CoreOS Installer' --infobox "Install Complete.  Rebooting...." 10 70
+sleep 5
+reboot
