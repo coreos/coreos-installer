@@ -297,10 +297,36 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 gpg --list-keys > /dev/null 2>&1
 gpg --batch --quiet --import <<< "${GPG_KEY}"
 
-#sleep 10
 
 chvt 2 
 
+############################################################
+# Helper to write the ignition config
+############################################################
+function write_ignition() if [[ -f /tmp/ignition.cfg ]]; then
+    # The OEM partition should be #6 but make no assumptions here!
+    # Also don't mount by label directly in case other devices conflict.
+    dialog --title 'CoreOS Installer' --infobox "Installing ignition config" 5 70
+    local OEM_DEV=$(blkid -t "LABEL=OEM" -o device "${DEST_DEV}"*)
+
+    mkdir -p /mnt/oemfs
+    mount "${OEM_DEV}" /mnt/oemfs
+    trap 'umount /mnt/oemfs' RETURN
+
+    cp /tmp/ignition.cfg /mnt/oemfs/config.ign
+    sleep 1
+fi
+
+
+
+############################################################
+# START HERE
+############################################################
+gpg --list-keys > /dev/null 2>&1
+gpg --batch --quiet --import <<< "${GPG_KEY}"
+
+
+chvt 2 
 
 ############################################################
 #Get the image url to install
@@ -324,6 +350,34 @@ do
 		break;
 	fi
 	rm -f /tmp/image_url
+done
+dialog --clear 
+
+############################################################
+#Get the ignition url to install
+############################################################
+while true
+do
+	if [ ! -f /tmp/ignition_url ]
+	then
+		dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS ignition config URL to install, or 'skip' for none" 5 75 "skip" 2>/tmp/ignition_url
+	fi
+
+	IGNITION_URL=$(cat /tmp/ignition_url)
+	if [ "$IGNITION_URL" == "skip" ]
+	then
+		break;
+	fi
+
+	curl -sI $IGNITION_URL >/tmp/ignition.cfg 2>&1
+	RETCODE=$?
+	if [ $RETCODE -ne 0 ]
+	then
+		dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IGNITION_URL" 10 70 
+	else
+		break;
+	fi
+	rm -f /tmp/ignition_url
 done
 dialog --clear 
 
@@ -433,6 +487,10 @@ for try in 0 1 2 4; do
 done
 udevadm settle
 
+#########################################################
+# If one was provided, install the ignition config
+#########################################################
+write_ignition
 dialog --title 'CoreOS Installer' --infobox "Install Complete.  Rebooting...." 10 70
 sleep 5
 reboot

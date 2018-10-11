@@ -28,4 +28,5 @@ corresponding options are specified on the kernel command line
 ## Kernel command line options for coreos
 * coreos.install_dev - The block device on the system to install to
 * coreos.image_url - The url of the coreos image to install to this device
-
+* coreos.ignition_url - The url of the coreos ignition config (optional, enter
+  coreos.ignition_url=skip to not load an ignition config)
