@@ -297,6 +297,8 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 gpg --list-keys > /dev/null 2>&1
 gpg --batch --quiet --import <<< "${GPG_KEY}"
 
+#sleep 10
+
 chvt 2 
 
 
@@ -374,13 +376,18 @@ do
 	then
 		break;
 	fi
-	PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.bz2 | awk '{print $5}')
+	if [ ! -f /mnt/dl/imagefile.bz2 ]
+	then
+		sleep 1
+		continue
+	fi
+	PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.bz2 | awk '{print $5}') 2>/dev/null
 	echo $PART_FILE_SIZE $IMAGE_SIZE >> /tmp/debug
-	PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//")
-	echo $PCT >> /tmp/debug
-	echo $PCT  | dialog --title 'CoreOS Installer' --guage "Downloading Image" 10 70 
-	sleep 2 
-done
+	PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//") 2>/dev/null
+	echo $PCT 
+	sleep 1
+done | dialog --title 'CoreOS Installer' --guage "Downloading Image" 10 70
+
 
 
 #########################################################
