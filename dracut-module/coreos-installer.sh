@@ -297,8 +297,6 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 gpg --list-keys > /dev/null 2>&1
 gpg --batch --quiet --import <<< "${GPG_KEY}"
 
-sleep 10
-
 chvt 2 
 
 
@@ -350,7 +348,7 @@ do
 	DEST_DEV=$(cat /tmp/selected_dev)
 	DEST_DEV=/dev/$DEST_DEV
 
-	if [ ! -e $DEST_DEV ]
+	if [ ! -b $DEST_DEV ]
 	then
 		dialog --title 'CoreOS Installer' --msgbox "$DEST_DEV does not exist, reselect." 5 40
 		rm -f /tmp/selected_dev 
