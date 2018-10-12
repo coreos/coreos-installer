@@ -23,3 +23,5 @@ then
 	echo $IGNITION_URL >> /dev/ignition_url
 fi
 
+# Suppress initrd-switch-root.service from starting
+rm -f /etc/initrd-release
