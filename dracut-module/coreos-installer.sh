@@ -322,6 +322,7 @@ fi
 ############################################################
 # START HERE
 ############################################################
+echo "Initalizing GPG" >> /tmp/debug
 gpg --list-keys > /dev/null 2>&1
 gpg --batch --quiet --import <<< "${GPG_KEY}"
 
@@ -333,31 +334,61 @@ chvt 2
 ############################################################
 while true
 do
+	echo "Getting image URL $IMAGE_URL" >> /tmp/debug
 	if [ ! -f /tmp/image_url ]
 	then
 		dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS Image URL to install" 5 75 "https://stable.release.core-os.net/amd64-usr/current/coreos_production_image.bin.bz2" 2>/tmp/image_url
 	fi
 
 	IMAGE_URL=$(cat /tmp/image_url)
-	SIG_URL=$IMAGE_URL.sig
-	curl -sI $IMAGE_URL >/tmp/image_info 2>&1
+	curl -sIf $IMAGE_URL >/tmp/image_info 2>&1
 	RETCODE=$?
 	if [ $RETCODE -ne 0 ]
 	then
 		dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IMAGE_URL" 10 70 
 	else
-		IMAGE_SIZE=$(cat /tmp/image_info | awk '/.content-length.*/ {print $2}' | tr -d $'\r')
+		IMAGE_SIZE=$(cat /tmp/image_info | awk '/.*Content-Length.*/ {print $2}' | tr -d $'\r')
+		TMPFS_MBSIZE=$(dc -e"$IMAGE_SIZE 1024 1024 * / 50 + p")
+		echo "Image size is $IMAGE_SIZE" >> /tmp/debug
+		echo "tmpfs sized to $TMPFS_MBSIZE MB" >> /tmp/debug
 		break;
 	fi
 	rm -f /tmp/image_url
 done
 dialog --clear 
 
+
+############################################################
+#Figure out the signature file type
+############################################################
+SIG_URL=$IMAGE_URL.sig
+echo "Getting SIG_URL $SIG_URL" >> /tmp/debug
+curl -sIf $SIG_URL > /dev/null 2>&1
+RETCODE=$?
+if [ $RETCODE -ne 0 ]
+then
+	echo "$SIG_URL not found" >> /tmp/debug
+	SIG_URL=$IMAGE_URL.sha256sum
+	echo "Getting SIG_URL $SIG_URL" >> /tmp/debug
+	curl -sI $SIG_URL > /dev/null 2>&1 
+	if [ $? -ne 0 ]
+	then
+		SIG_TYPE=none
+	else
+		SIG_TYPE=sha
+	fi
+else
+	SIG_TYPE=gpg
+fi
+
+echo "SIGNATURE TYPE IS $SIG_TYPE" >> /tmp/debug
+
 ############################################################
 #Get the ignition url to install
 ############################################################
 while true
 do
+	echo "Getting ignition url" >> /tmp/debug
 	if [ ! -f /tmp/ignition_url ]
 	then
 		dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS ignition config URL to install, or 'skip' for none" 5 75 "skip" 2>/tmp/ignition_url
@@ -396,6 +427,7 @@ done
 #########################################################
 while true
 do
+	echo "Getting install device" >> /tmp/debug
 	if [ ! -f /tmp/selected_dev ]
 	then
 		dialog --title 'CoreOS Installer' --menu "Select a Device to Install to" 45 45 35 $DEVLIST 2> /tmp/selected_dev
@@ -409,6 +441,7 @@ do
 		dialog --title 'CoreOS Installer' --msgbox "$DEST_DEV does not exist, reselect." 5 40
 		rm -f /tmp/selected_dev 
 	else
+		echo "Selected device is $DEST_DEV" >> /tmp/debug
 		break;
 	fi
 done
@@ -418,9 +451,16 @@ dialog --clear
 #########################################################
 #Create the tmpfs filesystem to store the image
 #########################################################
+echo "Mounting tmpfs" >> /tmp/debug
 mkdir -p /mnt/dl
-mount -t tmpfs -o size=512m tmpfs /mnt/dl
+mount -t tmpfs -o size=${TMPFS_MBSIZE}m tmpfs /mnt/dl
 
+
+
+#########################################################
+#And Get the Image
+#########################################################
+echo "Downloading install image" >> /tmp/debug
 curl -s -o /mnt/dl/imagefile.bz2 $IMAGE_URL &
 
 while true
@@ -436,7 +476,6 @@ do
 		continue
 	fi
 	PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.bz2 | awk '{print $5}') 2>/dev/null
-	echo $PART_FILE_SIZE $IMAGE_SIZE >> /tmp/debug
 	PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//") 2>/dev/null
 	echo $PCT 
 	sleep 1
@@ -447,27 +486,53 @@ done | dialog --title 'CoreOS Installer' --guage "Downloading Image" 10 70
 #########################################################
 #Get the corresponding signaure file
 #########################################################
-curl -s -o /mnt/dl/imagefile.bz2.sig $SIG_URL
-if [ $? -ne 0 ]
+if [ ! -f /tmp/skip_media_check ]
 then
-	dialog --title 'CoreOS Installer' --msgbox "Unable to download sig file. Dropping to shell" 10 70
-	exit 1
+	echo "Getting signature" >> /tmp/debug
+	curl -s -o /mnt/dl/imagefile.bz2.sig $SIG_URL
+	if [ $? -ne 0 ]
+	then
+		dialog --title 'CoreOS Installer' --msgbox "Unable to download sig file. Dropping to shell" 10 70
+		exit 1
+	fi
+
+	dialog --clear
+
+	#########################################################
+	#Validate the integrity of the image
+	#########################################################
+	if [ "$SIG_TYPE" != "none" ]
+	then
+		dialog --title 'CoreOS Installer' --infobox "Validating Downloaded Image" 10 70
+		if [ "$SIG_TYPE" == "gpg" ]
+		then
+			gpg --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.bz2.sig >/dev/null 2>&1
+			if [ $? -ne 0 ]
+			then
+				dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
+				exit 1
+			fi
+		elif [ "$SIG_TYPE" == "sha" ]
+		then
+			sed -e"s/$/\ \/mnt\/dl\/imagefile\.bz2/" >> /tmp/imagefile.bz2.sig
+			sha256sum -c /mnt/dl/imagefile.bz2.sig
+			if [ $? -ne 0 ]
+			then
+				dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
+				exit 1
+			fi
+		else
+			dialog --title 'CoreOS Installer' --infobox "Unknown signature type $SIG_TYPE, skipping validation" 10 70
+			sleep 3
+		fi
+	else
+		dialog --title 'CoreOS Installer' --infobox "Unknown signature type, skipping validation" 10 70
+		sleep 3 
+	fi
+
+	dialog --clear
 fi
 
-dialog --clear
-
-#########################################################
-#Validate the integrity of the image
-#########################################################
-dialog --title 'CoreOS Installer' --infobox "Validating Downloaded Image" 10 70
-gpg --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.bz2.sig >/dev/null 2>&1
-if [ $? -ne 0 ]
-then
-	dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
-	exit 1
-fi
-
-dialog --clear
 #########################################################
 #Wipe any remaining disk labels
 #########################################################
@@ -478,6 +543,7 @@ dd conv=nocreat count=1024 if=/dev/zero of="${DEST_DEV}" \
 #########################################################
 #And Write the image to disk
 #########################################################
+echo "Writing disk image" >> /tmp/debug
 (pv -n -s $IMAGE_SIZE /mnt/dl/imagefile.bz2 | bzip2 -dc | dd bs=1M conv=nocreat of="${DEST_DEV}" status=none) 2>&1 |\
  dialog --title 'CoreOS Installer' --guage "Writing image to disk" 10 70
 
@@ -491,6 +557,11 @@ udevadm settle
 # If one was provided, install the ignition config
 #########################################################
 write_ignition
-dialog --title 'CoreOS Installer' --infobox "Install Complete.  Rebooting...." 10 70
-sleep 5
-reboot
+
+if [ ! -f /tmp/skip_reboot ]
+then
+	dialog --title 'CoreOS Installer' --infobox "Install Complete.  Rebooting...." 10 70
+	sleep 5
+	#reboot
+fi
+

@@ -33,6 +33,7 @@ install() {
     inst_multiple awk
     inst_multiple pidof
     inst_multiple pv
+    inst_multiple sha256sum
     inst_simple "$moddir/coreos-installer.sh" /usr/bin/coreos-installer.sh
     inst_simple "$moddir/coreos-install.service" "${systemdsystemunitdir}/coreos-install.service"
     inst_hook cmdline 90 "$moddir/parse-coreos.sh"
