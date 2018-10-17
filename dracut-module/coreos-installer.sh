@@ -514,7 +514,7 @@ then
 			fi
 		elif [ "$SIG_TYPE" == "sha" ]
 		then
-			sed -e"s/$/\ \/mnt\/dl\/imagefile\.bz2/" >> /tmp/imagefile.bz2.sig
+			sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.bz2/" /mnt/dl/imagefile.bz2.sig
 			sha256sum -c /mnt/dl/imagefile.bz2.sig
 			if [ $? -ne 0 ]
 			then
