@@ -332,6 +332,7 @@ chvt 2
 ############################################################
 #Get the image url to install
 ############################################################
+let retry=0
 while true
 do
 	echo "Getting image URL $IMAGE_URL" >> /tmp/debug
@@ -345,6 +346,13 @@ do
 	RETCODE=$?
 	if [ $RETCODE -ne 0 ]
 	then
+		if [ $RETCODE -eq 22 -a $retry -lt 5 ]
+		then
+			# Network isn't up yet, sleep for a sec and retry
+			sleep 1
+			let retry=$retry+1
+			continue
+		fi
 		dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IMAGE_URL" 10 70 
 	else
 		IMAGE_SIZE=$(cat /tmp/image_info | awk '/.*Content-Length.*/ {print $2}' | tr -d $'\r')
@@ -395,7 +403,8 @@ do
 	fi
 
 	IGNITION_URL=$(cat /tmp/ignition_url)
-	if [ "$IGNITION_URL" == "skip" ]
+	echo $IGNITION_URL | grep -q "^skip$"
+	if [ $? -eq 0 ]
 	then
 		break;
 	fi
@@ -477,7 +486,6 @@ do
 	fi
 	PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.bz2 | awk '{print $5}') 2>/dev/null
 	PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//") 2>/dev/null
-	echo $PCT 
 	sleep 1
 done | dialog --title 'CoreOS Installer' --guage "Downloading Image" 10 70
 
@@ -544,7 +552,9 @@ dd conv=nocreat count=1024 if=/dev/zero of="${DEST_DEV}" \
 #And Write the image to disk
 #########################################################
 echo "Writing disk image" >> /tmp/debug
-(pv -n -s $IMAGE_SIZE /mnt/dl/imagefile.bz2 | bzip2 -dc | dd bs=1M conv=nocreat of="${DEST_DEV}" status=none) 2>&1 |\
+# Note we add some to the image size so the dialog doesn't sit at 100% for a long time
+let FAKE_IMAGE_SIZE=$IMAGE_SIZE+1000
+(pv -n -s $FAKE_IMAGE_SIZE /mnt/dl/imagefile.bz2 | bzip2 -dc | dd bs=1M conv=nocreat of="${DEST_DEV}" status=none) 2>&1 |\
  dialog --title 'CoreOS Installer' --guage "Writing image to disk" 10 70
 
 for try in 0 1 2 4; do
