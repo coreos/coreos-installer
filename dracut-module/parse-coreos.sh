@@ -21,7 +21,7 @@ local IGNITION_URL=$(getarg coreos.ignition_url=)
 if [ ! -z "$IGNITION_URL" ]
 then
 	echo "preset ignition url to $IGNITION_URL" >> /tmp/debug
-	echo $IGNITION_URL >> /dev/ignition_url
+	echo $IGNITION_URL >> /tmp/ignition_url
 fi
 
 if getargbool 0 coreos.skip_media_check

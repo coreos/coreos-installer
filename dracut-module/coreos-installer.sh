@@ -399,10 +399,12 @@ do
 	echo "Getting ignition url" >> /tmp/debug
 	if [ ! -f /tmp/ignition_url ]
 	then
+		echo "Prompting for ignition url" >> /tmp/debug
 		dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS ignition config URL to install, or 'skip' for none" 5 75 "skip" 2>/tmp/ignition_url
 	fi
 
 	IGNITION_URL=$(cat /tmp/ignition_url)
+	echo "IGNITION URL is $IGNITION_URL" >> /tmp/debug
 	echo $IGNITION_URL | grep -q "^skip$"
 	if [ $? -eq 0 ]
 	then
