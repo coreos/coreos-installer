@@ -487,10 +487,10 @@ do
 		continue
 	fi
 	PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.bz2 | awk '{print $5}') 2>/dev/null
-	PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//") 2>/dev/null
+	PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//" 2>/dev/null)
+	echo $PCT
 	sleep 1
 done | dialog --title 'CoreOS Installer' --guage "Downloading Image" 10 70
-
 
 
 #########################################################
