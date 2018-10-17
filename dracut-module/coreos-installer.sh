@@ -562,6 +562,6 @@ if [ ! -f /tmp/skip_reboot ]
 then
 	dialog --title 'CoreOS Installer' --infobox "Install Complete.  Rebooting...." 10 70
 	sleep 5
-	#reboot
+	reboot
 fi
 
