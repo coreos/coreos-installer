@@ -4,7 +4,6 @@
 # called by dracut
 check() {
     require_binaries curl || return 1
-    require_binaries bzip2 || return 1
     return 255
 }
 
@@ -16,7 +15,6 @@ depends() {
 
 # called by dracut
 install() {
-    inst_multiple bzip2
     inst_multiple lsblk
     inst_multiple tee 
     inst_multiple gpg 
@@ -32,6 +30,7 @@ install() {
     inst_multiple awk
     inst_multiple pidof
     inst_multiple sha256sum
+    inst_multiple zcat
     inst_simple "$moddir/coreos-installer.sh" /usr/bin/coreos-installer.sh
     inst_simple "$moddir/coreos-install.service" "${systemdsystemunitdir}/coreos-install.service"
     inst_hook cmdline 90 "$moddir/parse-coreos.sh"

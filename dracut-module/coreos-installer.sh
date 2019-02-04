@@ -1,6 +1,8 @@
 #!/bin/sh
 
 
+DEFAULT_IMAGE_URL='https://example.com/fedora-coreos.raw.gz'
+
 # Image signing key:
 # $ gpg2 --list-keys --list-options show-unusable-subkeys \
 #     --keyid-format SHORT 04127D0BFABEC8871FFB2CCE50E0885593D2DCB4
@@ -335,7 +337,9 @@ get_img_url() {
         echo "Getting image URL $IMAGE_URL" >> /tmp/debug
         if [ ! -f /tmp/image_url ]
         then
-            dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS Image URL to install" 5 75 "https://stable.release.core-os.net/amd64-usr/current/coreos_production_image.bin.bz2" 2>/tmp/image_url
+            dialog --title 'CoreOS Installer' \
+                   --inputbox "Enter the CoreOS Image URL to install" 5 75 \
+                              "${DEFAULT_IMAGE_URL}" 2>/tmp/image_url
         fi
 
         IMAGE_URL=$(cat /tmp/image_url)
@@ -466,7 +470,7 @@ mount_tmpfs() {
 #########################################################
 download_image() {
     echo "Downloading install image" >> /tmp/debug
-    curl -s -o /mnt/dl/imagefile.bz2 $IMAGE_URL &
+    curl -s -o /mnt/dl/imagefile.gz $IMAGE_URL &
 
     while true
     do 
@@ -475,12 +479,12 @@ download_image() {
         then
             break;
         fi
-        if [ ! -f /mnt/dl/imagefile.bz2 ]
+        if [ ! -f /mnt/dl/imagefile.gz ]
         then
             sleep 1
             continue
         fi
-        PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.bz2 | awk '{print $5}') 2>/dev/null
+        PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.gz | awk '{print $5}') 2>/dev/null
         PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//" 2>/dev/null)
         echo $PCT
         sleep 1
@@ -494,7 +498,7 @@ if [ ! -f /tmp/skip_media_check ]
 then
 download_sig() {
 	echo "Getting signature" >> /tmp/debug
-	curl -s -o /mnt/dl/imagefile.bz2.sig $SIG_URL
+	curl -s -o /mnt/dl/imagefile.gz.sig $SIG_URL
 	if [ $? -ne 0 ]
 	then
 		dialog --title 'CoreOS Installer' --msgbox "Unable to download sig file. Dropping to shell" 10 70
@@ -513,7 +517,7 @@ validate_image() {
 		dialog --title 'CoreOS Installer' --infobox "Validating Downloaded Image" 10 70
 		if [ "$SIG_TYPE" == "gpg" ]
 		then
-			gpg --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.bz2.sig >/dev/null 2>&1
+			gpg --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.gz.sig >/dev/null 2>&1
 			if [ $? -ne 0 ]
 			then
 				dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
@@ -521,8 +525,8 @@ validate_image() {
 			fi
 		elif [ "$SIG_TYPE" == "sha" ]
 		then
-			sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.bz2/" /mnt/dl/imagefile.bz2.sig
-			sha256sum -c /mnt/dl/imagefile.bz2.sig
+			sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.gz/" /mnt/dl/imagefile.gz.sig
+			sha256sum -c /mnt/dl/imagefile.gz.sig
 			if [ $? -ne 0 ]
 			then
 				dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
@@ -557,7 +561,7 @@ wipe_target_disk_labels() {
 write_image_to_disk() {
     echo "Writing disk image" >> /tmp/debug
     
-    bzcat /mnt/dl/imagefile.bz2 |\
+    zcat /mnt/dl/imagefile.gz |\
     dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=progress  |&\
     dialog --title 'CoreOS Installer' --guage "Writing image to disk" 10 70
     
