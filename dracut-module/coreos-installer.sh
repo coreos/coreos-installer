@@ -294,8 +294,6 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 =KhYl
 -----END PGP PUBLIC KEY BLOCK-----
 "
-gpg --list-keys > /dev/null 2>&1
-gpg --batch --quiet --import <<< "${GPG_KEY}"
 
 
 chvt 2 
