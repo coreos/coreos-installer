@@ -556,11 +556,11 @@ wipe_target_disk_labels() {
 #########################################################
 write_image_to_disk() {
     echo "Writing disk image" >> /tmp/debug
-    # Note we add some to the image size so the dialog doesn't sit at 100% for a long time
-    let FAKE_IMAGE_SIZE=$IMAGE_SIZE+1000
-    (pv -n -s $FAKE_IMAGE_SIZE /mnt/dl/imagefile.bz2 | bzip2 -dc | dd bs=1M conv=nocreat of="${DEST_DEV}" status=none) 2>&1 |\
-     dialog --title 'CoreOS Installer' --guage "Writing image to disk" 10 70
-
+    
+    bzcat /mnt/dl/imagefile.bz2 |\
+    dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=progress  |&\
+    dialog --title 'CoreOS Installer' --guage "Writing image to disk" 10 70
+    
     for try in 0 1 2 4; do
             sleep "$try"  # Give the device a bit more time on each attempt.
             blockdev --rereadpt "${DEST_DEV}" && unset try && break
