@@ -296,8 +296,6 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 "
 
 
-chvt 2 
-
 ############################################################
 # Helper to write the ignition config
 ############################################################
@@ -325,8 +323,6 @@ import_gpg_key() {
     gpg --list-keys > /dev/null 2>&1
     gpg --batch --quiet --import <<< "${GPG_KEY}"
 }
-
-chvt 2 
 
 ############################################################
 #Get the image url to install

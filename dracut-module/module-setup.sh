@@ -28,7 +28,6 @@ install() {
     inst_multiple blockdev
     inst_multiple dd
     inst_multiple dialog
-    inst_multiple chvt
     inst_multiple dc
     inst_multiple awk
     inst_multiple pidof
