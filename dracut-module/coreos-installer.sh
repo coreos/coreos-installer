@@ -297,22 +297,23 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 
 
 ############################################################
-# Helper to write the ignition config
+# Helper to write the ignition config url
 ############################################################
-write_ignition() {
-    if [[ -f /tmp/ignition.cfg ]]; then
-        # The OEM partition should be #6 but make no assumptions here!
-        # Also don't mount by label directly in case other devices conflict.
-        dialog --title 'CoreOS Installer' --infobox "Installing ignition config" 5 70
-        local OEM_DEV=$(blkid -t "LABEL=OEM" -o device "${DEST_DEV}"*)
+write_ignition_url() {
+        if [ -z "${IGNITION_URL}" ]; then
+            return
+        fi
 
-        mkdir -p /mnt/oemfs
-        mount "${OEM_DEV}" /mnt/oemfs
-        trap 'umount /mnt/oemfs' RETURN
+        dialog --title 'CoreOS Installer' --infobox "Embedding provided ignition URL" 5 70
+        # check for the boot partition
+        mkdir -p /mnt/boot_partition
+        mount "${DEST_DEV}1" /mnt/boot_partition
+        trap 'umount /mnt/boot_partition' RETURN
 
-        cp /tmp/ignition.cfg /mnt/oemfs/config.ign
+        # inject ignition kernel parameter
+        sed -i "/^linux16/ s/$/ coreos.config.url=${IGNITION_URL//\//\\/}/" /mnt/boot_partition/grub2/grub.cfg
+
         sleep 1
-    fi
 }
 
 ############################################################
@@ -393,8 +394,7 @@ get_sig_file_type() {
 #Get the ignition url to install
 ############################################################
 get_ignition_url() {
-    while true
-    do
+    while [ -z "${IGNITION_URL}" ]; do
         echo "Getting ignition url" >> /tmp/debug
         if [ ! -f /tmp/ignition_url ]
         then
@@ -404,21 +404,10 @@ get_ignition_url() {
 
         IGNITION_URL=$(cat /tmp/ignition_url)
         echo "IGNITION URL is $IGNITION_URL" >> /tmp/debug
-        echo $IGNITION_URL | grep -q "^skip$"
-        if [ $? -eq 0 ]
-        then
+        if [ $IGNITION_URL =~ '^skip$' ]; then
+            IGNITION_URL=''
             break;
         fi
-
-        curl -sI $IGNITION_URL >/tmp/ignition.cfg 2>&1
-        RETCODE=$?
-        if [ $RETCODE -ne 0 ]
-        then
-            dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IGNITION_URL" 10 70 
-        else
-            break;
-        fi
-        rm -f /tmp/ignition_url
     done
     dialog --clear 
 }
@@ -598,7 +587,7 @@ main() {
     write_image_to_disk
 
     # If one was provided, install the ignition config
-    write_ignition
+    write_ignition_url
 
     if [ ! -f /tmp/skip_reboot ]
     then
