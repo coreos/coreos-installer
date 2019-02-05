@@ -1,5 +1,4 @@
-#!/bin/sh
-
+#!/bin/bash
 
 DEFAULT_IMAGE_URL='https://example.com/fedora-coreos.raw.gz'
 
