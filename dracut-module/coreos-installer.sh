@@ -570,18 +570,18 @@ write_image_to_disk() {
 # Main function for running the installer
 main() {
 
-    import_gpg_key
+    #import_gpg_key
     get_img_url
-    get_sig_file_type
+    #get_sig_file_type
     get_ignition_url
     get_device_list
     prompt_user_devlist
     mount_tmpfs
     download_image
-    if [ ! -f /tmp/skip_media_check ]; then
-        download_sig
-        validate_image
-    fi
+    ####if [ ! -f /tmp/skip_media_check ]; then
+    ####    download_sig
+    ####    validate_image
+    ####fi
     wipe_target_disk_labels
     write_image_to_disk
 
