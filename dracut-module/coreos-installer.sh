@@ -561,8 +561,8 @@ write_image_to_disk() {
     dialog --title 'CoreOS Installer' --gauge "Writing image to disk" 10 70
     
     for try in 0 1 2 4; do
-            sleep "$try"  # Give the device a bit more time on each attempt.
-            blockdev --rereadpt "${DEST_DEV}" && unset try && break
+        sleep "$try"  # Give the device a bit more time on each attempt.
+        blockdev --rereadpt "${DEST_DEV}" && unset try && break
     done
     udevadm settle
 }
