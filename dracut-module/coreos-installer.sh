@@ -338,7 +338,7 @@ get_img_url() {
         then
             dialog --title 'CoreOS Installer' \
                    --inputbox "Enter the CoreOS Image URL to install" 5 75 \
-                              "${DEFAULT_IMAGE_URL}" 2>/tmp/image_url
+                              "${IMAGE_URL-$DEFAULT_IMAGE_URL}" 2>/tmp/image_url
         fi
 
         IMAGE_URL=$(cat /tmp/image_url)
