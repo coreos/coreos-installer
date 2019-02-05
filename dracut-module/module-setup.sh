@@ -18,11 +18,8 @@ install() {
     inst_multiple lsblk
     inst_multiple tee 
     inst_multiple gpg 
-    inst_multiple wget
     inst_multiple curl
-    inst_multiple mktemp 
     inst_multiple wipefs 
-    inst_multiple mkfs
     inst_multiple blockdev
     inst_multiple dd
     inst_multiple dialog
