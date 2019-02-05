@@ -1,15 +1,23 @@
 [Unit]
-Description=CoreOs Installer
+Description=CoreOS Installer
+Requires=network-online.target
+After=network-online.target
 After=dracut-initqueue.service
-#After=getty@tty2.service
+Before=dracut-pre-mount.service
+ConditionKernelCommandLine=coreos.inst=yes
+OnFailure=emergency.target
+OnFailureIsolate=yes
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/coreos-installer.sh
+#StandardInput=tty-force
 StandardInput=tty
+#TTYPath=/dev/console
 TTYPath=/dev/tty2
 TTYReset=yes
 TTYVHangup=yes
+#TTYVTDisallocate=yes
 
 [Install]
 WantedBy=default.target
