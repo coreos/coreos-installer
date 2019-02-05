@@ -4,7 +4,7 @@
 # called by dracut
 check() {
     require_binaries curl || return 1
-    return 255
+    return 0 # default to install this module
 }
 
 # called by dracut
