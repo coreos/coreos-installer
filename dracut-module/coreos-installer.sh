@@ -487,7 +487,7 @@ download_image() {
         PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//" 2>/dev/null)
         echo $PCT
         sleep 1
-    done | dialog --title 'CoreOS Installer' --guage "Downloading Image" 10 70
+    done | dialog --title 'CoreOS Installer' --gauge "Downloading Image" 10 70
 }
 
 #########################################################
@@ -558,7 +558,7 @@ write_image_to_disk() {
     
     zcat /mnt/dl/imagefile.gz |\
     dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=progress  |&\
-    dialog --title 'CoreOS Installer' --guage "Writing image to disk" 10 70
+    dialog --title 'CoreOS Installer' --gauge "Writing image to disk" 10 70
     
     for try in 0 1 2 4; do
             sleep "$try"  # Give the device a bit more time on each attempt.
