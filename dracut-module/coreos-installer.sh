@@ -551,8 +551,7 @@ fi
 #########################################################
 wipe_target_disk_labels() {
     dialog --title 'CoreOS Installer' --infobox "Wiping ${DEST_DEV}" 10 70
-    dd conv=nocreat count=1024 if=/dev/zero of="${DEST_DEV}" \
-            seek=$(($(blockdev --getsz "${DEST_DEV}") - 1024)) status=none
+    wipefs --all --force "${DEST_DEV}"
 }
 
 #########################################################
