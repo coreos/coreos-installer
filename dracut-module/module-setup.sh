@@ -15,6 +15,7 @@ depends() {
 
 # called by dracut
 install() {
+    inst_multiple chvt
     inst_multiple lsblk
     inst_multiple tee 
     inst_multiple gpg 

@@ -572,6 +572,9 @@ write_image_to_disk() {
 # Main function for running the installer
 main() {
 
+    # switch to virtual terminal 2 where the action happens
+    chvt 2
+
     #import_gpg_key
     get_img_url
     #get_sig_file_type
