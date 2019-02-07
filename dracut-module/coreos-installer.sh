@@ -298,14 +298,14 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 
 
 ############################################################
-# Helper to write the ignition config url
+# Helper to write the ignition config to disk
 ############################################################
-write_ignition_url() {
-    if [ -z "${IGNITION_URL}" ]; then
+write_ignition_file() {
+    if [ ! -f /tmp/ignition.ign ]; then
         return
     fi
 
-    dialog --title 'CoreOS Installer' --infobox "Embedding provided ignition URL" 5 70
+    dialog --title 'CoreOS Installer' --infobox "Embedding provided ignition config" 5 70
     # check for the boot partition
     mkdir -p /mnt/boot_partition
     # TODO check to make sure the disk with label 'boot'
@@ -313,10 +313,8 @@ write_ignition_url() {
     mount /dev/disk/by-label/boot /mnt/boot_partition
     trap 'umount /mnt/boot_partition' RETURN
 
-    # inject ignition kernel parameter
-    sed -i "/^linux16/ s/$/ coreos.config.url=${IGNITION_URL//\//\\/}/" /mnt/boot_partition/grub2/grub.cfg
-
-    sleep 1
+    mkdir -p /mnt/boot_partition/ignition
+    cp /tmp/ignition.ign /mnt/boot_partition/ignition/config.ign
 }
 
 ############################################################
@@ -399,18 +397,28 @@ get_sig_file_type() {
 #Get the ignition url to install
 ############################################################
 get_ignition_url() {
-    while [ -z "${IGNITION_URL}" ]; do
+    while true; do
         echo "Getting ignition url" >> /tmp/debug
         if [ ! -f /tmp/ignition_url ]
         then
             echo "Prompting for ignition url" >> /tmp/debug
-            dialog --title 'CoreOS Installer' --inputbox "Enter the CoreOS ignition config URL to install, or 'skip' for none" 5 75 "skip" 2>/tmp/ignition_url
+            dialog --title 'CoreOS Installer' \
+                   --inputbox "Enter the CoreOS ignition config URL to install, or 'skip' for none" \
+                   5 75 "${IGNITION_URL-skip}" 2>/tmp/ignition_url
         fi
 
         IGNITION_URL=$(cat /tmp/ignition_url)
         echo "IGNITION URL is $IGNITION_URL" >> /tmp/debug
         if [ $IGNITION_URL =~ '^skip$' ]; then
-            IGNITION_URL=''
+            break;
+        fi
+
+        curl -L $IGNITION_URL >/tmp/ignition.ign 2>/dev/null
+        RETCODE=$?
+        if [ $RETCODE -ne 0 ]; then
+            dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IGNITION_URL" 10 70
+            rm -f /tmp/ignition_url
+        else
             break;
         fi
     done
@@ -591,7 +599,7 @@ main() {
     write_image_to_disk
 
     # If one was provided, install the ignition config
-    write_ignition_url
+    write_ignition_file
 
     if [ ! -f /tmp/skip_reboot ]
     then
