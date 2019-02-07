@@ -308,7 +308,9 @@ write_ignition_url() {
     dialog --title 'CoreOS Installer' --infobox "Embedding provided ignition URL" 5 70
     # check for the boot partition
     mkdir -p /mnt/boot_partition
-    mount "${DEST_DEV}1" /mnt/boot_partition
+    # TODO check to make sure the disk with label 'boot'
+    #      is part of ${DEST_DEV}
+    mount /dev/disk/by-label/boot /mnt/boot_partition
     trap 'umount /mnt/boot_partition' RETURN
 
     # inject ignition kernel parameter
