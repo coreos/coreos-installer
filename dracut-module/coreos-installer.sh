@@ -301,20 +301,20 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 # Helper to write the ignition config url
 ############################################################
 write_ignition_url() {
-        if [ -z "${IGNITION_URL}" ]; then
-            return
-        fi
+    if [ -z "${IGNITION_URL}" ]; then
+        return
+    fi
 
-        dialog --title 'CoreOS Installer' --infobox "Embedding provided ignition URL" 5 70
-        # check for the boot partition
-        mkdir -p /mnt/boot_partition
-        mount "${DEST_DEV}1" /mnt/boot_partition
-        trap 'umount /mnt/boot_partition' RETURN
+    dialog --title 'CoreOS Installer' --infobox "Embedding provided ignition URL" 5 70
+    # check for the boot partition
+    mkdir -p /mnt/boot_partition
+    mount "${DEST_DEV}1" /mnt/boot_partition
+    trap 'umount /mnt/boot_partition' RETURN
 
-        # inject ignition kernel parameter
-        sed -i "/^linux16/ s/$/ coreos.config.url=${IGNITION_URL//\//\\/}/" /mnt/boot_partition/grub2/grub.cfg
+    # inject ignition kernel parameter
+    sed -i "/^linux16/ s/$/ coreos.config.url=${IGNITION_URL//\//\\/}/" /mnt/boot_partition/grub2/grub.cfg
 
-        sleep 1
+    sleep 1
 }
 
 ############################################################
