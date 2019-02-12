@@ -322,8 +322,8 @@ write_ignition_file() {
 ############################################################
 import_gpg_key() {
     echo "Initalizing GPG" >> /tmp/debug
-    gpg --list-keys > /dev/null 2>&1
-    gpg --batch --quiet --import <<< "${GPG_KEY}"
+    gpg2 --list-keys > /dev/null 2>&1
+    gpg2 --batch --quiet --import <<< "${GPG_KEY}"
 }
 
 ############################################################
@@ -525,7 +525,7 @@ validate_image() {
         dialog --title 'CoreOS Installer' --infobox "Validating Downloaded Image" 10 70
         if [ "$SIG_TYPE" == "gpg" ]
         then
-            gpg --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.gz.sig >/dev/null 2>&1
+            gpg2 --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.gz.sig >/dev/null 2>&1
             if [ $? -ne 0 ]
             then
                 dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70

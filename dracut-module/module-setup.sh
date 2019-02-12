@@ -18,7 +18,7 @@ install() {
     inst_multiple chvt
     inst_multiple lsblk
     inst_multiple tee 
-    inst_multiple gpg 
+    inst_multiple gpg2
     inst_multiple curl
     inst_multiple wipefs 
     inst_multiple blockdev
