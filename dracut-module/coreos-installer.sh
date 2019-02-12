@@ -504,13 +504,13 @@ download_image() {
 #Get the corresponding signaure file
 #########################################################
 download_sig() {
-	echo "Getting signature" >> /tmp/debug
-	curl -s -o /mnt/dl/imagefile.gz.sig $SIG_URL
-	if [ $? -ne 0 ]
-	then
-		dialog --title 'CoreOS Installer' --msgbox "Unable to download sig file. Dropping to shell" 10 70
-		exit 1
-	fi
+    echo "Getting signature" >> /tmp/debug
+    curl -s -o /mnt/dl/imagefile.gz.sig $SIG_URL
+    if [ $? -ne 0 ]
+    then
+        dialog --title 'CoreOS Installer' --msgbox "Unable to download sig file. Dropping to shell" 10 70
+        exit 1
+    fi
 
     dialog --clear
 }
@@ -520,36 +520,36 @@ download_sig() {
 #Validate the integrity of the image
 #########################################################
 validate_image() {
-	if [ "$SIG_TYPE" != "none" ]
-	then
-		dialog --title 'CoreOS Installer' --infobox "Validating Downloaded Image" 10 70
-		if [ "$SIG_TYPE" == "gpg" ]
-		then
-			gpg --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.gz.sig >/dev/null 2>&1
-			if [ $? -ne 0 ]
-			then
-				dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
-				exit 1
-			fi
-		elif [ "$SIG_TYPE" == "sha" ]
-		then
-			sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.gz/" /mnt/dl/imagefile.gz.sig
-			sha256sum -c /mnt/dl/imagefile.gz.sig
-			if [ $? -ne 0 ]
-			then
-				dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
-				exit 1
-			fi
-		else
-			dialog --title 'CoreOS Installer' --infobox "Unknown signature type $SIG_TYPE, skipping validation" 10 70
-			sleep 3
-		fi
-	else
-		dialog --title 'CoreOS Installer' --infobox "Unknown signature type, skipping validation" 10 70
-		sleep 3 
-	fi
+    if [ "$SIG_TYPE" != "none" ]
+    then
+        dialog --title 'CoreOS Installer' --infobox "Validating Downloaded Image" 10 70
+        if [ "$SIG_TYPE" == "gpg" ]
+        then
+            gpg --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.gz.sig >/dev/null 2>&1
+            if [ $? -ne 0 ]
+            then
+                dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
+                exit 1
+            fi
+        elif [ "$SIG_TYPE" == "sha" ]
+        then
+            sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.gz/" /mnt/dl/imagefile.gz.sig
+            sha256sum -c /mnt/dl/imagefile.gz.sig
+            if [ $? -ne 0 ]
+            then
+                dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
+                exit 1
+            fi
+        else
+            dialog --title 'CoreOS Installer' --infobox "Unknown signature type $SIG_TYPE, skipping validation" 10 70
+            sleep 3
+        fi
+    else
+        dialog --title 'CoreOS Installer' --infobox "Unknown signature type, skipping validation" 10 70
+        sleep 3
+    fi
 
-	dialog --clear
+    dialog --clear
 }
 
 #########################################################
