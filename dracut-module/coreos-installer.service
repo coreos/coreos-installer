@@ -10,7 +10,7 @@ OnFailureIsolate=yes
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/coreos-installer
+ExecStart=/usr/libexec/coreos-installer
 #StandardInput=tty-force
 StandardInput=tty
 #TTYPath=/dev/console
