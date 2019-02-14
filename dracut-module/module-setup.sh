@@ -29,7 +29,7 @@ install() {
     inst_multiple pidof
     inst_multiple sha256sum
     inst_multiple zcat
-    inst_simple "$moddir/coreos-installer.sh" /usr/bin/coreos-installer.sh
+    inst_simple "$moddir/coreos-installer" /usr/bin/coreos-installer
     inst_simple "$moddir/coreos-installer.service" "${systemdsystemunitdir}/coreos-installer.service"
     inst_hook cmdline 90 "$moddir/parse-coreos.sh"
     mkdir -p "${initdir}${systemdsystemconfdir}/initrd.target.wants"
