@@ -1,5 +1,5 @@
 #!/bin/bash
-# module-setup for coreos 
+# module-setup for coreos-installer
 
 # called by dracut
 check() {
@@ -15,20 +15,20 @@ depends() {
 
 # called by dracut
 install() {
-    inst_multiple chvt
-    inst_multiple lsblk
-    inst_multiple tee 
-    inst_multiple gpg2
-    inst_multiple curl
-    inst_multiple wipefs 
-    inst_multiple blockdev
-    inst_multiple dd
-    inst_multiple dialog
-    inst_multiple dc
-    inst_multiple awk
-    inst_multiple pidof
-    inst_multiple sha256sum
-    inst_multiple zcat
+    inst_multiple /usr/bin/chvt
+    inst_multiple /usr/bin/lsblk
+    inst_multiple /usr/bin/tee
+    inst_multiple /usr/bin/gpg2
+    inst_multiple /usr/bin/curl
+    inst_multiple /usr/sbin/wipefs
+    inst_multiple /usr/sbin/blockdev
+    inst_multiple /usr/bin/dd
+    inst_multiple /usr/bin/dialog
+    inst_multiple /usr/bin/dc
+    inst_multiple /usr/bin/awk
+    inst_multiple /usr/bin/pidof
+    inst_multiple /usr/bin/sha256sum
+    inst_multiple /usr/bin/zcat
     inst_simple /usr/libexec/coreos-installer
     inst_simple "$moddir/coreos-installer.service" "${systemdsystemunitdir}/coreos-installer.service"
     inst_hook cmdline 90 "$moddir/parse-coreos.sh"
