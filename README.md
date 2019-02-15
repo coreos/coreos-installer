@@ -14,10 +14,14 @@ via a dracut module.
 
 ## Testing out the installer script
 
-Grab /path/to/script and execute it on an already booted system.
+**This does not work yet**
+
+Grab `coreos-installer` and execute it on an already booted system.
 You'll want to write to a disk that is not currently in use.
 
-coreos-installer arg1 arg2 arg3 #todo teach installer to accept args
+```
+coreos-installer arg1 arg2 arg3
+```
 
 ## Testing out the installer running in the initramfs (early boot)
 
@@ -28,20 +32,14 @@ this repo and building the initramfs locally like so:
 git clone https://github.com/coreos/coreos-installer
 cd coreos-installer
 sudo dnf -y install dracut dracut-network
-sudo dnf -y install $(grep inst_multiple dracut/30coreos-installer/module-setup.sh | sed 's|inst_multiple |\/usr\/bin\/|' | tr '\n' ' ')
 sudo dnf -y install $(grep inst_multiple dracut/30coreos-installer/module-setup.sh | sed 's|inst_multiple||' | tr '\n' ' ')
 sudo cp ./coreos-installer /usr/libexec/coreos-installer
 sudo rsync -avh dracut/30coreos-installer /usr/lib/dracut/modules.d/
 sudo dracut --kernel-cmdline="ip=dhcp rd.neednet=1" --add coreos-installer --no-hostonly -f ./initramfs.img --kver $(uname -r)
 ```
 
-Take resulting initrd and a kernel and boot system with it
-Provide `coreos.inst` arguments
-```
-
 You can then boot a system with that initrd and a kernel and see the
 installer run. First we will grab the kernel.
-
 
 ```
 cp /usr/lib/modules/$(uname -r)/vmlinuz ./vmlinuz
@@ -49,7 +47,6 @@ cp /usr/lib/modules/$(uname -r)/vmlinuz ./vmlinuz
 
 Then create a treeinfo file that can be used with virt-install:
 This won't be necessary [in the future](https://bugzilla.redhat.com/show_bug.cgi?id=1677425).
-
 
 ```
 cat <<'EOF' > .treeinfo
