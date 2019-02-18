@@ -480,16 +480,11 @@ mount_tmpfs() {
 download_image() {
     echo "Downloading install image" >> /tmp/debug
     curl -s -o /mnt/dl/imagefile.gz $IMAGE_URL &
+    curlpid=$!
 
-    while true
-    do 
-        pidof curl 
-        if [ $? -ne 0 ]
-        then
-            break;
-        fi
-        if [ ! -f /mnt/dl/imagefile.gz ]
-        then
+    while ps --pid $curlpid; do
+        # If the image hasn't show up yet then wait a sec and loop
+        if [ ! -f /mnt/dl/imagefile.gz ]; then
             sleep 1
             continue
         fi

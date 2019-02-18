@@ -26,7 +26,7 @@ install() {
     inst_multiple /usr/bin/dialog
     inst_multiple /usr/bin/dc
     inst_multiple /usr/bin/awk
-    inst_multiple /usr/bin/pidof
+    inst_multiple /usr/bin/ps
     inst_multiple /usr/bin/sha256sum
     inst_multiple /usr/bin/zcat
     inst_simple /usr/libexec/coreos-installer
