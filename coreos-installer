@@ -353,7 +353,7 @@ get_img_url() {
                 let retry=$retry+1
                 continue
             fi
-            dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IMAGE_URL" 10 70 
+            dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IMAGE_URL" 10 70
         else
             IMAGE_SIZE=$(cat /tmp/image_info | awk '/.*Content-Length.*/ {print $2}' | tr -d $'\r')
             TMPFS_MBSIZE=$(dc -e"$IMAGE_SIZE 1024 1024 * / 50 + p")
@@ -363,7 +363,7 @@ get_img_url() {
         fi
         rm -f /tmp/image_url
     done
-    dialog --clear 
+    dialog --clear
 }
 
 ############################################################
@@ -379,7 +379,7 @@ get_sig_file_type() {
         echo "$SIG_URL not found" >> /tmp/debug
         SIG_URL=$IMAGE_URL.sha256sum
         echo "Getting SIG_URL $SIG_URL" >> /tmp/debug
-        curl -sI $SIG_URL > /dev/null 2>&1 
+        curl -sI $SIG_URL > /dev/null 2>&1
         if [ $? -ne 0 ]
         then
             SIG_TYPE=none
@@ -409,20 +409,20 @@ get_ignition_url() {
 
         IGNITION_URL=$(cat /tmp/ignition_url)
         echo "IGNITION URL is $IGNITION_URL" >> /tmp/debug
-        if [ $IGNITION_URL =~ '^skip$' ]; then
+        if [[ "$IGNITION_URL" =~ ^skip$ ]]; then
             break;
         fi
 
         curl -L $IGNITION_URL >/tmp/ignition.ign 2>/dev/null
         RETCODE=$?
         if [ $RETCODE -ne 0 ]; then
-            dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IGNITION_URL" 10 70
+            dialog --title 'CoreOS Installer' --msgbox "Ignition Lookup Error $RETCODE for \n $IGNITION_URL" 10 70
             rm -f /tmp/ignition_url
         else
             break;
         fi
     done
-    dialog --clear 
+    dialog --clear
 }
 
 ###########################################################
@@ -455,7 +455,7 @@ prompt_user_devlist() {
         if [ ! -b $DEST_DEV ]
         then
             dialog --title 'CoreOS Installer' --msgbox "$DEST_DEV does not exist, reselect." 5 40
-            rm -f /tmp/selected_dev 
+            rm -f /tmp/selected_dev
         else
             echo "Selected device is $DEST_DEV" >> /tmp/debug
             break;
@@ -482,8 +482,8 @@ download_image() {
     curl -s -o /mnt/dl/imagefile.gz $IMAGE_URL &
 
     while true
-    do 
-        pidof curl 
+    do
+        pidof curl
         if [ $? -ne 0 ]
         then
             break;
@@ -565,11 +565,11 @@ wipe_target_disk_labels() {
 #########################################################
 write_image_to_disk() {
     echo "Writing disk image" >> /tmp/debug
-    
+
     zcat /mnt/dl/imagefile.gz |\
     dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=progress  |&\
     dialog --title 'CoreOS Installer' --gauge "Writing image to disk" 10 70
-    
+
     for try in 0 1 2 4; do
         sleep "$try"  # Give the device a bit more time on each attempt.
         blockdev --rereadpt "${DEST_DEV}" && unset try && break
