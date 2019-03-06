@@ -1,8 +1,8 @@
 # coreos-installer
 
-`coreos-installer` is a script to install Fedora or Red Hat CoreOS to
-target disk. It can be invoked as a standalone script or during bootup
-via a dracut module.
+`coreos-installer` is a script to install Fedora CoreOS (FCOS) or Red Hat 
+Enterprise Linux CoreOS (RHCOS) to a target disk. It can be invoked as a 
+standalone script or during bootup via a dracut module.
 
 
 ## Kernel command line options for coreos-installer running in the initramfs
@@ -13,9 +13,9 @@ via a dracut module.
 * coreos.inst.ignition_url - The url of the coreos ignition config (optional, enter
   coreos.inst.ignition_url=skip to not load an ignition config)
 
-## Using the installer on Fedora or RHEL CoreOS
+## Using the installer on FCOS or RHCOS
 
-This installer is incorporated into Fedora CoreOS and RHEL CoreOS.
+This installer is incorporated into FCOS and RHCOS.
 There are ISO images that can be downloaded that will allow for an
 install to be performed on bare metal hardware either via ISO install
 or via a PXE install. While ISO install is supported we certainly
