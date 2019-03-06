@@ -560,11 +560,11 @@ wipe_target_disk_labels() {
 #########################################################
 write_image_to_disk() {
     echo "Writing disk image" >> /tmp/debug
-
+   
     zcat /mnt/dl/imagefile.gz |\
     dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=progress  |&\
     dialog --title 'CoreOS Installer' --gauge "Writing image to disk" 10 70
-
+   
     for try in 0 1 2 4; do
         sleep "$try"  # Give the device a bit more time on each attempt.
         blockdev --rereadpt "${DEST_DEV}" && unset try && break
