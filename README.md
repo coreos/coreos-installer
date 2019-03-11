@@ -63,7 +63,7 @@ TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
     KERNEL fedora-coreos-29.731.iso/images/vmlinuz
-    APPEND initrd=fedora-coreos-29.731.iso/images/initramfs.img console=tty0 console=ttyS0 coreos.inst=yes coreos.inst.install_dev=sda coreos.inst.image_url=http://192.168.1.101:8000/fedora-coreos-29.731-metal-bios.raw.gz coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-29.731.iso/images/initramfs.img console=tty0 console=ttyS0 coreos.inst=yes coreos.inst.install_dev=sda coreos.inst.image_url=http://192.168.1.101:8000/fedora-coreos-29.731-metal-bios.raw.gz coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
