@@ -409,14 +409,14 @@ get_ignition_url() {
 
         IGNITION_URL=$(cat /tmp/ignition_url)
         echo "IGNITION URL is $IGNITION_URL" >> /tmp/debug
-        if [ $IGNITION_URL =~ '^skip$' ]; then
+        if [[ "$IGNITION_URL" =~ ^skip$ ]]; then
             break;
         fi
 
         curl -L $IGNITION_URL >/tmp/ignition.ign 2>/dev/null
         RETCODE=$?
         if [ $RETCODE -ne 0 ]; then
-            dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IGNITION_URL" 10 70
+            dialog --title 'CoreOS Installer' --msgbox "Ignition Lookup Error $RETCODE for \n $IGNITION_URL" 10 70
             rm -f /tmp/ignition_url
         else
             break;
