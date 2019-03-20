@@ -153,6 +153,7 @@ cat <<'EOF' > .treeinfo
 arch = x86_64
 family = Fedora
 platforms = x86_64
+version = 29
 [images-x86_64]
 initrd = initramfs.img
 kernel = vmlinuz
