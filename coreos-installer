@@ -318,6 +318,25 @@ write_ignition_file() {
 }
 
 ############################################################
+# Helper to persist networking options to initramfs first boot
+############################################################
+write_networking_opts() {
+    if [ ! -f /tmp/networking_opts ]; then
+        return
+    fi
+
+    dialog --title 'CoreOS Installer' --infobox "Embedding provided networking options" 5 70
+    # check for the boot partition
+    mkdir -p /mnt/boot_partition
+    # TODO check to make sure the disk with label 'boot'
+    #      is part of ${DEST_DEV}
+    mount /dev/disk/by-label/boot /mnt/boot_partition
+    trap 'umount /mnt/boot_partition' RETURN
+
+    echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
+}
+
+############################################################
 # START HERE
 ############################################################
 import_gpg_key() {
@@ -595,6 +614,9 @@ main() {
 
     # If one was provided, install the ignition config
     write_ignition_file
+
+    # If networking options were present, persist to firstboot initramfs
+    write_networking_opts
 
     if [ ! -f /tmp/skip_reboot ]
     then
