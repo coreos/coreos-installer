@@ -58,7 +58,7 @@ then
     echo 1 > /tmp/skip_reboot
 fi
 
-if $(getarg coreos.inst=); then
+if [ "$(getarg coreos.inst=)" = "yes" ]; then
     # Suppress initrd-switch-root.service from starting
     rm -f /etc/initrd-release
     # Suppress most console messages for the installer to run without interference
