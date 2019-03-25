@@ -24,6 +24,28 @@ then
     echo $IGNITION_URL >> /tmp/ignition_url
 fi
 
+# Dracut networking args
+# Parse all args (other than rd.neednet) and persist those into /tmp/networking_opts
+# List from https://www.mankier.com/7/dracut.cmdline#Description-Network
+local NETWORKING_ARGS="rd.neednet=1"
+declare -a NET_ARGS=("ip=" "ifname=" "rd.route=" "bootdev=" "BOOTIF=" "rd.bootif=" "nameserver=" "rd.peerdns=" "biosdevname=" "vlan=" "bond=" "team=" "bridge=")
+for NET_ARG in "${NET_ARGS[@]}"
+do
+    NET_OPT=$(getarg $NET_ARG)
+    if [ ! -z "$NET_OPT" ]
+    then
+        echo "persist $NET_ARG to $NET_OPT" >> /tmp/debug
+        NETWORKING_ARGS+=" ${NET_ARG}${NET_OPT}"
+    fi
+done
+# only write /tmp/networking_opts if additional networking options have been specified
+# as the default in ignition-dracut specifies `rd.neednet=1 ip=dhcp` when no options are persisted
+if [ "${NETWORKING_ARGS}" != "rd.neednet=1" ]
+then
+    echo "persisting network options: ${NETWORKING_ARGS}" >> /tmp/debug
+    echo "${NETWORKING_ARGS}" >> /tmp/networking_opts
+fi
+
 if getargbool 0 coreos.inst.skip_media_check
 then
     echo "Asserting skip of media check" >> /tmp/debug
