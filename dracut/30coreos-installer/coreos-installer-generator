@@ -1,0 +1,23 @@
+#!/bin/bash
+# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
+# ex: ts=8 sw=4 sts=4 et filetype=sh
+
+set -e
+
+UNIT_DIR="${1:-/tmp}"
+
+cmdline=( $(</proc/cmdline) )
+cmdline_arg() {
+    local name="$1" value="$2"
+    for arg in "${cmdline[@]}"; do
+        if [[ "${arg%%=*}" == "${name}" ]]; then
+            value="${arg#*=}"
+        fi
+    done
+    echo "${value}"
+}
+
+if [[ $(cmdline_arg coreos.inst) == "yes" ]]; then
+    ln -sf "/usr/lib/systemd/system/coreos-installer.target" \
+        "${UNIT_DIR}/default.target"
+fi

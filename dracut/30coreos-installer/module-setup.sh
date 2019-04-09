@@ -29,11 +29,17 @@ install() {
     inst_multiple /usr/bin/ps
     inst_multiple /usr/bin/sha256sum
     inst_multiple /usr/bin/zcat
-    inst_simple /usr/libexec/coreos-installer
-    inst_simple "$moddir/coreos-installer.service" "${systemdsystemunitdir}/coreos-installer.service"
-    inst_hook cmdline 90 "$moddir/parse-coreos.sh"
-    mkdir -p "${initdir}${systemdsystemconfdir}/initrd.target.wants"
-    ln_r "${systemdsystemunitdir}/coreos-installer.service"\
-        "${systemdsystemconfdir}/initrd.target.wants/coreos-installer.service"
-}
 
+    inst_simple /usr/libexec/coreos-installer
+
+    inst_simple "$moddir/coreos-installer-generator" \
+        "$systemdutildir/system-generators/coreos-installer-generator"
+
+    inst_simple "$moddir/coreos-installer.target" \
+        "${systemdsystemunitdir}/coreos-installer.target"
+
+    inst_simple "$moddir/coreos-installer.service" \
+        "${systemdsystemunitdir}/coreos-installer.service"
+
+    inst_hook cmdline 90 "$moddir/parse-coreos.sh"
+}

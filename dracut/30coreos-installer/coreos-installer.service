@@ -1,15 +1,9 @@
 [Unit]
 Description=CoreOS Installer
-Requires=network-online.target
-After=network-online.target
-After=dracut-initqueue.service
-Before=dracut-pre-mount.service
-ConditionKernelCommandLine=coreos.inst=yes
-OnFailure=emergency.target
-OnFailureIsolate=yes
+After=coreos-installer.target
 
 [Service]
-Type=oneshot
+Type=simple
 ExecStart=/usr/libexec/coreos-installer
 #StandardInput=tty-force
 StandardInput=tty
