@@ -1,0 +1,15 @@
+[Unit]
+Description=CoreOS Installer Target
+OnFailure=emergency.target
+OnFailureJobMode=isolate
+AllowIsolate=yes
+
+Requires=coreos-installer.service
+
+# run after most things are up and the (likely) root device is available
+Requires=basic.target initrd-root-device.target
+After=basic.target initrd-root-device.target
+
+# we rely on dracut to set up the network
+Requires=dracut-cmdline.service dracut-pre-trigger.service dracut-initqueue.service
+After=dracut-cmdline.service dracut-pre-trigger.service dracut-initqueue.service
