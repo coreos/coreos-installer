@@ -609,7 +609,7 @@ log() {
 }
 
 #########################################################
-#And Write the image to disk
+#Write the image to disk
 #########################################################
 write_image_to_disk() {
     log "Writing disk image"
@@ -631,6 +631,18 @@ write_image_to_disk() {
 
     log "Waiting for udev"
     udevadm settle
+}
+
+############################################################
+#Perform a HTTP POST to URL to signal that the install is complete
+############################################################
+call_home() {
+    CALLHOME_URL=$(cat /tmp/callhome_url)
+    if [ ! -z "$CALLHOME_URL" ]
+      echo "Calling home: $CALLHOME_URL" >> /tmp/debug
+      curl -k -o /dev/null --data-binary @/tmp/debug "$CALLHOME_URL" >>/tmp/debug 2>&1
+      rm -f /tmp/callhome_url
+    fi
 }
 
 parse_args() {
@@ -709,6 +721,9 @@ main() {
 
     # If networking options were present, persist to firstboot initramfs
     write_networking_opts
+
+    # And call home as the very last step before rebooting
+    call_home
 
     log "Install complete"
 }

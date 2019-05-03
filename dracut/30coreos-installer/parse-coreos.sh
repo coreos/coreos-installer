@@ -24,6 +24,13 @@ then
     echo $IGNITION_URL >> /tmp/ignition_url
 fi
 
+local CALLHOME_URL=$(getarg coreos.inst.callhome_url=)
+if [ ! -z "$CALLHOME_URL" ]
+then
+    echo "preset call home url to $CALLHOME_URL" >> /tmp/debug
+    echo "$CALLHOME_URL" >> /tmp/callhome_url
+fi
+
 # Dracut networking args
 # Parse all args (other than rd.neednet) and persist those into /tmp/networking_opts
 # List from https://www.mankier.com/7/dracut.cmdline#Description-Network
