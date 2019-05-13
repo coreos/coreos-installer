@@ -36,12 +36,12 @@ used currently has very slow download speeds.
 
 For example download:
 
-- [fedora-coreos-29.731.iso](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-29.731.iso)
+- [fedora-coreos-30.107-installer.iso](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-30.107-installer.iso)
 
 and one of the following two:
 
-- [fedora-coreos-29.731-metal-bios.raw.gz](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-29.731-metal-bios.raw.gz)
-- [fedora-coreos-29.731-metal-uefi.raw.gz](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-29.731-metal-uefi.raw.gz)
+- [fedora-coreos-30.107-metal-bios.raw.gz](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-30.107-metal-bios.raw.gz)
+- [fedora-coreos-30.107-metal-uefi.raw.gz](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-30.107-metal-uefi.raw.gz)
 
 **NOTE** The artifacts output of the pipeline are development
          artifacts. The links above will quickly become
@@ -62,8 +62,8 @@ DEFAULT pxeboot
 TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
-    KERNEL fedora-coreos-29.731.iso/images/vmlinuz
-    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-29.731.iso/images/initramfs.img console=tty0 console=ttyS0 coreos.inst=yes coreos.inst.install_dev=sda coreos.inst.image_url=http://192.168.1.101:8000/fedora-coreos-29.731-metal-bios.raw.gz coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    KERNEL fedora-coreos-30.107-installer.iso/images/vmlinuz
+    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-30.107-installer.iso/images/initramfs.img console=tty0 console=ttyS0 coreos.inst=yes coreos.inst.install_dev=sda coreos.inst.image_url=http://192.168.1.101:8000/fedora-coreos-30.107-metal-bios.raw.gz coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
@@ -79,23 +79,29 @@ disk and booting it or using ISO redirection via a LOM interface.
 Alternatively you can use a VM like so:
 
 ```
-virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-29.731.iso --network default
+virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-30.107-installer.iso --network default
 ```
 
 **NOTE** To test UEFI boot add `--boot uefi` to the CLI call
 
 Alternatively you can use `qemu` directly:
 
+Create a disk image which we can use as install target
 ```
-#TODO add qemu command here
+qemu-img create -f qcow2 fcos.qcow2 10G
+```
+Now, run following qemu command
+
+```
+qemu-system-x86_64 -accel kvm -name fcos -m 2048 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-30.107-installer.iso
 ```
 
-One you have booted you will see a screen press `<TAB>` (isolinux) or
+Once you have booted you will see a screen press `<TAB>` (isolinux) or
 `e` (grub) to edit the kernel command line. Add the parameters to the
 kernel command line telling it what you want it to do. For example:
 
 - `coreos.inst.install_dev=sda`
-- `coreos.inst.image_url=http://example.com/fedora-coreos-29.731-metal-bios.raw.gz`
+- `coreos.inst.image_url=http://example.com/fedora-coreos-30.107-metal-bios.raw.gz`
 - `coreos.inst.ignition_url=http://example.com/config.ign`
 
 **NOTE** make sure to use a `metal-uefi` image if booting via UEFI
