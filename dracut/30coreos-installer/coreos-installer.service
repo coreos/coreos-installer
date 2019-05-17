@@ -1,12 +1,15 @@
 [Unit]
 Description=CoreOS Installer
 After=coreos-installer.target
+OnFailure=emergency.target
+OnFailureJobMode=isolate
 
 [Service]
 Type=simple
 ExecStart=/usr/libexec/coreos-installer
 #StandardInput=tty-force
 StandardInput=tty
+StandardOutput=kmsg+console
 #TTYPath=/dev/console
 TTYPath=/dev/tty2
 TTYReset=yes

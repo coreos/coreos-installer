@@ -23,7 +23,6 @@ install() {
     inst_multiple /usr/sbin/wipefs
     inst_multiple /usr/sbin/blockdev
     inst_multiple /usr/bin/dd
-    inst_multiple /usr/bin/dialog
     inst_multiple /usr/bin/dc
     inst_multiple /usr/bin/awk
     inst_multiple /usr/bin/ps

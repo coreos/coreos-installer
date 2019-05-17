@@ -1,7 +1,5 @@
 #!/bin/bash
 
-DEFAULT_IMAGE_URL='https://example.com/fedora-coreos.raw.gz'
-
 # Image signing key:
 # $ gpg2 --list-keys --list-options show-unusable-subkeys \
 #     --keyid-format SHORT 04127D0BFABEC8871FFB2CCE50E0885593D2DCB4
@@ -305,16 +303,36 @@ write_ignition_file() {
         return
     fi
 
-    dialog --title 'CoreOS Installer' --infobox "Embedding provided ignition config" 5 70
     # check for the boot partition
     mkdir -p /mnt/boot_partition
     # TODO check to make sure the disk with label 'boot'
     #      is part of ${DEST_DEV}
-    mount /dev/disk/by-label/boot /mnt/boot_partition
-    trap 'umount /mnt/boot_partition' RETURN
+    let retry=0
+    while true
+    do
+        mount /dev/disk/by-label/boot /mnt/boot_partition
+        RETCODE=$?
+        if [[ $RETCODE -ne 0 ]]; then
+            if [[ $retry -lt 30 ]]; then
+                # retry and sleep to allow udevd to populate /dev/disk/by-label
+                sleep 1
+                let retry=$retry+1
+                continue
+            fi
+            log "failed mounting boot partition"
+            exit 1
+        fi
+        trap 'umount /mnt/boot_partition' RETURN
+        break;
+    done
 
     mkdir -p /mnt/boot_partition/ignition
     cp /tmp/ignition.ign /mnt/boot_partition/ignition/config.ign
+    RETCODE=$?
+    if [[ $RETCODE -ne 0 ]]; then
+        log "failed writing ignition config"
+        exit 1
+    fi
 }
 
 ############################################################
@@ -325,7 +343,7 @@ write_networking_opts() {
         return
     fi
 
-    dialog --title 'CoreOS Installer' --infobox "Embedding provided networking options" 5 70
+    log "Embedding provided networking options"
     # check for the boot partition
     mkdir -p /mnt/boot_partition
     # TODO check to make sure the disk with label 'boot'
@@ -340,7 +358,7 @@ write_networking_opts() {
 # START HERE
 ############################################################
 import_gpg_key() {
-    echo "Initalizing GPG" >> /tmp/debug
+    log "Initalizing GPG"
     gpg2 --list-keys > /dev/null 2>&1
     gpg2 --batch --quiet --import <<< "${GPG_KEY}"
 }
@@ -349,55 +367,71 @@ import_gpg_key() {
 #Get the image url to install
 ############################################################
 get_img_url() {
+    if [ ! -f /tmp/image_url ]
+    then
+        log "Image URL is required, please provide the -b flag or coreos.inst.image_url on the kcmdline."
+        exit 1
+    fi
+
     let retry=0
     while true
     do
-        echo "Getting image URL $IMAGE_URL" >> /tmp/debug
-        if [ ! -f /tmp/image_url ]
-        then
-            dialog --title 'CoreOS Installer' \
-                   --inputbox "Enter the CoreOS Image URL to install" 5 75 \
-                              "${IMAGE_URL-$DEFAULT_IMAGE_URL}" 2>/tmp/image_url
-        fi
-
         IMAGE_URL=$(cat /tmp/image_url)
         curl -LsIf $IMAGE_URL >/tmp/image_info 2>&1
         RETCODE=$?
         if [ $RETCODE -ne 0 ]
         then
-            if [ $RETCODE -eq 22 -a $retry -lt 5 ]
+            if [[ $RETCODE -eq 22 && $retry -lt 5 ]]
             then
                 # Network isn't up yet, sleep for a sec and retry
                 sleep 1
                 let retry=$retry+1
                 continue
+            else
+                log "failed fetching image headers from ${IMAGE_URL}: ${RETCODE}"
+                exit 1
             fi
-            dialog --title 'CoreOS Installer' --msgbox "Image Lookup Error $RETCODE for \n $IMAGE_URL" 10 70 
+            log "fetching image headers from ${IMAGE_URL}: ${RETCODE}"
         else
             IMAGE_SIZE=$(cat /tmp/image_info | awk '/.*Content-Length.*/ {print $2}' | tr -d $'\r')
             TMPFS_MBSIZE=$(dc -e"$IMAGE_SIZE 1024 1024 * / 50 + p")
-            echo "Image size is $IMAGE_SIZE" >> /tmp/debug
-            echo "tmpfs sized to $TMPFS_MBSIZE MB" >> /tmp/debug
+            log "Image size is $IMAGE_SIZE"
+            log "tmpfs sized to $TMPFS_MBSIZE MB"
             break;
         fi
         rm -f /tmp/image_url
     done
-    dialog --clear 
 }
+
+############################################################
+# Validate that selected device exists
+############################################################
+check_selected_device() {
+    DEST_DEV=$(cat /tmp/selected_dev)
+    DEST_DEV=/dev/$DEST_DEV
+
+    if [ ! -b $DEST_DEV ]
+    then
+        log "${DEST_DEV} does not exist."
+        exit 1
+    fi
+    log "Selected device is ${DEST_DEV}"
+}
+
 
 ############################################################
 #Figure out the signature file type
 ############################################################
 get_sig_file_type() {
     SIG_URL=$IMAGE_URL.sig
-    echo "Getting SIG_URL $SIG_URL" >> /tmp/debug
+    log "Getting SIG_URL $SIG_URL"
     curl -LsIf $SIG_URL > /dev/null 2>&1
     RETCODE=$?
     if [ $RETCODE -ne 0 ]
     then
-        echo "$SIG_URL not found" >> /tmp/debug
+        log "$SIG_URL not found"
         SIG_URL=$IMAGE_URL.sha256sum
-        echo "Getting SIG_URL $SIG_URL" >> /tmp/debug
+        log "Getting SIG_URL $SIG_URL"
         curl -LsI $SIG_URL > /dev/null 2>&1 
         if [ $? -ne 0 ]
         then
@@ -409,86 +443,60 @@ get_sig_file_type() {
         SIG_TYPE=gpg
     fi
 
-    echo "SIGNATURE TYPE IS $SIG_TYPE" >> /tmp/debug
+    log_messsage "SIGNATURE TYPE IS $SIG_TYPE"
 }
 
 ############################################################
 #Get the ignition url to install
 ############################################################
 get_ignition_url() {
+    if [ ! -f /tmp/ignition_url ]
+    then
+        log "Ignition URL is required, please provide the -i flag or coreos.inst.ignition_url on the kcmdline."
+        exit 1
+    fi
+
+    IGNITION_URL=$(cat /tmp/ignition_url)
+    log "IGNITION_URL IS ${IGNITION_URL}"
+    if [[ "$IGNITION_URL" =~ ^skip$ ]]
+    then
+        return
+    fi
+
+    # If a path to a file is given, copy it to /tmp/ignition.ign
+    if [ -f "${IGNITION_URL}" ]
+    then
+        cp $IGNITION_URL /tmp/ignition.ign
+        return
+    fi
+
+    let retry=0
     while true; do
-        echo "Getting ignition url" >> /tmp/debug
-        if [ ! -f /tmp/ignition_url ]
-        then
-            echo "Prompting for ignition url" >> /tmp/debug
-            dialog --title 'CoreOS Installer' \
-                   --inputbox "Enter the CoreOS ignition config URL to install, or 'skip' for none" \
-                   5 75 "${IGNITION_URL-skip}" 2>/tmp/ignition_url
-        fi
-
-        IGNITION_URL=$(cat /tmp/ignition_url)
-        echo "IGNITION URL is $IGNITION_URL" >> /tmp/debug
-        if [[ "$IGNITION_URL" =~ ^skip$ ]]; then
-            break;
-        fi
-
-        curl -L $IGNITION_URL >/tmp/ignition.ign 2>/dev/null
+        curl -Lf $IGNITION_URL >/tmp/ignition.ign 2>/dev/null
         RETCODE=$?
-        if [ $RETCODE -ne 0 ]; then
-            dialog --title 'CoreOS Installer' --msgbox "Ignition Lookup Error $RETCODE for \n $IGNITION_URL" 10 70
+        if [[ $RETCODE -ne 0 && $retry -lt 5 ]]
+        then
+            log "fetching ignition config from ${IGNITION_URL}: ${RETCODE}"
             rm -f /tmp/ignition_url
+            sleep 1
+            let retry=$retry+1
+            continue
         else
+            if [ $retry -ge 5 ]
+            then
+                log "failed to fetch ignition config from ${IGNITION_URL}"
+                exit 1
+            fi
             break;
         fi
     done
-    dialog --clear 
-}
-
-###########################################################
-#Build the list of devices to install to
-###########################################################
-get_device_list() {
-    DEVLIST=""
-    lsblk -l -o NAME > /tmp/blk_devs
-    for i in `cat /tmp/blk_devs`
-    do
-    DEVLIST="$DEVLIST $i $i"
-    done
-}
-
-##########################################################
-#Present the list to the user to select from
-#########################################################
-prompt_user_devlist() {
-    while true
-    do
-        echo "Getting install device" >> /tmp/debug
-        if [ ! -f /tmp/selected_dev ]
-        then
-            dialog --title 'CoreOS Installer' --menu "Select a Device to Install to" 45 45 35 $DEVLIST 2> /tmp/selected_dev
-        fi
-
-        DEST_DEV=$(cat /tmp/selected_dev)
-        DEST_DEV=/dev/$DEST_DEV
-
-        if [ ! -b $DEST_DEV ]
-        then
-            dialog --title 'CoreOS Installer' --msgbox "$DEST_DEV does not exist, reselect." 5 40
-            rm -f /tmp/selected_dev 
-        else
-            echo "Selected device is $DEST_DEV" >> /tmp/debug
-            break;
-        fi
-    done
-
-    dialog --clear
 }
 
 #########################################################
 #Create the tmpfs filesystem to store the image
 #########################################################
 mount_tmpfs() {
-    echo "Mounting tmpfs" >> /tmp/debug
+    log "Mounting tmpfs"
     mkdir -p /mnt/dl
     mount -t tmpfs -o size=${TMPFS_MBSIZE}m tmpfs /mnt/dl
 }
@@ -497,11 +505,11 @@ mount_tmpfs() {
 #And Get the Image
 #########################################################
 download_image() {
-    echo "Downloading install image" >> /tmp/debug
+    log "Downloading install image"
     curl -L -s -o /mnt/dl/imagefile.gz $IMAGE_URL &
     curlpid=$!
 
-    while ps --pid $curlpid; do
+    while ps --pid $curlpid > /dev/null; do
         # If the image hasn't show up yet then wait a sec and loop
         if [ ! -f /mnt/dl/imagefile.gz ]; then
             sleep 1
@@ -509,24 +517,22 @@ download_image() {
         fi
         PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.gz | awk '{print $5}') 2>/dev/null
         PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//" 2>/dev/null)
-        echo $PCT
+        echo "${PCT}%" >&2
         sleep 1
-    done | dialog --title 'CoreOS Installer' --gauge "Downloading Image" 10 70
+    done
 }
 
 #########################################################
 #Get the corresponding signaure file
 #########################################################
 download_sig() {
-    echo "Getting signature" >> /tmp/debug
+    log "Getting signature"
     curl -L -s -o /mnt/dl/imagefile.gz.sig $SIG_URL
     if [ $? -ne 0 ]
     then
-        dialog --title 'CoreOS Installer' --msgbox "Unable to download sig file. Dropping to shell" 10 70
+        log "Unable to download sig file."
         exit 1
     fi
-
-    dialog --clear
 }
 
 
@@ -536,13 +542,12 @@ download_sig() {
 validate_image() {
     if [ "$SIG_TYPE" != "none" ]
     then
-        dialog --title 'CoreOS Installer' --infobox "Validating Downloaded Image" 10 70
         if [ "$SIG_TYPE" == "gpg" ]
         then
             gpg2 --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.gz.sig >/dev/null 2>&1
             if [ $? -ne 0 ]
             then
-                dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
+                log "Install Image is corrupted."
                 exit 1
             fi
         elif [ "$SIG_TYPE" == "sha" ]
@@ -551,39 +556,40 @@ validate_image() {
             sha256sum -c /mnt/dl/imagefile.gz.sig
             if [ $? -ne 0 ]
             then
-                dialog --title 'CoreOS Installer' --msgbox "Install Image is corrupt. Dropping to shell" 10 70
+                log "Install Image is corrupted."
                 exit 1
             fi
         else
-            dialog --title 'CoreOS Installer' --infobox "Unknown signature type $SIG_TYPE, skipping validation" 10 70
-            sleep 3
+            log "Unknown signature type ${SIG_TYPE}"
+            exit 1
         fi
     else
-        dialog --title 'CoreOS Installer' --infobox "Unknown signature type, skipping validation" 10 70
-        sleep 3
+        log "Skipping image signature validation."
     fi
-
-    dialog --clear
 }
 
 #########################################################
 #Wipe any remaining disk labels
 #########################################################
 wipe_target_disk_labels() {
-    dialog --title 'CoreOS Installer' --infobox "Wiping ${DEST_DEV}" 10 70
+    log "Wiping ${DEST_DEV}"
     wipefs --all --force "${DEST_DEV}"
+}
+
+log() {
+    echo "$1" >> /tmp/debug
+    echo "$1" >&2
 }
 
 #########################################################
 #And Write the image to disk
 #########################################################
 write_image_to_disk() {
-    echo "Writing disk image" >> /tmp/debug
+    log "Writing disk image"
     
     zcat /mnt/dl/imagefile.gz |\
-    dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=progress  |&\
-    dialog --title 'CoreOS Installer' --gauge "Writing image to disk" 10 70
-    
+    dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
+
     for try in 0 1 2 4; do
         sleep "$try"  # Give the device a bit more time on each attempt.
         blockdev --rereadpt "${DEST_DEV}" && unset try && break
@@ -591,18 +597,56 @@ write_image_to_disk() {
     udevadm settle
 }
 
+parse_args() {
+    USAGE="Usage: $0 [options]
+Options:
+    -d DEVICE   Install to the given device, alternatively specify
+                coreos.inst.install_dev on the kcmdline.
+    -i IGNITION The URL (or path) to the given Ignition config,
+                alternatively specify coreos.inst.ignition_url on the
+                kcmdline.
+    -b BASEURL  The URL to the image, alternatively specify
+                coreos.inst.image_url on the kcmdline.
+    -h          This.
+
+This tool installs Fedora CoreOS on a block device.
+"
+
+    while getopts "d:i:b:h" OPTION
+    do
+        case $OPTION in
+            d) DEVICE="$OPTARG" ;;
+            i) IGNITION="$OPTARG" ;;
+            b) BASE_URL="${OPTARG%/}" ;;
+            h) echo "$USAGE"; exit;;
+            *) exit 1;;
+        esac
+    done
+
+    if [[ ! -z "${DEVICE}" ]]
+    then
+        echo "${DEVICE}" > /tmp/selected_dev
+    fi
+
+    if [[ ! -z "${IGNITION}" ]]
+    then
+        echo "${IGNITION}" > /tmp/ignition_url
+    fi
+
+    if [[ ! -z "${BASE_URL}" ]]
+    then
+        echo "${BASE_URL}" > /tmp/image_url
+    fi
+}
+
 # Main function for running the installer
 main() {
-
-    # switch to virtual terminal 2 where the action happens
-    chvt 2
-
+    parse_args $@
     #import_gpg_key
     get_img_url
     #get_sig_file_type
     get_ignition_url
-    get_device_list
-    prompt_user_devlist
+    check_selected_device
     mount_tmpfs
     download_image
     ####if [ ! -f /tmp/skip_media_check ]; then
@@ -620,10 +664,10 @@ main() {
 
     if [ ! -f /tmp/skip_reboot ]
     then
-        dialog --title 'CoreOS Installer' --infobox "Install Complete.  Rebooting...." 10 70
+        log "Install complete"
         sleep 5
         reboot
     fi
 }
 
-main
+main $@
