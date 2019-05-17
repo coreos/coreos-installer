@@ -52,6 +52,9 @@ then
     echo 1 > /tmp/skip_media_check
 fi
 
+# This one is not consumed by the CLI but actually by the
+# coreos-installer.service systemd unit that is run in the
+# initramfs. We don't default to rebooting from the CLI.
 if getargbool 0 coreos.inst.skip_reboot
 then
     echo "Asserting reboot skip" >> /tmp/debug
