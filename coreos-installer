@@ -306,16 +306,25 @@ mount_boot_partition() {
         log "mountpoint $mountpoint must be a directory"
         exit 1
     fi
-    # TODO check to make sure the disk with label 'boot'
-    #      is part of ${DEST_DEV}
+
+    # Find the boot partition by analyzing the user provided
+    # device. Don't want to rely on /dev/disk/by-label/boot since
+    # there may be more than one device with the "boot" label.
+    # The first command will find the partition with the boot label
+    # and the eval command will set the $UUID variable that we use later.
+    set -o pipefail
+    output=$(lsblk "${DEST_DEV}" --output NAME,LABEL,UUID --pairs | grep 'LABEL="boot"')
+    eval $(echo $output | tr ' ' '\n' | tail -n 1)
+    set +o pipefail
+
     let retry=0
     while true
     do
-        mount /dev/disk/by-label/boot $mountpoint
+        mount "/dev/disk/by-uuid/${UUID}" /mnt/boot_partition
         RETCODE=$?
         if [[ $RETCODE -ne 0 ]]; then
             if [[ $retry -lt 30 ]]; then
-                # retry and sleep to allow udevd to populate /dev/disk/by-label
+                # retry and sleep to allow udevd to populate /dev/disk/by-uuid
                 sleep 1
                 let retry=$retry+1
                 continue
@@ -419,9 +428,6 @@ get_img_url() {
 # Validate that selected device exists
 ############################################################
 check_selected_device() {
-    DEST_DEV=$(cat /tmp/selected_dev)
-    DEST_DEV=/dev/$DEST_DEV
-
     if [ ! -b $DEST_DEV ]
     then
         log "${DEST_DEV} does not exist."
@@ -660,6 +666,12 @@ This tool installs Fedora CoreOS on a block device.
 # Main function for running the installer
 main() {
     parse_args $@
+
+    # set a global environment variable that can be used
+    # by a few of the functions below.
+    DEST_DEV=$(cat /tmp/selected_dev)
+    DEST_DEV=/dev/$DEST_DEV
+
     #import_gpg_key
     get_img_url
     #get_sig_file_type
