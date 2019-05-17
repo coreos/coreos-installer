@@ -296,21 +296,22 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 
 
 ############################################################
-# Helper to write the ignition config to disk
+# Helper to mount the boot partition from the device
 ############################################################
-write_ignition_file() {
-    if [ ! -f /tmp/ignition.ign ]; then
-        return
-    fi
+mount_boot_partition() {
+    # First argument is the location of the mountpoint
+    mountpoint=$1
 
-    # check for the boot partition
-    mkdir -p /mnt/boot_partition
+    if [ ! -d $mountpoint ]; then
+        log "mountpoint $mountpoint must be a directory"
+        exit 1
+    fi
     # TODO check to make sure the disk with label 'boot'
     #      is part of ${DEST_DEV}
     let retry=0
     while true
     do
-        mount /dev/disk/by-label/boot /mnt/boot_partition
+        mount /dev/disk/by-label/boot $mountpoint
         RETCODE=$?
         if [[ $RETCODE -ne 0 ]]; then
             if [[ $retry -lt 30 ]]; then
@@ -322,9 +323,22 @@ write_ignition_file() {
             log "failed mounting boot partition"
             exit 1
         fi
-        trap 'umount /mnt/boot_partition' RETURN
         break;
     done
+}
+
+############################################################
+# Helper to write the ignition config to disk
+############################################################
+write_ignition_file() {
+    if [ ! -f /tmp/ignition.ign ]; then
+        return
+    fi
+
+    # mount the boot partition
+    mkdir -p /mnt/boot_partition
+    mount_boot_partition /mnt/boot_partition
+    trap 'umount /mnt/boot_partition' RETURN
 
     mkdir -p /mnt/boot_partition/ignition
     cp /tmp/ignition.ign /mnt/boot_partition/ignition/config.ign
@@ -346,9 +360,7 @@ write_networking_opts() {
     log "Embedding provided networking options"
     # check for the boot partition
     mkdir -p /mnt/boot_partition
-    # TODO check to make sure the disk with label 'boot'
-    #      is part of ${DEST_DEV}
-    mount /dev/disk/by-label/boot /mnt/boot_partition
+    mount_boot_partition /mnt/boot_partition
     trap 'umount /mnt/boot_partition' RETURN
 
     echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
