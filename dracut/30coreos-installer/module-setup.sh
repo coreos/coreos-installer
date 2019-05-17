@@ -15,9 +15,6 @@ depends() {
 
 # called by dracut
 install() {
-    inst_multiple /usr/bin/chvt
-    inst_multiple /usr/bin/lsblk
-    inst_multiple /usr/bin/tee
     inst_multiple /usr/bin/gpg2
     inst_multiple /usr/bin/curl
     inst_multiple /usr/sbin/wipefs
