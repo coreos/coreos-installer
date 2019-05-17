@@ -665,6 +665,12 @@ This tool installs Fedora CoreOS on a block device.
 
 # Main function for running the installer
 main() {
+
+    if [[ $EUID -ne 0 ]]; then
+       echo "$0 must be run as root"
+       exit 1
+    fi
+
     parse_args $@
 
     # set a global environment variable that can be used
