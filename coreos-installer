@@ -347,7 +347,7 @@ write_ignition_file() {
     # mount the boot partition
     mkdir -p /mnt/boot_partition
     mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition' RETURN
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
 
     mkdir -p /mnt/boot_partition/ignition
     cp /tmp/ignition.ign /mnt/boot_partition/ignition/config.ign
@@ -370,7 +370,7 @@ write_networking_opts() {
     # check for the boot partition
     mkdir -p /mnt/boot_partition
     mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition' RETURN
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
 
     echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
 }
