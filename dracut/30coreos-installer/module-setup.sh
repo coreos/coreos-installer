@@ -15,16 +15,23 @@ depends() {
 
 # called by dracut
 install() {
-    inst_multiple /usr/bin/gpg2
-    inst_multiple /usr/bin/curl
-    inst_multiple /usr/sbin/wipefs
-    inst_multiple /usr/sbin/blockdev
-    inst_multiple /usr/bin/dd
-    inst_multiple /usr/bin/dc
+    # bin
     inst_multiple /usr/bin/awk
+    inst_multiple /usr/bin/curl
+    inst_multiple /usr/bin/dc
+    inst_multiple /usr/bin/dd
+    inst_multiple /usr/bin/gpg2
+    inst_multiple /usr/bin/grep
+    inst_multiple /usr/bin/lsblk
     inst_multiple /usr/bin/ps
     inst_multiple /usr/bin/sha256sum
+    inst_multiple /usr/bin/tail
+    inst_multiple /usr/bin/tr
     inst_multiple /usr/bin/zcat
+
+    # sbin
+    inst_multiple /usr/sbin/blockdev
+    inst_multiple /usr/sbin/wipefs
 
     inst_simple /usr/libexec/coreos-installer
 

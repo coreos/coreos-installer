@@ -296,25 +296,35 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 
 
 ############################################################
-# Helper to write the ignition config to disk
+# Helper to mount the boot partition from the device
 ############################################################
-write_ignition_file() {
-    if [ ! -f /tmp/ignition.ign ]; then
-        return
+mount_boot_partition() {
+    # First argument is the location of the mountpoint
+    mountpoint=$1
+
+    if [ ! -d $mountpoint ]; then
+        log "mountpoint $mountpoint must be a directory"
+        exit 1
     fi
 
-    # check for the boot partition
-    mkdir -p /mnt/boot_partition
-    # TODO check to make sure the disk with label 'boot'
-    #      is part of ${DEST_DEV}
+    # Find the boot partition by analyzing the user provided
+    # device. Don't want to rely on /dev/disk/by-label/boot since
+    # there may be more than one device with the "boot" label.
+    # The first command will find the partition with the boot label
+    # and the eval command will set the $UUID variable that we use later.
+    set -o pipefail
+    output=$(lsblk "${DEST_DEV}" --output NAME,LABEL,UUID --pairs | grep 'LABEL="boot"')
+    eval $(echo $output | tr ' ' '\n' | tail -n 1)
+    set +o pipefail
+
     let retry=0
     while true
     do
-        mount /dev/disk/by-label/boot /mnt/boot_partition
+        mount "/dev/disk/by-uuid/${UUID}" /mnt/boot_partition
         RETCODE=$?
         if [[ $RETCODE -ne 0 ]]; then
             if [[ $retry -lt 30 ]]; then
-                # retry and sleep to allow udevd to populate /dev/disk/by-label
+                # retry and sleep to allow udevd to populate /dev/disk/by-uuid
                 sleep 1
                 let retry=$retry+1
                 continue
@@ -322,9 +332,22 @@ write_ignition_file() {
             log "failed mounting boot partition"
             exit 1
         fi
-        trap 'umount /mnt/boot_partition' RETURN
         break;
     done
+}
+
+############################################################
+# Helper to write the ignition config to disk
+############################################################
+write_ignition_file() {
+    if [ ! -f /tmp/ignition.ign ]; then
+        return
+    fi
+
+    # mount the boot partition
+    mkdir -p /mnt/boot_partition
+    mount_boot_partition /mnt/boot_partition
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
 
     mkdir -p /mnt/boot_partition/ignition
     cp /tmp/ignition.ign /mnt/boot_partition/ignition/config.ign
@@ -346,10 +369,8 @@ write_networking_opts() {
     log "Embedding provided networking options"
     # check for the boot partition
     mkdir -p /mnt/boot_partition
-    # TODO check to make sure the disk with label 'boot'
-    #      is part of ${DEST_DEV}
-    mount /dev/disk/by-label/boot /mnt/boot_partition
-    trap 'umount /mnt/boot_partition' RETURN
+    mount_boot_partition /mnt/boot_partition
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
 
     echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
 }
@@ -407,9 +428,6 @@ get_img_url() {
 # Validate that selected device exists
 ############################################################
 check_selected_device() {
-    DEST_DEV=$(cat /tmp/selected_dev)
-    DEST_DEV=/dev/$DEST_DEV
-
     if [ ! -b $DEST_DEV ]
     then
         log "${DEST_DEV} does not exist."
@@ -647,7 +665,19 @@ This tool installs Fedora CoreOS on a block device.
 
 # Main function for running the installer
 main() {
+
+    if [[ $EUID -ne 0 ]]; then
+       echo "$0 must be run as root"
+       exit 1
+    fi
+
     parse_args $@
+
+    # set a global environment variable that can be used
+    # by a few of the functions below.
+    DEST_DEV=$(cat /tmp/selected_dev)
+    DEST_DEV=/dev/$DEST_DEV
+
     #import_gpg_key
     get_img_url
     #get_sig_file_type
@@ -668,12 +698,7 @@ main() {
     # If networking options were present, persist to firstboot initramfs
     write_networking_opts
 
-    if [ ! -f /tmp/skip_reboot ]
-    then
-        log "Install complete"
-        sleep 5
-        reboot
-    fi
+    log "Install complete"
 }
 
 main $@

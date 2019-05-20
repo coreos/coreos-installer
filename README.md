@@ -119,14 +119,42 @@ embedded ignition config should run on first boot.
 
 ## Testing out the installer script by running it directly
 
-**This does not work yet**
-
 Grab `coreos-installer` and execute it on an already booted system.
-You'll want to write to a disk that is not currently in use.
+
+**NOTE** The installer writes directly to a block device (disk) and
+         consumes the entire device. The device specified to the
+         installer needs to be available and not currently in use. You
+         cannot target a disk that is currently mounted.
+
+The easiest way to access a disk that is not currently in use is to
+boot up the coreos-installer ISO. If you boot the ISO and don't provide
+any extra arguments you will be presented with a usage message and
+then a prompt where you can execute the installer via the CLI:
 
 ```
-coreos-installer arg1 arg2 arg3
+/usr/libexec/coreos-installer -d sdd -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-metal-bios.raw.gz
 ```
+
+Afterwards you'll need to reboot the machine.
+
+Alternatively, you can install coreos-installer on a desktop/laptop
+machine and write out an image to a spare disk attached to the system.
+This can be dangerous if you specify the wrong disk to the installer.
+
+You'll want to make sure all of the 
+[dependencies](https://github.com/coreos/coreos-installer/blob/master/dracut/30coreos-installer/module-setup.sh#L18)
+are installed on your machine. If you are on Fedora you can install
+the coreos-installer rpm (and all dependencies) using DNF via
+`dnf install coreos-installer`. The path to the script will be
+`/usr/libexec/coreos-installer`.
+
+```
+sudo /path/to/coreos-installer -d sdg -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-metal-bios.raw.gz
+```
+
+Afterwards, remove the disk from the computer and insert it into and
+boot the target machine where it is desired to run CoreOS.
+
 
 ## Testing out the installer running in the initramfs (early boot)
 
