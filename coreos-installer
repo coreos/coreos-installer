@@ -506,10 +506,9 @@ mount_tmpfs() {
 #########################################################
 download_image() {
     log "Downloading install image"
-    curl -L -s -o /mnt/dl/imagefile.gz $IMAGE_URL &
-    curlpid=$!
+    (curl -L -s -o /mnt/dl/imagefile.gz $IMAGE_URL; echo $? > /tmp/curl-rc) &
 
-    while ps --pid $curlpid > /dev/null; do
+    while [ ! -f /tmp/curl-rc ]; do
         # If the image hasn't show up yet then wait a sec and loop
         if [ ! -f /mnt/dl/imagefile.gz ]; then
             sleep 1
@@ -520,6 +519,13 @@ download_image() {
         echo "${PCT}%" >&2
         sleep 1
     done
+
+    RETCODE=$(</tmp/curl-rc)
+    if [[ $RETCODE -ne 0 ]]
+    then
+        log "Image download failed"
+        exit 1
+    fi
 }
 
 #########################################################
