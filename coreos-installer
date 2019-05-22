@@ -611,8 +611,15 @@ log() {
 write_image_to_disk() {
     log "Writing disk image"
     
+    set -o pipefail
     zcat /mnt/dl/imagefile.gz |\
     dd bs=1M iflag=fullblock oflag=direct conv=sparse of="${DEST_DEV}" status=none
+    RETCODE=$?
+    if [[ $RETCODE -ne 0 ]]; then
+        log "failed to write image to disk"
+        exit 1
+    fi
+    set +o pipefail
 
     for try in 0 1 2 4; do
         sleep "$try"  # Give the device a bit more time on each attempt.
