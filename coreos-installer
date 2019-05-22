@@ -633,7 +633,7 @@ Options:
                 coreos.inst.image_url on the kcmdline.
     -h          This.
 
-This tool installs Fedora CoreOS on a block device.
+This tool installs CoreOS style disk images on a block device.
 "
 
     while getopts "d:i:b:h" OPTION
