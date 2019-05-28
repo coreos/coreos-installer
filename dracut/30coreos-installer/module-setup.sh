@@ -22,6 +22,7 @@ install() {
     inst_multiple /usr/bin/dd
     inst_multiple /usr/bin/gpg2
     inst_multiple /usr/bin/grep
+    inst_multiple /usr/bin/gzip
     inst_multiple /usr/bin/lsblk
     inst_multiple /usr/bin/ps
     inst_multiple /usr/bin/sha256sum
