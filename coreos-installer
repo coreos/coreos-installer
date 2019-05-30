@@ -341,9 +341,11 @@ mount_boot_partition() {
 ############################################################
 write_ignition_file() {
     if [ ! -f /tmp/ignition.ign ]; then
+        log "Not embedding Ignition config; none provided"
         return
     fi
 
+    log "Embedding provided Ignition config"
     # mount the boot partition
     mkdir -p /mnt/boot_partition
     mount_boot_partition /mnt/boot_partition
@@ -363,6 +365,7 @@ write_ignition_file() {
 ############################################################
 write_networking_opts() {
     if [ ! -f /tmp/networking_opts ]; then
+        log "Not embedding networking options; none provided"
         return
     fi
 
@@ -625,6 +628,8 @@ write_image_to_disk() {
         sleep "$try"  # Give the device a bit more time on each attempt.
         blockdev --rereadpt "${DEST_DEV}" && unset try && break
     done
+
+    log "Waiting for udev"
     udevadm settle
 }
 
