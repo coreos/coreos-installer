@@ -24,12 +24,18 @@ then
     echo $IGNITION_URL >> /tmp/ignition_url
 fi
 
+
+# Kernel networking args
+# Currently only persisting `ipv6.disable`, but additional options may be added
+# in the future
+# https://github.com/torvalds/linux/blob/master/Documentation/networking/ipv6.txt
+declare -a KERNEL_NET_ARGS=("ipv6.disable=")
 # Dracut networking args
 # Parse all args (other than rd.neednet) and persist those into /tmp/networking_opts
 # List from https://www.mankier.com/7/dracut.cmdline#Description-Network
 local NETWORKING_ARGS="rd.neednet=1"
-declare -a NET_ARGS=("ip=" "ifname=" "rd.route=" "bootdev=" "BOOTIF=" "rd.bootif=" "nameserver=" "rd.peerdns=" "biosdevname=" "vlan=" "bond=" "team=" "bridge=")
-for NET_ARG in "${NET_ARGS[@]}"
+declare -a DRACUT_NET_ARGS=("ip=" "ifname=" "rd.route=" "bootdev=" "BOOTIF=" "rd.bootif=" "nameserver=" "rd.peerdns=" "biosdevname=" "vlan=" "bond=" "team=" "bridge=")
+for NET_ARG in "${KERNEL_NET_ARGS[@]}" "${DRACUT_NET_ARGS[@]}"
 do
     NET_OPT=$(getarg $NET_ARG)
     if [ ! -z "$NET_OPT" ]
