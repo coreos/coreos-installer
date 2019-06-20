@@ -29,6 +29,7 @@ install() {
     inst_multiple /usr/bin/tail
     inst_multiple /usr/bin/tr
     inst_multiple /usr/bin/zcat
+    inst_multiple /usr/bin/xzcat
 
     # sbin
     inst_multiple /usr/sbin/blockdev
