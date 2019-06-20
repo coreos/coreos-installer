@@ -527,15 +527,15 @@ mount_tmpfs() {
 #########################################################
 download_image() {
     log "Downloading install image"
-    (curl -L -s -o /mnt/dl/imagefile.gz $IMAGE_URL; echo $? > /tmp/curl-rc) &
+    (curl -L -s -o /mnt/dl/imagefile.compressed $IMAGE_URL; echo $? > /tmp/curl-rc) &
 
     while [ ! -f /tmp/curl-rc ]; do
         # If the image hasn't show up yet then wait a sec and loop
-        if [ ! -f /mnt/dl/imagefile.gz ]; then
+        if [ ! -f /mnt/dl/imagefile.compressed ]; then
             sleep 1
             continue
         fi
-        PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.gz | awk '{print $5}') 2>/dev/null
+        PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.compressed | awk '{print $5}') 2>/dev/null
         PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//" 2>/dev/null)
         echo "${PCT}%" >&2
         sleep 1
@@ -554,7 +554,7 @@ download_image() {
 #########################################################
 download_sig() {
     log "Getting signature"
-    curl -L -s -o /mnt/dl/imagefile.gz.sig $SIG_URL
+    curl -L -s -o /mnt/dl/imagefile.compressed.sig $SIG_URL
     if [ $? -ne 0 ]
     then
         log "Unable to download sig file."
@@ -571,7 +571,7 @@ validate_image() {
     then
         if [ "$SIG_TYPE" == "gpg" ]
         then
-            gpg2 --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.gz.sig >/dev/null 2>&1
+            gpg2 --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.compressed.sig >/dev/null 2>&1
             if [ $? -ne 0 ]
             then
                 log "Install Image is corrupted."
@@ -579,8 +579,8 @@ validate_image() {
             fi
         elif [ "$SIG_TYPE" == "sha" ]
         then
-            sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.gz/" /mnt/dl/imagefile.gz.sig
-            sha256sum -c /mnt/dl/imagefile.gz.sig
+            sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.gz/" /mnt/dl/imagefile.compressed.sig
+            sha256sum -c /mnt/dl/imagefile.compressed.sig
             if [ $? -ne 0 ]
             then
                 log "Install Image is corrupted."
@@ -613,9 +613,21 @@ log() {
 #########################################################
 write_image_to_disk() {
     log "Writing disk image"
-    
+
     set -o pipefail
-    zcat /mnt/dl/imagefile.gz |\
+    # Check for gzip and xz correspondingly
+    if [ "$(dd count=2 bs=1 if=/mnt/dl/imagefile.compressed)" = "$(printf '\x1f\x8b')" ]
+    then
+        DECOMPRESSION_TOOL='zcat'
+    elif [ "$(dd count=6 bs=1 if=/mnt/dl/imagefile.compressed)" = "$(printf '\xfd\x37\x7a\x58\x5a\x00')" ]
+    then
+        DECOMPRESSION_TOOL='xzcat'
+    else
+        log "Compressed file format is not supported. Supported formats: '.xz', '.gz'"
+        exit 1
+    fi
+
+    $DECOMPRESSION_TOOL /mnt/dl/imagefile.compressed |\
     dd bs=1M iflag=fullblock oflag=direct conv=sparse of="${DEST_DEV}" status=none
     RETCODE=$?
     if [[ $RETCODE -ne 0 ]]; then
