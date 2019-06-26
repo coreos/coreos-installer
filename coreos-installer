@@ -336,6 +336,40 @@ mount_boot_partition() {
     done
 }
 
+mount_efi_partition() {
+    # First argument is the location of the mountpoint
+    mountpoint=$1
+    if [ ! -d $mountpoint ]; then
+      log "mountpoint $mountpoint must be a directory"
+      exit 1
+    fi
+
+    # Find the boot partition by analyzing the user provided
+    # device.
+    set -o pipefail
+    output=$(lsblk "${DEST_DEV}" --output NAME,PARTLABEL,UUID --pairs | grep 'PARTLABEL="EFI System Partition"')
+    eval $(echo $output | tr ' ' '\n' | tail -n 1)
+    set +o pipefail
+
+    let retry=0
+    while true; do
+        mount "/dev/disk/by-uuid/${UUID}" $mountpoint
+        RETCODE=$?
+        if [[ $RETCODE -ne 0 ]]; then
+            if [[ $retry -lt 30 ]]; then
+                # retry and sleep to allow udevd to populate /dev/disk/by-uuid
+                sleep 1
+                let retry=$retry+1
+                continue
+            fi
+            log "failed mounting EFI partition"
+            exit 1
+        fi
+        break;
+    done
+
+}
+
 ############################################################
 # Helper to write the ignition config to disk
 ############################################################
@@ -376,6 +410,24 @@ write_networking_opts() {
     trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
 
     echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
+}
+
+############################################################
+# Helper to enable autoassembly of special devices on cmdline
+############################################################
+write_cmdline_opts() {
+    log "Appending rd.auto=1 to kernel cmdline"
+    mkdir -p /mnt/boot_partition
+    mount_boot_partition /mnt/boot_partition
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    if [ -d /mnt/boot_partition/efi/ ]; then
+        trap 'umount /mnt/boot_partition /mnt/efi_partition; trap - RETURN' RETURN
+        mkdir -p /mnt/efi_partition
+        mount_efi_partition /mnt/efi_partition
+        sed -i '/linuxefi/s/$/ rd.auto=1/' /mnt/efi_partition/EFI/redhat/grub.cfg
+    else
+        sed -i '/linux16/s/$/ rd.auto=1/' /mnt/boot_partition/grub2/grub.cfg
+    fi
 }
 
 ############################################################
@@ -431,8 +483,15 @@ get_img_url() {
 # Validate that selected device exists
 ############################################################
 check_selected_device() {
-    if [ ! -b $DEST_DEV ]
-    then
+    if [ -f /tmp/raid_dev ]; then
+        for dev in $RAID_DEV; do
+            ((DEVS++))
+            if [ ! -b $dev ]; then
+                log "${dev} does not exist."
+                exit 1
+            fi
+        done
+    elif [ ! -b $DEST_DEV ]; then
         log "${DEST_DEV} does not exist."
         exit 1
     fi
@@ -599,8 +658,13 @@ validate_image() {
 #Wipe any remaining disk labels
 #########################################################
 wipe_target_disk_labels() {
-    log "Wiping ${DEST_DEV}"
-    wipefs --all --force "${DEST_DEV}"
+    if [ -f /tmp/raid_dev ]; then
+        log "Wiping ${RAID_DEV}"
+        wipefs --all --force ${RAID_DEV}
+    else
+        log "Wiping ${DEST_DEV}"
+        wipefs --all --force "${DEST_DEV}"
+    fi
 }
 
 log() {
@@ -612,9 +676,13 @@ log() {
 #And Write the image to disk
 #########################################################
 write_image_to_disk() {
-    log "Writing disk image"
     
     set -o pipefail
+    if [ -f /tmp/raid_dev ]; then
+        log "Creating array device ${DEST_DEV}"
+        mdadm --create ${DEST_DEV} --level=$(cat /tmp/raid_level) --raid-devices=${DEVS} ${RAID_DEV} --metadata=1.0 --run
+    fi
+    log "Writing disk image"
     zcat /mnt/dl/imagefile.gz |\
     dd bs=1M iflag=fullblock oflag=direct conv=sparse of="${DEST_DEV}" status=none
     RETCODE=$?
@@ -636,24 +704,32 @@ write_image_to_disk() {
 parse_args() {
     USAGE="Usage: $0 [options]
 Options:
-    -d DEVICE   Install to the given device, alternatively specify
-                coreos.inst.install_dev on the kcmdline.
-    -i IGNITION The URL (or path) to the given Ignition config,
-                alternatively specify coreos.inst.ignition_url on the
-                kcmdline.
-    -b BASEURL  The URL to the image, alternatively specify
-                coreos.inst.image_url on the kcmdline.
-    -h          This.
+    -d DEVICE     Install to the given device(s), alternatively specify
+                  coreos.inst.install_dev on the kcmdline.
+                  Multiple devices separated by commas may be specified
+                  in order to create a RAID device
+    -r RAID_DEV   RAID device name, alternatively specify coreos.inst.raid_dev
+                  on the kcmdline
+    -l RAID_LEVEL RAID level, alternatively specify coreos.inst.raid_level
+                  on the kcmdline
+    -i IGNITION   The URL (or path) to the given Ignition config,
+                  alternatively specify coreos.inst.ignition_url on the
+                  kcmdline.
+    -b BASEURL    The URL to the image, alternatively specify
+                  coreos.inst.image_url on the kcmdline.
+    -h            This.
 
 This tool installs CoreOS style disk images on a block device.
 "
 
-    while getopts "d:i:b:h" OPTION
+    while getopts "d:i:b:r:l:h" OPTION
     do
         case $OPTION in
             d) DEVICE="$OPTARG" ;;
             i) IGNITION="$OPTARG" ;;
             b) BASE_URL="${OPTARG%/}" ;;
+            r) RAID_DEV="${OPTARG%/}" ;;
+            l) RAID_LEVEL="${OPTARG%/}" ;;
             h) echo "$USAGE"; exit;;
             *) exit 1;;
         esac
@@ -673,6 +749,14 @@ This tool installs CoreOS style disk images on a block device.
     then
         echo "${BASE_URL}" > /tmp/image_url
     fi
+    if [[ ! -z "${RAID_DEV}" ]]
+    then
+        echo "${RAID_DEV}" > /tmp/raid_dev
+    fi
+    if [[ ! -z "${RAID_LEVEL}" ]]
+    then
+        echo "${RAID_LEVEL}" > /tmp/raid_level
+    fi
 }
 
 # Main function for running the installer
@@ -687,7 +771,12 @@ main() {
 
     # set a global environment variable that can be used
     # by a few of the functions below.
-    DEST_DEV=$(cat /tmp/selected_dev)
+    if [ -f /tmp/raid_dev ]; then
+        RAID_DEV=$(cat /tmp/selected_dev | sed 's/,/\n/g' | sed 's/^/\/dev\//g' | tr '\n' ' ')
+        DEST_DEV=$(cat /tmp/raid_dev)
+    else
+        DEST_DEV=$(cat /tmp/selected_dev)
+    fi
     DEST_DEV=/dev/$DEST_DEV
 
     #import_gpg_key
@@ -706,6 +795,11 @@ main() {
 
     # If one was provided, install the ignition config
     write_ignition_file
+
+    # If RAID creation is required
+    if [ -f /tmp/raid_dev ]; then
+        write_cmdline_opts
+    fi
 
     # If networking options were present, persist to firstboot initramfs
     write_networking_opts

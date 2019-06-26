@@ -8,10 +8,13 @@ standalone script or during bootup via a dracut module.
 ## Kernel command line options for coreos-installer running in the initramfs
 
 * coreos.inst=yes - Instruct the installer to run
-* coreos.inst.install_dev - The block device on the system to install to
+* coreos.inst.install_dev - The block device on the system to install to. In case of 
+using an RAID device it should be a comma separated list of block devices names
 * coreos.inst.image_url - The url of the coreos image to install to this device
 * coreos.inst.ignition_url - The url of the coreos ignition config (optional, enter
   coreos.inst.ignition_url=skip to not load an ignition config)
+* coreos.inst.raid_dev - The RAID device name (optional)
+* coreos.inst.raid_level - The RAID level (optional)
 
 ## Using the installer on FCOS or RHCOS
 

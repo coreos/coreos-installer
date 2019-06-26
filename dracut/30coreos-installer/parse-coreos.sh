@@ -24,6 +24,19 @@ then
     echo $IGNITION_URL >> /tmp/ignition_url
 fi
 
+local RAID_DEV=$(getarg coreos.inst.raid_dev=)
+if [ ! -z "$RAID_DEV" ]
+then
+    echo "preset RAID device to $RAID_DEV" >> /tmp/debug
+    echo $RAID_DEV >> /tmp/raid_dev
+fi
+
+local RAID_LEVEL=$(getarg coreos.inst.raid_level=)
+if [ ! -z "$RAID_LEVEL" ]
+then
+    echo "preset RAID level to ${RAID_LEVEL}" >> /tmp/debug
+    echo $RAID_LEVEL >> /tmp/raid_level
+fi
 
 # Kernel networking args
 # Currently only persisting `ipv6.disable`, but additional options may be added
