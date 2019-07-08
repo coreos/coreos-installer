@@ -26,29 +26,26 @@ to automation.
 
 For Fedora CoreOS you can currently grab an ISO image from the output
 of the current development pipeline located
-[here](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/).
+[here](https://builds.coreos.fedoraproject.org/browser)
 
 The ISO image can install in either legacy boot (BIOS) mode or in UEFI
-mode. You'll have to make sure you download the appropriate related
-image for the mode you'd like to use. It is a good idea to download
-them before doing the install as the artifacts server that is being
-used currently has very slow download speeds.
+mode. You can boot it in either mode, regardless of what mode the OS will
+boot from once installed.
 
 For example download:
 
-- [fedora-coreos-30.107-installer.iso](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-30.107-installer.iso)
+- [fedora-coreos-30.340-installer.iso](https://builds.coreos.fedoraproject.org/prod/streams/testing-devel/builds/30.340/fedora-coreos-30.340-installer.iso)
 
-and one of the following two:
+and:
 
-- [fedora-coreos-30.107-metal-bios.raw.gz](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-30.107-metal-bios.raw.gz)
-- [fedora-coreos-30.107-metal-uefi.raw.gz](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/fedora-coreos-30.107-metal-uefi.raw.gz)
+- [fedora-coreos-30.340-metal.raw.gz](https://builds.coreos.fedoraproject.org/prod/streams/testing-devel/builds/30.340/fedora-coreos-30.340-metal.raw.gz)
 
 **NOTE** The artifacts output of the pipeline are development
          artifacts. The links above will quickly become
          broken because we prune builds. As we get closer to
          an official release we'll have stable links but for
          now you'll have to find your own links from the
-         [latest directory](https://ci.centos.org/artifacts/fedora-coreos/prod/builds/latest/).
+         [build browser](https://builds.coreos.fedoraproject.org/browser)
 
 #### Test a PXE based install
 
