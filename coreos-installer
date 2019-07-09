@@ -379,6 +379,24 @@ write_networking_opts() {
 }
 
 ############################################################
+# Helper to persist additional options to initramfs first boot
+############################################################
+write_additional_opts() {
+    if [ ! -f /tmp/additional_opts ]; then
+        log "Not embedding additional options; none provided"
+        return
+    fi
+
+    log "Embedding provided additional options"
+    # check for the boot partition
+    mkdir -p /mnt/boot_partition
+    mount_boot_partition /mnt/boot_partition
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+
+    echo "set ignition_extra_kcmdline=\"$(cat /tmp/additional_opts)\"" >> /mnt/boot_partition/ignition.firstboot
+}
+
+############################################################
 # START HERE
 ############################################################
 import_gpg_key() {
@@ -721,6 +739,7 @@ main() {
 
     # If networking options were present, persist to firstboot initramfs
     write_networking_opts
+    write_additional_opts
 
     log "Install complete"
 }
