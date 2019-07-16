@@ -24,6 +24,20 @@ then
     echo $IGNITION_URL >> /tmp/ignition_url
 fi
 
+local INSTALLER_IP=$(getarg coreos.inst.ip=)
+if [ ! -z "$INSTALLER_IP" ]
+then
+    echo "preset interface config to $INSTALLER_IP" >> /tmp/debug
+    echo $INSTALLER_IP >> /tmp/ip
+fi
+
+local INSTALLER_NAMESERVER=$(getarg coreos.inst.nameserver=)
+if [ ! -z "$INSTALLER_NAMESERVER" ]
+then
+    echo "preset nameserver config to $INSTALLER_NAMESERVER" >> /tmp/debug
+    echo $INSTALLER_NAMESERVER >> /tmp/nameserver
+fi
+
 
 # Kernel networking args
 # Currently only persisting `ipv6.disable`, but additional options may be added

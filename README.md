@@ -12,6 +12,8 @@ standalone script or during bootup via a dracut module.
 * coreos.inst.image_url - The url of the coreos image to install to this device
 * coreos.inst.ignition_url - The url of the coreos ignition config (optional, enter
   coreos.inst.ignition_url=skip to not load an ignition config)
+* coreos.inst.ip - Persistent static IP config (optional)
+* coreos.inst.nameserver - DNS nameserver address for interfaces (optional)
 
 ## Using the installer on FCOS or RHCOS
 
