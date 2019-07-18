@@ -378,6 +378,43 @@ write_networking_opts() {
     echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
 }
 
+#########################################################
+# Helper to persist ignition platform id to initramfs first boot
+#########################################################
+write_platform_id() {
+    local tmp_platform_id="/tmp/platform_id"
+    local proc_cmdline="/proc/cmdline"
+
+    if [ ! -f ${tmp_platform_id} ]; then
+        log "Not overwriting ignition platform id, no platform id provided"
+        return
+    else
+        local platform_id="$(cat ${tmp_platform_id})"
+    fi
+
+
+    log "Overwriting ignition platform id"
+    # check for the boot partition
+    mkdir -p /mnt/boot_partition
+    mount_boot_partition /mnt/boot_partition
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    local conf_files=$(ls /mnt/boot_partition/loader/entries/ | grep 'conf')
+
+    for f in $conf_files
+    do
+        # Update boot loader entry first
+        local conf_files_path="/mnt/boot_partition/loader/entries/$f"
+        if grep -q 'ignition.platform.id' $conf_files_path; then
+            sed -i "s/ignition.platform.id=.* /ignition.platform.id=${platform_id} /" $conf_files_path
+        else
+            echo " ignition.platform.id=${platform_id}" >> $conf_files_path
+        fi
+    done
+
+    rm -f ${tmp_platform_id}
+    log "Set ignition.platform.id=\"${platform_id}\""
+}
+
 ############################################################
 # Helper to persist additional options to initramfs first boot
 ############################################################
@@ -673,17 +710,20 @@ Options:
                 kcmdline.
     -b BASEURL  The URL to the image, alternatively specify
                 coreos.inst.image_url on the kcmdline.
+    -p PLATFORM_ID The platform ID, alternatively specify
+                coreos.inst.platform_id on the kcmdline.
     -h          This.
 
 This tool installs CoreOS style disk images on a block device.
 "
 
-    while getopts "d:i:b:h" OPTION
+    while getopts "d:i:b:p:h" OPTION
     do
         case $OPTION in
             d) DEVICE="$OPTARG" ;;
             i) IGNITION="$OPTARG" ;;
             b) BASE_URL="${OPTARG%/}" ;;
+            p) PLATFORM_ID="$OPTARG" ;;
             h) echo "$USAGE"; exit;;
             *) exit 1;;
         esac
@@ -702,6 +742,11 @@ This tool installs CoreOS style disk images on a block device.
     if [[ ! -z "${BASE_URL}" ]]
     then
         echo "${BASE_URL}" > /tmp/image_url
+    fi
+
+    if [[ ! -z "${PLATFORM_ID}" ]]
+    then
+        echo "${PLATFORM_ID}" > /tmp/platform_id
     fi
 }
 
@@ -740,6 +785,9 @@ main() {
     # If networking options were present, persist to firstboot initramfs
     write_networking_opts
     write_additional_opts
+
+    # If ignition platform id is provided, write to /mnt/boot_partition/ignition.firstboot
+    write_platform_id
 
     log "Install complete"
 }

@@ -11,6 +11,7 @@ standalone script or during bootup via a dracut module.
 * `coreos.inst.image_url` - The URL of the CoreOS image to install to this device
 * `coreos.inst.ignition_url` - The URL of the CoreOS Ignition config (optional, enter
   `coreos.inst.ignition_url=skip` to not load an Ignition config)
+* `coreos.inst.platform_id` - The ignition platform ID the coreos image to install to
 
 ## Using the installer on FCOS or RHCOS
 
@@ -64,6 +65,7 @@ kernel command line telling it what you want it to do. For example:
 - `coreos.inst.install_dev=sda`
 - `coreos.inst.image_url=http://example.com/fedora-coreos-30.20190801.0-metal.raw.xz`
 - `coreos.inst.ignition_url=http://example.com/config.ign`
+- `coreos.inst.platform_id=qemu`
 
 Now press `<ENTER>` (isolinux) or `<CTRL-x>` (grub) to kick off the
 install. The install will occur on tty2 and there are very few good
