@@ -386,7 +386,14 @@ write_platform_id() {
     local tmp_platform_id="/tmp/platform_id"
 
     if [ ! -f ${tmp_platform_id} ]; then
-        log "Not writing ignition platform id to ignition.firstboot, no platform id provided"
+        local default_platform_id=$(grep -o "ignition.platform.id=[a-zA-Z0-9]*" /proc/cmdline)
+        if [[ ! -z ${default_platform_id} ]]; then
+            log "Writing default ignition platform id to ignition.firstboot"
+            echo ${default_platform_id} >> ${ignition_firstboot}
+            log "Wrote ${default_platform_id} to ignition.firstboot"
+        else
+            log "Not writing ignition platform id to ignition.firstboot, no platform id provided"
+        fi
         return
     fi
 
