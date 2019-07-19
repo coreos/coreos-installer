@@ -574,10 +574,13 @@ write_ifcfg_files() {
     {
         echo "{"
         echo '  "ignition": {'
-        echo "   \"version\":\"${ignition_version}\""
+        echo "    \"version\":\"${ignition_version}\","
         echo '    "config": {'
-        echo "    \"${ign_config_appendormerge}\": [{"
+        echo "      \"${ign_config_appendormerge}\": [{"
         echo "        \"source\": \"data:,$(urlencode /tmp/ignition.ign)\""
+        echo '      }]'
+        echo '    }'
+        echo '  },'
         echo '  "storage": {'
         echo '    "files": ['
     } > /tmp/network.ign
@@ -630,7 +633,7 @@ write_ifcfg_files() {
         } > /tmp/ifcfg/ifcfg-$dev
 
         # Transpile file and append its content to /tmp/network.ign
-        network_ign="${network_ign}{${ign_filesystem}\"path\": \"/etc/sysconfig/network-scripts/ifcfg-$dev\",\"mode\": 420,\"contents\": {\"source\": \"data:text/plain;charset=utf-8;$(urlencode /tmp/ifcfg/ifcfg-$dev)\"}},"
+        network_ign="${network_ign}{${ign_filesystem}\"path\": \"/etc/sysconfig/network-scripts/ifcfg-$dev\",\"mode\": 420,\"contents\": {\"source\": \"data:,$(urlencode /tmp/ifcfg/ifcfg-$dev)\"}},"
 
         # Unset variables
         unset dev
