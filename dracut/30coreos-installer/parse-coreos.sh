@@ -58,6 +58,13 @@ then
     echo 1 > /tmp/skip_media_check
 fi
 
+# persist the coreos.no_persist_ip flag if present
+if getargbool 0 coreos.no_persist_ip
+then
+    echo "persisting coreos.no_persist_ip" >> /tmp/debug
+    echo "coreos.no_persist_ip=1" >> /tmp/additional_opts
+fi
+
 # This one is not consumed by the CLI but actually by the
 # coreos-installer.service systemd unit that is run in the
 # initramfs. We don't default to rebooting from the CLI.
