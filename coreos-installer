@@ -382,30 +382,24 @@ write_networking_opts() {
 # Helper to persist ignition platform id to initramfs first boot
 #########################################################
 write_platform_id() {
-    local ignition_firstboot="/mnt/boot_partition/ignition.firstboot"
+    local ignition_platform_id="/mnt/boot_partition/ignition_platform_id"
     local tmp_platform_id="/tmp/platform_id"
 
     if [ ! -f ${tmp_platform_id} ]; then
-        local default_platform_id=$(grep -o "ignition.platform.id=[a-zA-Z0-9]*" /proc/cmdline)
-        if [[ ! -z ${default_platform_id} ]]; then
-            log "Writing default ignition platform id to ignition.firstboot"
-            echo ${default_platform_id} >> ${ignition_firstboot}
-            log "Wrote ${default_platform_id} to ignition.firstboot"
-        else
-            log "Not writing ignition platform id to ignition.firstboot, no platform id provided"
-        fi
+        log "Not writing ignition platform id to ignition_platform_id, no platform id provided"
         return
     fi
 
-    log "Writing ignition platform id to ignition.firstboot"
+    log "Writing ignition platform id to ignition_platform_id"
+    # check for the boot partition
+    mkdir -p /mnt/boot_partition
+    mount_boot_partition /mnt/boot_partition
+    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
 
-    if [[ ! -f ${ignition_firstboot} ]]; then
-        mkdir -p /boot/ ; touch ${ignition_firstboot}
-    fi
-    cat ${tmp_platform_id} >> ${ignition_firstboot}
+    echo "set ignition.platform.id=\"$(cat ${tmp_platform_id})\"" >> ${ignition_platform_id}
 
     rm -f ${tmp_platform_id}
-    log "Wrote $(cat ${ignition_firstboot}) to ignition.firstboot"
+    log "Wrote $(cat ${ignition_platform_id}) to ignition_platform_id"
 }
 
 ############################################################
