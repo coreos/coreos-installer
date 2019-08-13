@@ -4,63 +4,99 @@
 Enterprise Linux CoreOS (RHCOS) to a target disk. It can be invoked as a 
 standalone script or during bootup via a dracut module.
 
-
 ## Kernel command line options for coreos-installer running in the initramfs
 
-* coreos.inst=yes - Instruct the installer to run
-* coreos.inst.install_dev - The block device on the system to install to
-* coreos.inst.image_url - The url of the coreos image to install to this device
-* coreos.inst.ignition_url - The url of the coreos ignition config (optional, enter
-  coreos.inst.ignition_url=skip to not load an ignition config)
+* `coreos.inst=yes` - Instruct the installer to run
+* `coreos.inst.install_dev` - The block device on the system to install to
+* `coreos.inst.image_url` - The URL of the CoreOS image to install to this device
+* `coreos.inst.ignition_url` - The URL of the CoreOS Ignition config (optional, enter
+  `coreos.inst.ignition_url=skip` to not load an Ignition config)
 
 ## Using the installer on FCOS or RHCOS
 
 This installer is incorporated into FCOS and RHCOS.
-There are ISO images that can be downloaded that will allow for an
-install to be performed on bare metal hardware either via ISO install
-or via a PXE install. While ISO install is supported we certainly
-recommend PXE if you environment supports it since it is more friendly
-to automation.
+There are ISO and PXE images that can be downloaded that will allow for an
+install to be performed on bare metal hardware. While ISO install is
+supported, we recommend PXE if you environment supports it since it is
+more friendly to automation.
 
-#### Grab an ISO image and bare metal image
+### Installing from ISO
 
-For Fedora CoreOS you can currently grab an ISO image from the output
-of the current development pipeline located
-[here](https://builds.coreos.fedoraproject.org/browser)
+#### Grab an ISO image and bare metal image URL
+
+For Fedora CoreOS you can download an ISO image from the
+[download page](https://getfedora.org/coreos/download/).
+You'll also need the URL of the bare metal raw image linked from that
+page.
 
 The ISO image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
 
-For example download:
+#### Perform the install
 
-- [fedora-coreos-30.340-installer.iso](https://builds.coreos.fedoraproject.org/prod/streams/testing-devel/builds/30.340/fedora-coreos-30.340-installer.iso)
+You can install on a bare metal machine by burning the ISO to
+disk and booting it or using ISO redirection via a LOM interface.
+Alternatively you can use a VM like so:
 
-and:
+```
+virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-30.20190801.0-installer.iso --network default
+```
 
-- [fedora-coreos-30.340-metal.raw.gz](https://builds.coreos.fedoraproject.org/prod/streams/testing-devel/builds/30.340/fedora-coreos-30.340-metal.raw.gz)
+**NOTE**: To test UEFI boot add `--boot uefi` to the CLI call.
 
-**NOTE** The artifacts output of the pipeline are development
-         artifacts. The links above will quickly become
-         broken because we prune builds. As we get closer to
-         an official release we'll have stable links but for
-         now you'll have to find your own links from the
-         [build browser](https://builds.coreos.fedoraproject.org/browser)
+Alternatively you can use `qemu` directly.
+Create a disk image which we can use as install target:
 
-#### Test a PXE based install
+```
+qemu-img create -f qcow2 fcos.qcow2 10G
+```
+Now, run the following qemu command:
 
-Using the ISO images you can also do a PXE based install. You can
-mount up the ISO images and use the `initramfs.img` and `vmlinuz`
-for PXE boot. Here is an example `pxelinux.cfg` that I used to perform
-a PXE boot:
+```
+qemu-system-x86_64 -accel kvm -name fcos -m 2048 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-30.20190801.0-installer.iso
+```
+
+Once you have reached the boot menu, press `<TAB>` (isolinux) or
+`e` (grub) to edit the kernel command line. Add the parameters to the
+kernel command line telling it what you want it to do. For example:
+
+- `coreos.inst.install_dev=sda`
+- `coreos.inst.image_url=http://example.com/fedora-coreos-30.20190801.0-metal.raw.xz`
+- `coreos.inst.ignition_url=http://example.com/config.ign`
+
+Now press `<ENTER>` (isolinux) or `<CTRL-x>` (grub) to kick off the
+install. The install will occur on tty2 and there are very few good
+log statements or debug opportunities. The user experience here
+needs work and is tracked in [#5](https://github.com/coreos/coreos-installer/issues/5).
+
+The install will complete and eventually reboot the machine. After
+reboot the machine will boot into the installed system and the
+embedded Ignition config will run on first boot.
+
+### Installing from PXE
+
+#### Grab a PXE image and bare metal image
+
+For Fedora CoreOS you can download a PXE kernel, initramfs image, and bare
+metal image from the [download page](https://getfedora.org/coreos/download/).
+
+The PXE image can install in either legacy boot (BIOS) mode or in UEFI
+mode. You can boot it in either mode, regardless of what mode the OS will
+boot from once installed.
+
+#### Perform the install
+
+Here is an example `pxelinux.cfg` for booting the installer images with
+PXELINUX:
 
 ```
 DEFAULT pxeboot
 TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
-    KERNEL fedora-coreos-30.107-installer.iso/images/vmlinuz
-    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-30.107-installer.iso/images/initramfs.img console=tty0 console=ttyS0 coreos.inst=yes coreos.inst.install_dev=sda coreos.inst.image_url=http://192.168.1.101:8000/fedora-coreos-30.107-metal-bios.raw.gz coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    KERNEL fedora-coreos-30.20190801.0-installer-kernel
+    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-30.20190801.0-installer-initramfs.img console=tty0 console=ttyS0 coreos.inst=yes coreos.inst.install_dev=sda coreos.inst.image_url=http://192.168.1.101:8000/fedora-coreos-30.20190801.0-metal.raw.xz coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
@@ -68,51 +104,6 @@ If you don't know how to use this information to test a PXE install
 you can start with something like
 [these instructions](https://dustymabe.com/2019/01/04/easy-pxe-boot-testing-with-only-http-using-ipxe-and-libvirt/)
 for testing out PXE installs via a local VM + Libvirt.
-
-#### Test an ISO based install
-
-You can test an install on a bare metal machine by burning the ISO to
-disk and booting it or using ISO redirection via a LOM interface.
-Alternatively you can use a VM like so:
-
-```
-virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-30.107-installer.iso --network default
-```
-
-**NOTE** To test UEFI boot add `--boot uefi` to the CLI call
-
-Alternatively you can use `qemu` directly:
-
-Create a disk image which we can use as install target
-```
-qemu-img create -f qcow2 fcos.qcow2 10G
-```
-Now, run following qemu command
-
-```
-qemu-system-x86_64 -accel kvm -name fcos -m 2048 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-30.107-installer.iso
-```
-
-Once you have booted you will see a screen press `<TAB>` (isolinux) or
-`e` (grub) to edit the kernel command line. Add the parameters to the
-kernel command line telling it what you want it to do. For example:
-
-- `coreos.inst.install_dev=sda`
-- `coreos.inst.image_url=http://example.com/fedora-coreos-30.107-metal-bios.raw.gz`
-- `coreos.inst.ignition_url=http://example.com/config.ign`
-
-**NOTE** make sure to use a `metal-uefi` image if booting via UEFI
-
-Now press `<ENTER>` (isolinux) or `<CTRL-x>` (grub) to kick off the
-install. The install will occur on tty2 and there are very few good
-log statements or debug opportunities. The user experience here
-needs work and is tracked in [#5](https://github.com/coreos/coreos-installer/issues/5).
-
-The install should progress and eventually reboot the machine. After
-reboot the machine will boot into the installed system and the
-embedded ignition config should run on first boot.
-
-
 
 ## Testing out the installer script by running it directly
 
@@ -129,7 +120,7 @@ any extra arguments you will be presented with a usage message and
 then a prompt where you can execute the installer via the CLI:
 
 ```
-/usr/libexec/coreos-installer -d sdd -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-metal-bios.raw.gz
+/usr/libexec/coreos-installer -d sdd -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-30.20190801.0-metal.raw.xz
 ```
 
 Afterwards you'll need to reboot the machine.
@@ -146,7 +137,7 @@ the coreos-installer rpm (and all dependencies) using DNF via
 `/usr/libexec/coreos-installer`.
 
 ```
-sudo /path/to/coreos-installer -d sdg -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-metal-bios.raw.gz
+sudo /path/to/coreos-installer -d sdg -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-30.20190801.0-metal.raw.xz
 ```
 
 Afterwards, remove the disk from the computer and insert it into and
@@ -197,7 +188,7 @@ Set our kernel arguments for the install and kick it off using
 ```
 args='coreos.inst=yes '
 args+='coreos.inst.install_dev=vda '
-args+='coreos.inst.image_url=http://example.com/fedora-coreos-29.28-metal-bios.raw.gz '
+args+='coreos.inst.image_url=http://example.com/fedora-coreos-30.20190801.0-metal.raw.xz '
 args+='coreos.inst.ignition_url=http://example.com/config.ign '
 sudo virt-install --location ./ --extra-args="${args}" --network network=default --name installer --memory 2048 --disk size=10
 ```
