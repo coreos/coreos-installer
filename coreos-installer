@@ -634,10 +634,10 @@ write_image_to_disk() {
 
     set -o pipefail
     # Check for gzip and xz correspondingly
-    if [ "$(dd count=2 bs=1 if=/mnt/dl/imagefile.compressed)" = "$(printf '\x1f\x8b')" ]
+    if [ "$(dd count=2 bs=1 if=/mnt/dl/imagefile.compressed status=none)" = "$(printf '\x1f\x8b')" ]
     then
         DECOMPRESSION_TOOL='zcat'
-    elif [ "$(dd count=6 bs=1 if=/mnt/dl/imagefile.compressed)" = "$(printf '\xfd\x37\x7a\x58\x5a\x00')" ]
+    elif [ "$(dd count=5 bs=1 if=/mnt/dl/imagefile.compressed status=none)" = "$(printf '\xfd\x37\x7a\x58\x5a')" ]
     then
         DECOMPRESSION_TOOL='xzcat'
     else
