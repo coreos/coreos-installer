@@ -435,7 +435,7 @@ get_img_url() {
             fi
             log "fetching image headers from ${IMAGE_URL}: ${RETCODE}"
         else
-            IMAGE_SIZE=$(cat /tmp/image_info | awk '/.*Content-Length.*/ {print $2}' | tr -d $'\r')
+            IMAGE_SIZE=$(cat /tmp/image_info | awk 'BEGIN {IGNORECASE=1} /.*Content-Length.*/ {print $2}' | tr -d $'\r')
             TMPFS_MBSIZE=$(dc -e"$IMAGE_SIZE 1024 1024 * / 50 + p")
             log "Image size is $IMAGE_SIZE"
             log "tmpfs sized to $TMPFS_MBSIZE MB"
