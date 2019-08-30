@@ -406,6 +406,15 @@ import_gpg_key() {
 }
 
 ############################################################
+#Check if dependencies are installed
+############################################################
+check_dependencies() {
+    for dep in dc curl
+        command -v $dep >/dev/null 2>&1 || { log "'$dep' is required but not installed."; exit 1; }
+    done
+}
+
+############################################################
 #Get the image url to install
 ############################################################
 get_img_url() {
@@ -471,7 +480,7 @@ get_sig_file_type() {
         log "$SIG_URL not found"
         SIG_URL=$IMAGE_URL.sha256sum
         log "Getting SIG_URL $SIG_URL"
-        curl -LsI $SIG_URL > /dev/null 2>&1 
+        curl -LsI $SIG_URL > /dev/null 2>&1
         if [ $? -ne 0 ]
         then
             SIG_TYPE=none
@@ -720,6 +729,7 @@ main() {
     DEST_DEV=$(cat /tmp/selected_dev)
     DEST_DEV=/dev/$DEST_DEV
 
+    check_dependencies
     #import_gpg_key
     get_img_url
     #get_sig_file_type
