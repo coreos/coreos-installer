@@ -11,7 +11,7 @@ standalone script or during bootup via a dracut module.
 * `coreos.inst.image_url` - The URL of the CoreOS image to install to this device
 * `coreos.inst.ignition_url` - The URL of the CoreOS Ignition config (optional, enter
   `coreos.inst.ignition_url=skip` to not load an Ignition config)
-* `coreos.inst.platform_id` - The ignition platform ID the coreos image to install to
+* `coreos.inst.platform_id` - The Ignition platform ID the CoreOS image to install to
 
 ## Using the installer on FCOS or RHCOS
 

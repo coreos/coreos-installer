@@ -401,12 +401,12 @@ write_platform_id() {
 
     for f in $conf_files
     do
-        if grep -q -E "ignition.platform.id=[a-z]* " $f || grep -q -E "ignition.platform.id=[a-z]*$" $f; then
+        if grep -q -E "ignition.platform.id=[^ ]*" $f; then
             # ignition.platform.id is followed by whitespace or EOF
-            sed -i "s/ignition.platform.id=[a-z]*/ignition.platform.id=${platform_id}/" $f
+            sed -i -r "s/ignition.platform.id=[^ ]*?/ignition.platform.id=${platform_id}/" $f
         else
             # ignition.platform.id is not presented in BLS
-            sed -i "/^options/ s/$/ ignition.platform.id=${platform_id}" $f
+            sed -i "/^options/ s/$/ ignition.platform.id=${platform_id}/" $f
         fi
     done
 
