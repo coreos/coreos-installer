@@ -398,21 +398,20 @@ write_platform_id() {
     mkdir -p /mnt/boot_partition
     mount_boot_partition /mnt/boot_partition
     trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
-    local conf_files=$(ls /mnt/boot_partition/loader/entries/ | grep 'conf')
+    local conf_files=$(ls /mnt/boot_partition/loader/entries/*conf)
 
     for f in $conf_files
     do
         # Update boot loader entry first
-        local conf_files_path="/mnt/boot_partition/loader/entries/$f"
-        if grep -q 'ignition.platform.id' $conf_files_path; then
-            sed -i "s/ignition.platform.id=.* /ignition.platform.id=${platform_id} /" $conf_files_path
+        if grep -q 'ignition.platform.id' $f; then
+            sed -i "s/ignition.platform.id=.* /ignition.platform.id=${platform_id} /" $f
         else
-            echo " ignition.platform.id=${platform_id}" >> $conf_files_path
+            sed -i "/^options/ s/$/ ignition.platform.id=${platform_id}" $f
         fi
     done
 
     rm -f ${tmp_platform_id}
-    log "Set ignition.platform.id=\"${platform_id}\""
+    log "Set ignition.platform.id=\"${platform_id}\" kernel CLI parameter in BLS configs"
 }
 
 ############################################################
