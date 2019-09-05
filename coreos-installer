@@ -383,7 +383,6 @@ write_networking_opts() {
 #########################################################
 write_platform_id() {
     local tmp_platform_id="/tmp/platform_id"
-    local proc_cmdline="/proc/cmdline"
 
     if [ ! -f ${tmp_platform_id} ]; then
         log "Not overwriting ignition platform id, no platform id provided"
@@ -402,10 +401,11 @@ write_platform_id() {
 
     for f in $conf_files
     do
-        # Update boot loader entry first
-        if grep -q 'ignition.platform.id' $f; then
-            sed -i "s/ignition.platform.id=.* /ignition.platform.id=${platform_id} /" $f
+        if grep -q -E "ignition.platform.id=[a-z]* " $f || grep -q -E "ignition.platform.id=[a-z]*$" $f; then
+            # ignition.platform.id is followed by whitespace or EOF
+            sed -i "s/ignition.platform.id=[a-z]*/ignition.platform.id=${platform_id}/" $f
         else
+            # ignition.platform.id is not presented in BLS
             sed -i "/^options/ s/$/ ignition.platform.id=${platform_id}" $f
         fi
     done
@@ -702,16 +702,16 @@ write_image_to_disk() {
 parse_args() {
     USAGE="Usage: $0 [options]
 Options:
-    -d DEVICE   Install to the given device, alternatively specify
-                coreos.inst.install_dev on the kcmdline.
-    -i IGNITION The URL (or path) to the given Ignition config,
-                alternatively specify coreos.inst.ignition_url on the
-                kcmdline.
-    -b BASEURL  The URL to the image, alternatively specify
-                coreos.inst.image_url on the kcmdline.
+    -d DEVICE      Install to the given device, alternatively specify
+                   coreos.inst.install_dev on the kcmdline.
+    -i IGNITION    The URL (or path) to the given Ignition config,
+                   alternatively specify coreos.inst.ignition_url on the
+                   kcmdline.
+    -b BASEURL     The URL to the image, alternatively specify
+                   coreos.inst.image_url on the kcmdline.
     -p PLATFORM_ID The platform ID, alternatively specify
-                coreos.inst.platform_id on the kcmdline.
-    -h          This.
+                   coreos.inst.platform_id on the kcmdline.
+    -h             This.
 
 This tool installs CoreOS style disk images on a block device.
 "
@@ -785,7 +785,7 @@ main() {
     write_networking_opts
     write_additional_opts
 
-    # If ignition platform id is provided, write to /mnt/boot_partition/ignition.firstboot
+    # If ignition platform id is provided, overwrite ignition.platform.id in BLS
     write_platform_id
 
     log "Install complete"
