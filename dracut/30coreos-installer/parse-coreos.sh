@@ -24,6 +24,12 @@ then
     echo $IGNITION_URL >> /tmp/ignition_url
 fi
 
+local PLATFORM_ID=$(getarg coreos.inst.platform_id=)
+if [ ! -z "$PLATFORM_ID" ]
+then
+    echo "preset ignition platform id to ${PLATFORM_ID}" >> /tmp/debug
+    echo $PLATFORM_ID >> /tmp/platform_id
+fi
 
 # Kernel networking args
 # Currently only persisting `ipv6.disable`, but additional options may be added
