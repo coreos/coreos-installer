@@ -313,16 +313,14 @@ mount_boot_partition() {
     # The first command will find the partition with the boot label
     # and the eval command will set the $UUID variable that we use later.
     set -o pipefail
-    output=$(lsblk "${DEST_DEV}" --output NAME,LABEL,UUID --pairs | grep 'LABEL="boot"')
-    eval $(echo $output | tr ' ' '\n' | tail -n 1)
-    set +o pipefail
-
     let retry=0
     while true
     do
+        output=$(lsblk "${DEST_DEV}" --output NAME,LABEL,UUID --pairs | grep 'LABEL="boot"')
+        eval $(echo $output | tr ' ' '\n' | tail -n 1)
         mount "/dev/disk/by-uuid/${UUID}" /mnt/boot_partition
         RETCODE=$?
-        if [[ $RETCODE -ne 0 ]]; then
+        if [[ -z "$output" ]] || [[ $RETCODE -ne 0 ]]; then
             if [[ $retry -lt 30 ]]; then
                 # retry and sleep to allow udevd to populate /dev/disk/by-uuid
                 sleep 1
@@ -334,6 +332,7 @@ mount_boot_partition() {
         fi
         break;
     done
+    set +o pipefail
 }
 
 ############################################################
