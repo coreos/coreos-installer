@@ -294,6 +294,7 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 -----END PGP PUBLIC KEY BLOCK-----
 "
 
+arch=$(uname -m)
 boot_partition="/mnt/boot_partition"
 tmpfs_mountpoint="/mnt/dl"
 imagefile="$tmpfs_mountpoint/imagefile"
@@ -576,8 +577,13 @@ get_ignition_url() {
 #########################################################
 mount_tmpfs() {
     log "Mounting tmpfs"
+    if [ -n "$1" ]; then
+        options="remount,size=${1}m"
+    else
+        options="size=${TMPFS_MBSIZE}m"
+    fi
     mkdir -p "$tmpfs_mountpoint"
-    mount -t tmpfs -o size=${TMPFS_MBSIZE}m tmpfs "$tmpfs_mountpoint"
+    mount -t tmpfs -o "$options" tmpfs "$tmpfs_mountpoint"
 }
 
 #########################################################
@@ -603,6 +609,18 @@ download_image() {
     if [[ $RETCODE -ne 0 ]]
     then
         log "Image download failed"
+        exit 1
+    fi
+
+    # Check for gzip and xz correspondingly
+    if [ "$(dd count=2 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\x1f\x8b')" ]
+    then
+        DECOMPRESSION_TOOL='zcat'
+    elif [ "$(dd count=5 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\xfd\x37\x7a\x58\x5a')" ]
+    then
+        DECOMPRESSION_TOOL='xzcat'
+    else
+        log "Compressed file format is not supported. Supported formats: '.xz', '.gz'"
         exit 1
     fi
 }
@@ -668,29 +686,91 @@ log() {
 }
 
 #########################################################
+#Update bootloader if needed
+#########################################################
+write_zipl_bootloader() {
+    if [[ "$arch" == "s390x" ]]; then
+        log "Updating zipl"
+        mkdir -p /mnt/boot_partition
+        mount_boot_partition /mnt/boot_partition
+        trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+
+        blsfile=$(ls /mnt/boot_partition/loader/entries/*.conf)
+        echo "$(grep options $blsfile | cut -d' ' -f2-) $(cat /tmp/s390x_opts) ignition.firstboot rd.neednet=1 ip=dhcp" > /tmp/zipl_prm
+        zipl --verbose -p /tmp/zipl_prm -i $(ls /mnt/boot_partition/ostree/*/*vmlinuz*) -r $(ls /mnt/boot_partition/ostree/*/*initramfs*) --target /mnt/boot_partition
+        if [[ $? -ne 0 ]]; then
+            log "failed updating bootloder"
+            exit 1
+        fi
+        # this allows a reboot into new installed disk
+        chreipl "${DEST_DEV}"
+    fi
+}
+
+#########################################################
+#Handle s390x zFCP SCSI devices
+#########################################################
+write_image_to_zfcp_disk() {
+    log "Extracting disk image"
+    mount_tmpfs $(( $($DECOMPRESSION_TOOL ${imagefile_compressed} | wc --bytes) / 1024 / 1024 + ${TMPFS_MBSIZE} + 100 ))
+    $DECOMPRESSION_TOOL ${imagefile_compressed} > ${imagefile}
+
+    # we have to store the strings to a file because any change in this
+    # while-do block would not take effect outside
+    (while IFS='' read -r line || [ -n "$line" ]
+    do
+        if [[ $line =~ "start=" ]]
+        then
+            # we save the start= and size= here, then dd the partitions later
+            printf "%s:%s\n" \
+                "$(echo $line | cut -d: -f 2 | cut -d, -f 1 | tr -d ' ')" \
+                "$(echo $line | cut -d: -f 2 | cut -d, -f 2 | tr -d ' ')" \
+                >> /tmp/sfdisk_info
+        elif ! [[ $line =~ "label:" || $line =~ "label-id:" || $line =~ "unit:" ]]
+        then
+            continue
+        fi
+        echo $line
+    done <<< $(sfdisk -d ${imagefile})
+    ) | sfdisk "${DEST_DEV}"
+
+    while IFS='' read -r line || [ -n "$line" ]
+    do
+        eval ${line%%:*} ${line##*:}
+        dd if=${imagefile} bs=512 iflag=fullblock \
+            of="${DEST_DEV}" status=progress skip=$start seek=$start count=$size
+        if [[ $? -ne 0 ]]; then
+            log "failed to write image to zFCP SCSI disk"
+            exit 1
+        fi
+    done < /tmp/sfdisk_info
+}
+#########################################################
 #And Write the image to disk
 #########################################################
 write_image_to_disk() {
     log "Writing disk image"
 
     set -o pipefail
-    # Check for gzip and xz correspondingly
-    if [ "$(dd count=2 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\x1f\x8b')" ]
+    if [[ "${arch}" =~ (aarch64|ppc64le|x86_64) ]]
     then
-        DECOMPRESSION_TOOL='zcat'
-    elif [ "$(dd count=5 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\xfd\x37\x7a\x58\x5a')" ]
+        $DECOMPRESSION_TOOL ${imagefile_compressed} |\
+        dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
+        RETCODE=$?
+        if [[ $RETCODE -ne 0 ]]; then
+            log "failed to write image to disk"
+            exit 1
+        fi
+    elif [[ "$arch" == "s390x" ]]
     then
-        DECOMPRESSION_TOOL='xzcat'
+        case $(systemd-detect-virt) in
+            none|zvm) # 'none' means LPAR
+                write_image_to_zfcp_disk
+                ;;
+            qemu) log "Use qcow images for KVM s390x installation instead"; exit 1 ;;
+        esac
     else
-        log "Compressed file format is not supported. Supported formats: '.xz', '.gz'"
-        exit 1
-    fi
-
-    $DECOMPRESSION_TOOL ${imagefile_compressed} |\
-    dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
-    RETCODE=$?
-    if [[ $RETCODE -ne 0 ]]; then
-        log "failed to write image to disk"
+        log "Unsupported architecture"
         exit 1
     fi
     set +o pipefail
@@ -792,6 +872,9 @@ main() {
 
     # If ignition platform id is provided, overwrite ignition.platform.id in BLS
     write_platform_id
+
+    # If platform is s390x, update bootloader records
+    write_zipl_bootloader
 
     log "Install complete"
 }

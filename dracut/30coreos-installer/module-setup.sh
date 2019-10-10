@@ -35,6 +35,15 @@ install() {
     inst_multiple /usr/sbin/blockdev
     inst_multiple /usr/sbin/wipefs
 
+    if [ "$arch" = "s390x" ]; then
+        inst_multiple -o /usr/bin/wc
+        inst_multiple -o /usr/sbin/zipl
+        inst_multiple -o /usr/sbin/chreipl
+        inst_multiple -o /usr/sbin/chzdev
+        inst_multiple -o /usr/sbin/sfdisk
+        inst_multiple -o /lib/s390-tools/stage3.bin
+    fi
+
     inst_simple /usr/libexec/coreos-installer
 
     inst_simple "$moddir/coreos-installer-generator" \
