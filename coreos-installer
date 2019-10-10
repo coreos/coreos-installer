@@ -708,6 +708,51 @@ write_zipl_bootloader() {
 }
 
 #########################################################
+#Handle s390x ECKD DASD devices
+#########################################################
+write_image_to_dasd() {
+    log "Extracting disk image"
+    mount_tmpfs $(( $($DECOMPRESSION_TOOL ${imagefile_compressed} | wc --bytes) / 1024 / 1024 + ${TMPFS_MBSIZE} + 100 ))
+    $DECOMPRESSION_TOOL ${imagefile_compressed} > ${imagefile}
+
+    # low-level format the ECKD DASD using dasdfmt, if needed
+    DEST_DEV_BUS=$(lszdev --by-node ${DEST_DEV} | tail -n 1  | awk '{print $2}')
+    if [ "$(< /sys/bus/ccw/devices/${DEST_DEV_BUS}/status)" = "unformatted" ]; then
+        dasdfmt --blocksize 4096 --disk_layout cdl --mode full -ypv "${DEST_DEV}"
+    fi
+    block_per_tracks=$(fdasd -p ${DEST_DEV} | grep blocks\ per\ track | awk '{print $5}')
+
+    # the first 2 tracks of the ECKD DASD are reserved
+    first_track=2
+    boot_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}1" | awk '{print $2,$3}'))
+    root_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}4" | awk '{print $2,$3}'))
+    boot_partition+=( $first_track $(dc -e "${boot_partition[1]} $block_per_tracks 1 - + $block_per_tracks / p") )
+    root_partition+=($(( ${boot_partition[2]} + ${boot_partition[3]} )) "last")
+    cat > "/tmp/fdasd_conf" <<- EOF
+[$first_track,$(( ${root_partition[2]} - 1 )),native]
+[${root_partition[2]},${root_partition[3]},native]
+EOF
+
+    # format the ECKD DASD using fdasd program
+    fdasd --silent --config /tmp/fdasd_conf "${DEST_DEV}"
+
+    # copy the content of each partition
+    set -- ${boot_partition[@]} ${root_partition[@]}
+    while [ $# -gt 0 ]; do
+        dd bs=4096 if="${imagefile}" iflag=fullblock of="${DEST_DEV}" \
+            status=progress \
+            skip="$1" \
+            count="$2" \
+            seek="$(( $3 * $block_per_tracks ))"
+        if [[ $? -ne 0 ]]; then
+            log "failed to write image to ECKD DASD device"
+            exit 1
+        fi
+        shift 4
+    done
+}
+
+#########################################################
 #Handle s390x zFCP SCSI devices
 #########################################################
 write_image_to_zfcp_disk() {
@@ -765,9 +810,14 @@ write_image_to_disk() {
     then
         case $(systemd-detect-virt) in
             none|zvm) # 'none' means LPAR
-                write_image_to_zfcp_disk
+                if [[ "${DEST_DEV}" =~ "dasd" ]]; then
+                    write_image_to_dasd
+                else
+                    write_image_to_zfcp_disk
+                fi
                 ;;
-            qemu) log "Use qcow images for KVM s390x installation instead"; exit 1 ;;
+            kvm|qemu) log "Use qcow images for KVM s390x installation instead"; exit 1 ;;
+            *) log "Unsupported hypervisor"; exit 1 ;;
         esac
     else
         log "Unsupported architecture"
