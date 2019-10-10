@@ -294,6 +294,11 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 -----END PGP PUBLIC KEY BLOCK-----
 "
 
+boot_partition="/mnt/boot_partition"
+tmpfs_mountpoint="/mnt/dl"
+imagefile="$tmpfs_mountpoint/imagefile"
+imagefile_compressed="$tmpfs_mountpoint/imagefile.compressed"
+imagefile_compressed_sig="$tmpfs_mountpoint/imagefile.compressed.sig"
 
 ############################################################
 # Helper to mount the boot partition from the device
@@ -318,7 +323,7 @@ mount_boot_partition() {
     do
         output=$(lsblk "${DEST_DEV}" --output NAME,LABEL,UUID --pairs | grep 'LABEL="boot"')
         eval $(echo $output | tr ' ' '\n' | tail -n 1)
-        mount "/dev/disk/by-uuid/${UUID}" /mnt/boot_partition
+        mount "/dev/disk/by-uuid/${UUID}" "$boot_partition"
         RETCODE=$?
         if [[ -z "$output" ]] || [[ $RETCODE -ne 0 ]]; then
             if [[ $retry -lt 30 ]]; then
@@ -346,12 +351,12 @@ write_ignition_file() {
 
     log "Embedding provided Ignition config"
     # mount the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
 
-    mkdir -p /mnt/boot_partition/ignition
-    cp /tmp/ignition.ign /mnt/boot_partition/ignition/config.ign
+    mkdir -p "${boot_partition}/ignition"
+    cp /tmp/ignition.ign "${boot_partition}/ignition/config.ign"
     RETCODE=$?
     if [[ $RETCODE -ne 0 ]]; then
         log "failed writing ignition config"
@@ -370,11 +375,11 @@ write_networking_opts() {
 
     log "Embedding provided networking options"
     # check for the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
 
-    echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
+    echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> "${boot_partition}/ignition.firstboot"
 }
 
 #########################################################
@@ -393,10 +398,10 @@ write_platform_id() {
 
     log "Overwriting ignition platform id"
     # check for the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
-    local conf_files=$(ls /mnt/boot_partition/loader/entries/*conf)
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
+    local conf_files=$(ls ${boot_partition}/loader/entries/*conf)
 
     for f in $conf_files
     do
@@ -424,11 +429,11 @@ write_additional_opts() {
 
     log "Embedding provided additional options"
     # check for the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
 
-    echo "set ignition_extra_kcmdline=\"$(cat /tmp/additional_opts)\"" >> /mnt/boot_partition/ignition.firstboot
+    echo "set ignition_extra_kcmdline=\"$(cat /tmp/additional_opts)\"" >> "${boot_partition}/ignition.firstboot"
 }
 
 ############################################################
@@ -571,8 +576,8 @@ get_ignition_url() {
 #########################################################
 mount_tmpfs() {
     log "Mounting tmpfs"
-    mkdir -p /mnt/dl
-    mount -t tmpfs -o size=${TMPFS_MBSIZE}m tmpfs /mnt/dl
+    mkdir -p "$tmpfs_mountpoint"
+    mount -t tmpfs -o size=${TMPFS_MBSIZE}m tmpfs "$tmpfs_mountpoint"
 }
 
 #########################################################
@@ -580,15 +585,15 @@ mount_tmpfs() {
 #########################################################
 download_image() {
     log "Downloading install image"
-    (curl -L -s -o /mnt/dl/imagefile.compressed $IMAGE_URL; echo $? > /tmp/curl-rc) &
+    (curl -L -s -o ${imagefile_compressed} $IMAGE_URL; echo $? > /tmp/curl-rc) &
 
     while [ ! -f /tmp/curl-rc ]; do
         # If the image hasn't show up yet then wait a sec and loop
-        if [ ! -f /mnt/dl/imagefile.compressed ]; then
+        if [ ! -f ${imagefile_compressed} ]; then
             sleep 1
             continue
         fi
-        PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.compressed | awk '{print $5}') 2>/dev/null
+        PART_FILE_SIZE=$(ls -l ${imagefile_compressed} | awk '{print $5}') 2>/dev/null
         PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//" 2>/dev/null)
         echo "${PCT}%" >&2
         sleep 1
@@ -607,7 +612,7 @@ download_image() {
 #########################################################
 download_sig() {
     log "Getting signature"
-    curl -L -s -o /mnt/dl/imagefile.compressed.sig $SIG_URL
+    curl -L -s -o ${imagefile_compressed_sig} $SIG_URL
     if [ $? -ne 0 ]
     then
         log "Unable to download sig file."
@@ -624,7 +629,7 @@ validate_image() {
     then
         if [ "$SIG_TYPE" == "gpg" ]
         then
-            gpg2 --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.compressed.sig >/dev/null 2>&1
+            gpg2 --trusted-key "${GPG_LONG_ID}" --verify ${imagefile_compressed_sig} >/dev/null 2>&1
             if [ $? -ne 0 ]
             then
                 log "Install Image is corrupted."
@@ -632,8 +637,9 @@ validate_image() {
             fi
         elif [ "$SIG_TYPE" == "sha" ]
         then
-            sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.gz/" /mnt/dl/imagefile.compressed.sig
-            sha256sum -c /mnt/dl/imagefile.compressed.sig
+            # sed original file path with current path in signature file
+            sed -i -e "s@/.*/@$tmpfs_mountpoint/@g" ${imagefile_compressed_sig}
+            sha256sum -c ${imagefile_compressed_sig}
             if [ $? -ne 0 ]
             then
                 log "Install Image is corrupted."
@@ -669,10 +675,10 @@ write_image_to_disk() {
 
     set -o pipefail
     # Check for gzip and xz correspondingly
-    if [ "$(dd count=2 bs=1 if=/mnt/dl/imagefile.compressed status=none)" = "$(printf '\x1f\x8b')" ]
+    if [ "$(dd count=2 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\x1f\x8b')" ]
     then
         DECOMPRESSION_TOOL='zcat'
-    elif [ "$(dd count=5 bs=1 if=/mnt/dl/imagefile.compressed status=none)" = "$(printf '\xfd\x37\x7a\x58\x5a')" ]
+    elif [ "$(dd count=5 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\xfd\x37\x7a\x58\x5a')" ]
     then
         DECOMPRESSION_TOOL='xzcat'
     else
@@ -680,7 +686,7 @@ write_image_to_disk() {
         exit 1
     fi
 
-    $DECOMPRESSION_TOOL /mnt/dl/imagefile.compressed |\
+    $DECOMPRESSION_TOOL ${imagefile_compressed} |\
     dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
     RETCODE=$?
     if [[ $RETCODE -ne 0 ]]; then
