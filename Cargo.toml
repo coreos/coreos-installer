@@ -1,0 +1,38 @@
+[package]
+name = "coreos-installer"
+repository = "https://github.com/coreos/coreos-installer"
+license = "Apache-2.0"
+edition = "2018"
+authors = [ "Benjamin Gilbert <bgilbert@redhat.com>" ]
+description = "Installer for Fedora CoreOS and RHEL CoreOS"
+version = "0.0.1"
+
+[package.metadata.release]
+sign-commit = true
+upload-doc = false
+disable-push = true
+disable-publish = true
+pre-release-commit-message = "cargo: coreos-installer release {{version}}"
+pro-release-commit-message = "cargo: development version bump"
+tag-message = "coreos-installer v{{version}}"
+tag-prefix = "v"
+
+[[bin]]
+name = "coreos-installer"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+
+[dependencies]
+clap = "2.33"
+byte-unit = "^3.0.3"
+error-chain = { version = "0.12", default-features = false }
+flate2 = "^1.0.12"
+nix = "^0.15.0"
+progress-streams = "^1.1.0"
+reqwest = "^0.9.22"
+serde = "1.0"
+serde_json = "1.0"
+tempdir = "0.3"
+xz2 = "^0.1.6"
