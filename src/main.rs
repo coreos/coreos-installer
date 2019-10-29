@@ -25,6 +25,7 @@ use progress_streams::ProgressReader;
 use reqwest::Url;
 use std::fs::{create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use xz2::read::XzDecoder;
@@ -59,11 +60,19 @@ fn run() -> Result<()> {
         }
     }
 
-    // open output; ensure we have exclusive access
+    // open output; ensure it's a block device and we have exclusive access
     let mut dest = OpenOptions::new()
         .write(true)
         .open(&config.device)
         .chain_err(|| format!("opening {}", &config.device))?;
+    if !dest
+        .metadata()
+        .chain_err(|| format!("getting metadata for {}", &config.device))?
+        .file_type()
+        .is_block_device()
+    {
+        bail!("{} is not a block device", &config.device);
+    }
     reread_partition_table(&dest)
         .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
