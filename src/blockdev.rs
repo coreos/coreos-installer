@@ -151,6 +151,14 @@ pub fn reread_partition_table(file: &File) -> Result<()> {
 ioctl_none!(blkrrpart, 0x12, 95);
 
 pub fn udev_settle() -> Result<()> {
+    // "udevadm settle" silently no-ops if the udev socket is missing, and
+    // then lsblk can't find partition labels.  Catch this early.
+    if !Path::new("/run/udev/control").exists() {
+        return Err(
+            "udevd socket missing; are we running in a container without /run/udev mounted?".into(),
+        );
+    }
+
     // There's a potential window after rereading the partition table where
     // udevd hasn't yet received updates from the kernel, settle will return
     // immediately, and lsblk won't pick up partition labels.  Try to sleep
