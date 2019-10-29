@@ -340,6 +340,17 @@ fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
         .chain_err(|| "decoding first MiB of image")?;
 
     // do the rest of the copy
+    // This physically writes any runs of zeroes, rather than sparsifying,
+    // but sparsifying is unsafe.  We can't trust that all runs of zeroes in
+    // the image represent unallocated blocks, so we must ensure that zero
+    // blocks are actually stored as zeroes to avoid image corruption.
+    // Discard is insufficient for this: even if our discard request
+    // succeeds, discard is not guaranteed to zero blocks (see kernel
+    // commits 98262f2762f0 and 48920ff2a5a9).  Ideally we could use
+    // BLKZEROOUT to perform hardware-accelerated zeroing and then
+    // sparse-copy the image, falling back to non-sparse copy if hardware
+    // acceleration is unavailable.  But BLKZEROOUT doesn't support
+    // BLKDEV_ZERO_NOFALLBACK, so we'd risk gigabytes of redundant I/O.
     copy(&mut decompress_reader, dest).chain_err(|| "decoding and writing image")?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
