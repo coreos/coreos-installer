@@ -691,13 +691,14 @@ log() {
 write_zipl_bootloader() {
     if [[ "$arch" == "s390x" ]]; then
         log "Updating zipl"
-        mkdir -p /mnt/boot_partition
-        mount_boot_partition /mnt/boot_partition
-        trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+        mkdir -p "$boot_partition"
+        mount_boot_partition "$boot_partition"
+        trap 'umount $boot_partition; trap - RETURN' RETURN
 
-        blsfile=$(ls /mnt/boot_partition/loader/entries/*.conf)
+
+        blsfile=$(ls ${boot_partition}/loader/entries/*.conf)
         echo "$(grep options $blsfile | cut -d' ' -f2-) $(cat /tmp/s390x_opts) ignition.firstboot rd.neednet=1 ip=dhcp" > /tmp/zipl_prm
-        zipl --verbose -p /tmp/zipl_prm -i $(ls /mnt/boot_partition/ostree/*/*vmlinuz*) -r $(ls /mnt/boot_partition/ostree/*/*initramfs*) --target /mnt/boot_partition
+        zipl --verbose -p /tmp/zipl_prm -i $(ls ${boot_partition}/ostree/*/*vmlinuz*) -r $(ls ${boot_partition}/ostree/*/*initramfs*) --target "$boot_partition"
         if [[ $? -ne 0 ]]; then
             log "failed updating bootloder"
             exit 1
@@ -724,8 +725,14 @@ write_image_to_dasd() {
 
     # the first 2 tracks of the ECKD DASD are reserved
     first_track=2
-    boot_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}1" | awk '{print $2,$3}'))
-    root_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}4" | awk '{print $2,$3}'))
+    # in RHCOS4.2 using anaconda, we have root partition at index 2 while in FCOS it's 4
+    BOOTPN=1
+    ROOTPN=2
+    if [[ -n $(grep -i fedora /usr/lib/initrd-release) ]]; then
+        ROOTPN=4
+    fi
+    boot_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}${BOOTPN}" | awk '{print $2,$3}'))
+    root_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}${ROOTPN}" | awk '{print $2,$3}'))
     boot_partition+=( $first_track $(dc -e "${boot_partition[1]} $block_per_tracks 1 - + $block_per_tracks / p") )
     root_partition+=($(( ${boot_partition[2]} + ${boot_partition[3]} )) "last")
     cat > "/tmp/fdasd_conf" <<- EOF
