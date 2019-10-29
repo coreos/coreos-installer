@@ -697,7 +697,12 @@ write_zipl_bootloader() {
 
 
         blsfile=$(ls ${boot_partition}/loader/entries/*.conf)
-        echo "$(grep options $blsfile | cut -d' ' -f2-) $(cat /tmp/s390x_opts) ignition.firstboot rd.neednet=1 ip=dhcp" > /tmp/zipl_prm
+        # We need to propagate s390x parameter to later boots via BLS files
+        # More details : https://github.com/coreos/fedora-coreos-tracker/issues/305
+        options="$(grep options $blsfile | cut -d' ' -f2-) $(cat /tmp/s390x_opts)"
+        sed -i -e "s@^options.*@options $options@g" $blsfile
+        # And also keep networking parameters for first boot
+        echo "$options $(cat /tmp/networking_opts) ignition.firstboot" > /tmp/zipl_prm
         zipl --verbose -p /tmp/zipl_prm -i $(ls ${boot_partition}/ostree/*/*vmlinuz*) -r $(ls ${boot_partition}/ostree/*/*initramfs*) --target "$boot_partition"
         if [[ $? -ne 0 ]]; then
             log "failed updating bootloder"
