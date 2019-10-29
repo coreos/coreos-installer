@@ -682,7 +682,7 @@ write_image_to_disk() {
     fi
 
     $DECOMPRESSION_TOOL /mnt/dl/imagefile.compressed |\
-    dd bs=1M iflag=fullblock oflag=direct conv=sparse of="${DEST_DEV}" status=none
+    dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
     RETCODE=$?
     if [[ $RETCODE -ne 0 ]]; then
         log "failed to write image to disk"
