@@ -73,7 +73,7 @@ fn run() -> Result<()> {
     {
         bail!("{} is not a block device", &config.device);
     }
-    reread_partition_table(&dest)
+    reread_partition_table(&mut dest)
         .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // copy and postprocess disk image
@@ -476,7 +476,7 @@ fn clear_partition_table(dest: &mut File) -> Result<()> {
         .chain_err(|| "flushing partition table to disk")?;
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
-    reread_partition_table(&dest)?;
+    reread_partition_table(dest)?;
     udev_settle()?;
     Ok(())
 }

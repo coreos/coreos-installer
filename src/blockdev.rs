@@ -130,7 +130,7 @@ impl Drop for Mount {
     }
 }
 
-pub fn reread_partition_table(file: &File) -> Result<()> {
+pub fn reread_partition_table(file: &mut File) -> Result<()> {
     let fd = file.as_raw_fd();
     // Reread sometimes fails inexplicably.  Retry several times before
     // giving up.
