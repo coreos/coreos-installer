@@ -1,7 +1,7 @@
 FROM registry.fedoraproject.org/fedora:31 AS builder
 RUN dnf install -y cargo openssl-devel
 WORKDIR /build
-COPY Cargo.* .
+COPY Cargo.* ./
 COPY src src/
 RUN cargo build --release
 
