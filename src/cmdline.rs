@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use clap::{crate_version, App, AppSettings, Arg, SubCommand};
+use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
+use error_chain::bail;
 use reqwest::Url;
 
 use crate::errors::*;
@@ -127,10 +128,14 @@ pub fn parse_args() -> Result<Config> {
                 ),
         )
         .get_matches();
-    let matches = app_matches
-        .subcommand_matches("install")
-        .expect("install subcommand arguments missing");
 
+    match app_matches.subcommand() {
+        ("install", Some(matches)) => parse_install(&matches),
+        _ => bail!("unrecognized subcommand"),
+    }
+}
+
+fn parse_install(matches: &ArgMatches) -> Result<Config> {
     // Build image location.  Ideally we'd use conflicts_with (and an
     // ArgGroup for streams), but that doesn't play well with default
     // arguments, so we manually prioritize modes.
