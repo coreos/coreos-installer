@@ -25,6 +25,7 @@ use progress_streams::ProgressReader;
 use reqwest::Url;
 use std::fs::{create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use xz2::read::XzDecoder;
@@ -59,12 +60,20 @@ fn run() -> Result<()> {
         }
     }
 
-    // open output; ensure we have exclusive access
+    // open output; ensure it's a block device and we have exclusive access
     let mut dest = OpenOptions::new()
         .write(true)
         .open(&config.device)
         .chain_err(|| format!("opening {}", &config.device))?;
-    reread_partition_table(&dest)
+    if !dest
+        .metadata()
+        .chain_err(|| format!("getting metadata for {}", &config.device))?
+        .file_type()
+        .is_block_device()
+    {
+        bail!("{} is not a block device", &config.device);
+    }
+    reread_partition_table(&mut dest)
         .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // copy and postprocess disk image
@@ -239,6 +248,10 @@ fn parse_args() -> Result<Config> {
 /// If this function fails, the caller should wipe the partition table
 /// to ensure the user doesn't boot from a partially-written disk.
 fn write_disk(config: &Config, source: &mut ImageSource, dest: &mut File) -> Result<()> {
+    // Try to discard the entire device as a courtesy to the SSD wear
+    // leveler or LVM thin pool.
+    try_discard_all(dest)?;
+
     // copy the image
     write_image(source, dest)?;
     reread_partition_table(dest)?;
@@ -327,6 +340,17 @@ fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
         .chain_err(|| "decoding first MiB of image")?;
 
     // do the rest of the copy
+    // This physically writes any runs of zeroes, rather than sparsifying,
+    // but sparsifying is unsafe.  We can't trust that all runs of zeroes in
+    // the image represent unallocated blocks, so we must ensure that zero
+    // blocks are actually stored as zeroes to avoid image corruption.
+    // Discard is insufficient for this: even if our discard request
+    // succeeds, discard is not guaranteed to zero blocks (see kernel
+    // commits 98262f2762f0 and 48920ff2a5a9).  Ideally we could use
+    // BLKZEROOUT to perform hardware-accelerated zeroing and then
+    // sparse-copy the image, falling back to non-sparse copy if hardware
+    // acceleration is unavailable.  But BLKZEROOUT doesn't support
+    // BLKDEV_ZERO_NOFALLBACK, so we'd risk gigabytes of redundant I/O.
     copy(&mut decompress_reader, dest).chain_err(|| "decoding and writing image")?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
@@ -458,6 +482,13 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 /// Clear the partition table.  For use after a failure.
 fn clear_partition_table(dest: &mut File) -> Result<()> {
     println!("Clearing partition table");
+    // Try to discard the entire device as a courtesy to the SSD wear
+    // leveler or LVM thin pool.  Report errors and continue.
+    if let Err(e) = try_discard_all(dest) {
+        eprint!("{}", ChainedError::display_chain(&e));
+    }
+    // Discard might fail and doesn't imply zeroing, so manually clear the
+    // first MiB.
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     let zeroes: [u8; 1024 * 1024] = [0; 1024 * 1024];
@@ -467,7 +498,7 @@ fn clear_partition_table(dest: &mut File) -> Result<()> {
         .chain_err(|| "flushing partition table to disk")?;
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
-    reread_partition_table(&dest)?;
+    reread_partition_table(dest)?;
     udev_settle()?;
     Ok(())
 }

@@ -13,9 +13,11 @@
 // limitations under the License.
 
 use error_chain::bail;
-use nix::{ioctl_none, mount};
+use nix::errno::Errno;
+use nix::{self, ioctl_none, ioctl_write_ptr_bad, mount, request_code_none};
 use serde::Deserialize;
 use std::fs::{remove_dir, File};
+use std::io::{Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -130,7 +132,7 @@ impl Drop for Mount {
     }
 }
 
-pub fn reread_partition_table(file: &File) -> Result<()> {
+pub fn reread_partition_table(file: &mut File) -> Result<()> {
     let fd = file.as_raw_fd();
     // Reread sometimes fails inexplicably.  Retry several times before
     // giving up.
@@ -147,8 +149,35 @@ pub fn reread_partition_table(file: &File) -> Result<()> {
     Ok(())
 }
 
-// create unsafe ioctl wrapper
+/// Try discarding all blocks from the underlying block device.
+/// Return true if successful, false if the underlying device doesn't
+/// support discard, or an error otherwise.
+pub fn try_discard_all(file: &mut File) -> Result<bool> {
+    // get device size
+    let length = file
+        .seek(SeekFrom::End(0))
+        .chain_err(|| "seeking device file")?;
+    file.seek(SeekFrom::Start(0))
+        .chain_err(|| "seeking device file")?;
+
+    // discard
+    let fd = file.as_raw_fd();
+    let range: [u64; 2] = [0, length];
+    match unsafe { blkdiscard(fd, &range) } {
+        Ok(_) => Ok(true),
+        Err(e) => {
+            if e == nix::Error::from_errno(Errno::EOPNOTSUPP) {
+                Ok(false)
+            } else {
+                Err(Error::with_chain(e, "discarding device contents"))
+            }
+        }
+    }
+}
+
+// create unsafe ioctl wrappers
 ioctl_none!(blkrrpart, 0x12, 95);
+ioctl_write_ptr_bad!(blkdiscard, request_code_none!(0x12, 119), [u64; 2]);
 
 pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
