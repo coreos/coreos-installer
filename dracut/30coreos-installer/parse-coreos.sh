@@ -63,12 +63,13 @@ local S390X_ALL_ARGS=
 declare -a DRACUT_S390X_ARGS=("rd.dasd=" "rd.zfcp=" "rd.znet=" "zfcp.allow_lun_scan=" "cio_ignore=")
 for S390X_ARG in "${DRACUT_S390X_ARGS[@]}"
 do
-    S390X_OPT=$(getarg $S390X_ARG)
-    if [ ! -z "$S390X_OPT" ]
-    then
-        echo "persist $S390X_ARG to $S390X_OPT" >> /tmp/debug
-        S390X_ALL_ARGS+=" ${S390X_ARG}${S390X_OPT}"
-    fi
+    for S390X_OPT in $(getargs $S390X_ARG); do
+        if [ ! -z "$S390X_OPT" ]
+        then
+            echo "persist $S390X_ARG to $S390X_OPT" >> /tmp/debug
+            S390X_ALL_ARGS+=" ${S390X_ARG}${S390X_OPT}"
+        fi
+    done
 done
 if [ -n "${S390X_ALL_ARGS}" ]
 then
