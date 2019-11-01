@@ -16,6 +16,7 @@ mod blockdev;
 mod cmdline;
 mod errors;
 mod install;
+mod iso;
 mod source;
 mod verify;
 
@@ -24,6 +25,7 @@ use error_chain::quick_main;
 use crate::cmdline::*;
 use crate::errors::*;
 use crate::install::*;
+use crate::iso::*;
 
 quick_main!(run);
 
@@ -32,5 +34,8 @@ fn run() -> Result<()> {
 
     match config {
         Config::Install(c) => install(&c),
+        Config::IsoEmbed(c) => iso_embed(&c),
+        Config::IsoShow(c) => iso_show(&c),
+        Config::IsoRemove(c) => iso_remove(&c),
     }
 }

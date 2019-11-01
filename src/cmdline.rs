@@ -21,6 +21,9 @@ use crate::source::*;
 
 pub enum Config {
     Install(InstallConfig),
+    IsoEmbed(IsoEmbedConfig),
+    IsoShow(IsoShowConfig),
+    IsoRemove(IsoRemoveConfig),
 }
 
 pub struct InstallConfig {
@@ -30,6 +33,22 @@ pub struct InstallConfig {
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
     pub insecure: bool,
+}
+
+pub struct IsoEmbedConfig {
+    pub input: String,
+    pub output: Option<String>,
+    pub ignition: Option<String>,
+    pub force: bool,
+}
+
+pub struct IsoShowConfig {
+    pub input: String,
+}
+
+pub struct IsoRemoveConfig {
+    pub input: String,
+    pub output: Option<String>,
 }
 
 /// Parse command-line arguments.
@@ -127,10 +146,83 @@ pub fn parse_args() -> Result<Config> {
                         .takes_value(true),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("iso")
+                .about("Embed an Ignition config in a CoreOS live ISO image")
+                .subcommand(
+                    SubCommand::with_name("embed")
+                        .about("Embed an Ignition config in an ISO image")
+                        .arg(
+                            Arg::with_name("config")
+                                .short("c")
+                                .long("config")
+                                .value_name("path")
+                                .help("Ignition config to embed [default: stdin]")
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("force")
+                                .short("f")
+                                .long("force")
+                                .help("Overwrite an existing embedded Ignition config"),
+                        )
+                        .arg(
+                            Arg::with_name("output")
+                                .short("o")
+                                .long("output")
+                                .value_name("path")
+                                .help("Copy to a new file, instead of modifying in place")
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("input")
+                                .value_name("ISO")
+                                .help("ISO image")
+                                .required(true)
+                                .takes_value(true),
+                        ),
+                )
+                .subcommand(
+                    SubCommand::with_name("show")
+                        .about("Show the embedded Ignition config from an ISO image")
+                        .arg(
+                            Arg::with_name("input")
+                                .value_name("ISO")
+                                .help("ISO image")
+                                .required(true)
+                                .takes_value(true),
+                        ),
+                )
+                .subcommand(
+                    SubCommand::with_name("remove")
+                        .about("Remove an existing embedded Ignition config from an ISO image")
+                        .arg(
+                            Arg::with_name("output")
+                                .short("o")
+                                .long("output")
+                                .value_name("path")
+                                .help("Copy to a new file, instead of modifying in place")
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("input")
+                                .value_name("ISO")
+                                .help("ISO image")
+                                .required(true)
+                                .takes_value(true),
+                        ),
+                ),
+        )
         .get_matches();
 
     match app_matches.subcommand() {
         ("install", Some(matches)) => parse_install(&matches),
+        ("iso", Some(iso_matches)) => match iso_matches.subcommand() {
+            ("embed", Some(matches)) => parse_iso_embed(&matches),
+            ("show", Some(matches)) => parse_iso_show(&matches),
+            ("remove", Some(matches)) => parse_iso_remove(&matches),
+            _ => bail!("unrecognized 'iso' subcommand"),
+        },
         _ => bail!("unrecognized subcommand"),
     }
 }
@@ -182,5 +274,36 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         platform: matches.value_of("platform").map(String::from),
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
         insecure: matches.is_present("insecure"),
+    }))
+}
+
+fn parse_iso_embed(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoEmbed(IsoEmbedConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
+        output: matches.value_of("output").map(String::from),
+        ignition: matches.value_of("config").map(String::from),
+        force: matches.is_present("force"),
+    }))
+}
+
+fn parse_iso_show(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoShow(IsoShowConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
+    }))
+}
+
+fn parse_iso_remove(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoRemove(IsoRemoveConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
+        output: matches.value_of("output").map(String::from),
     }))
 }
