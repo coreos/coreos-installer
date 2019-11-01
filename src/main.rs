@@ -14,6 +14,7 @@
 
 mod blockdev;
 mod cmdline;
+mod download;
 mod errors;
 mod install;
 mod iso;
