@@ -66,7 +66,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         bail!("install failed");
     }
 
-    println!("Install complete.");
+    eprintln!("Install complete.");
     Ok(())
 }
 
@@ -102,7 +102,7 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
 
 /// Write the Ignition config.
 fn write_ignition(mountpoint: &Path, config_src: &str) -> Result<()> {
-    println!("Writing Ignition config");
+    eprintln!("Writing Ignition config");
 
     // make parent directory
     let mut config_dest = mountpoint.to_path_buf();
@@ -132,7 +132,7 @@ fn write_ignition(mountpoint: &Path, config_src: &str) -> Result<()> {
 
 /// Write first-boot kernel arguments.
 fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
-    println!("Writing first-boot kernel arguments");
+    eprintln!("Writing first-boot kernel arguments");
 
     // write the arguments
     let mut config_dest = mountpoint.to_path_buf();
@@ -159,7 +159,7 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!("Setting platform to {}", platform);
+    eprintln!("Setting platform to {}", platform);
 
     // walk /boot/loader/entries/*.conf
     let mut config_path = mountpoint.to_path_buf();
@@ -212,7 +212,7 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 
 /// Clear the partition table.  For use after a failure.
 fn clear_partition_table(dest: &mut File) -> Result<()> {
-    println!("Clearing partition table");
+    eprintln!("Clearing partition table");
     // Try to discard the entire device as a courtesy to the SSD wear
     // leveler or LVM thin pool.  Report errors and continue.
     if let Err(e) = try_discard_all(dest) {

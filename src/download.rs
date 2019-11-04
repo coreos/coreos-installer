@@ -47,14 +47,14 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
         {
             last_report = Instant::now();
             if have_length {
-                print!(
+                eprint!(
                     "> Read {}/{} ({}%)   \r",
                     format_bytes(position),
                     format_bytes(length_hint),
                     100 * position / length_hint
                 );
             } else {
-                print!("> Read {}   \r", format_bytes(position));
+                eprint!("> Read {}   \r", format_bytes(position));
             }
             let _ = std::io::stdout().flush();
         }
@@ -114,7 +114,7 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
     dest.sync_all().chain_err(|| "syncing data to disk")?;
 
     // log final newline
-    println!();
+    eprintln!();
 
     Ok(())
 }

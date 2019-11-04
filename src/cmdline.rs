@@ -261,7 +261,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         )?)
     };
     // and report it to the user
-    println!("{}", location);
+    eprintln!("{}", location);
 
     // build configuration
     Ok(Config::Install(InstallConfig {
