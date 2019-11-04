@@ -36,6 +36,7 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
     };
 
     // wrap again for progress reporting
+    let artifact_type = source.artifact_type.clone();
     let have_length = source.length_hint.is_some();
     let length_hint = source.length_hint.unwrap_or(0);
     let mut position: u64 = 0;
@@ -48,13 +49,14 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
             last_report = Instant::now();
             if have_length {
                 eprint!(
-                    "> Read {}/{} ({}%)   \r",
+                    "> Read {} {}/{} ({}%)   \r",
+                    &artifact_type,
                     format_bytes(position),
                     format_bytes(length_hint),
                     100 * position / length_hint
                 );
             } else {
-                eprint!("> Read {}   \r", format_bytes(position));
+                eprint!("> Read {} {}   \r", &artifact_type, format_bytes(position));
             }
             let _ = std::io::stdout().flush();
         }

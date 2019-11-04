@@ -41,6 +41,7 @@ pub struct FileLocation {
 pub struct UrlLocation {
     image_url: Url,
     sig_url: Url,
+    artifact_type: String,
 }
 
 // Remote image source specified by Fedora CoreOS stream metadata
@@ -56,6 +57,7 @@ pub struct ImageSource {
     pub reader: Box<dyn Read>,
     pub length_hint: Option<u64>,
     pub signature: Option<Vec<u8>>,
+    pub artifact_type: String,
 }
 
 impl FileLocation {
@@ -110,6 +112,7 @@ impl ImageLocation for FileLocation {
             reader: Box::new(out),
             length_hint: Some(length),
             signature,
+            artifact_type: "disk".to_string(),
         })
     }
 }
@@ -118,13 +121,14 @@ impl UrlLocation {
     pub fn new(url: &Url) -> Self {
         let mut sig_url = url.clone();
         sig_url.set_path(&format!("{}.sig", sig_url.path()));
-        Self::new_with_sig(url, &sig_url)
+        Self::new_with_sig_and_type(url, &sig_url, "disk")
     }
 
-    fn new_with_sig(url: &Url, sig_url: &Url) -> Self {
+    fn new_with_sig_and_type(url: &Url, sig_url: &Url, artifact_type: &str) -> Self {
         Self {
             image_url: url.clone(),
             sig_url: sig_url.clone(),
+            artifact_type: artifact_type.to_string(),
         }
     }
 }
@@ -176,6 +180,7 @@ impl ImageLocation for UrlLocation {
             reader: Box::new(resp),
             length_hint,
             signature,
+            artifact_type: self.artifact_type.clone(),
         })
     }
 }
@@ -229,6 +234,7 @@ impl ImageLocation for StreamLocation {
         // parse it
         let stream: Stream =
             serde_json::from_reader(resp).chain_err(|| "decoding stream metadata")?;
+        let artifact_type = "disk";
         let artifact = stream
             .architectures
             .get(&self.architecture)
@@ -236,7 +242,7 @@ impl ImageLocation for StreamLocation {
             .unwrap_or(None)
             .map(|platform| platform.formats.get("raw.xz"))
             .unwrap_or(None)
-            .map(|format| format.get("disk"))
+            .map(|format| format.get(artifact_type))
             .unwrap_or(None)
             .chain_err(|| {
                 format!(
@@ -246,11 +252,12 @@ impl ImageLocation for StreamLocation {
             })?;
 
         // let UrlLocation handle the rest
-        UrlLocation::new_with_sig(
+        UrlLocation::new_with_sig_and_type(
             &Url::parse(&artifact.location)
                 .chain_err(|| "parsing image URL from stream metadata")?,
             &Url::parse(&artifact.signature)
                 .chain_err(|| "parsing signature URL from stream metadata")?,
+            &artifact_type,
         )
         .source()
     }
