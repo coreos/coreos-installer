@@ -52,6 +52,8 @@ pub struct StreamLocation {
     stream: String,
     stream_url: Url,
     architecture: String,
+    platform: String,
+    format: String,
 }
 
 pub struct ImageSource {
@@ -203,7 +205,13 @@ impl ImageLocation for UrlLocation {
 }
 
 impl StreamLocation {
-    pub fn new(stream: &str, architecture: &str, base_url: Option<&Url>) -> Result<Self> {
+    pub fn new(
+        stream: &str,
+        architecture: &str,
+        platform: &str,
+        format: &str,
+        base_url: Option<&Url>,
+    ) -> Result<Self> {
         Ok(Self {
             stream_base_url: base_url.cloned(),
             stream: stream.to_string(),
@@ -212,6 +220,8 @@ impl StreamLocation {
                 .join(&format!("{}.json", stream))
                 .chain_err(|| "building stream URL")?,
             architecture: architecture.to_string(),
+            platform: platform.to_string(),
+            format: format.to_string(),
         })
     }
 }
@@ -255,16 +265,18 @@ impl ImageLocation for StreamLocation {
         let artifact = stream
             .architectures
             .get(&self.architecture)
-            .map(|arch| arch.artifacts.get("metal"))
+            .map(|arch| arch.artifacts.get(&self.platform))
             .unwrap_or(None)
-            .map(|platform| platform.formats.get("raw.xz"))
+            .map(|platform| platform.formats.get(&self.format))
             .unwrap_or(None)
             .map(|format| format.get(artifact_type))
             .unwrap_or(None)
             .chain_err(|| {
                 format!(
-                    "couldn't find metal raw.xz disk image in stream metadata for architecture {}",
-                    self.architecture
+                    "couldn't find architecture {}, platform {}, format {} disk image in stream metadata",
+                    self.architecture,
+                    self.platform,
+                    self.format
                 )
             })?;
 

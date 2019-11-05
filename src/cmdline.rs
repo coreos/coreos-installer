@@ -175,6 +175,24 @@ pub fn parse_args() -> Result<Config> {
                         .takes_value(true),
                 )
                 .arg(
+                    Arg::with_name("platform")
+                        .short("p")
+                        .long("platform")
+                        .value_name("name")
+                        .help("Fedora CoreOS platform name")
+                        .default_value("metal")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("format")
+                        .short("f")
+                        .long("format")
+                        .value_name("name")
+                        .help("Image format")
+                        .default_value("raw.xz")
+                        .takes_value(true),
+                )
+                .arg(
                     Arg::with_name("image-url")
                         .short("u")
                         .long("image-url")
@@ -322,6 +340,8 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             matches
                 .value_of("architecture")
                 .expect("architecture missing"),
+            "metal",
+            "raw.xz",
             base_url.as_ref(),
         )?)
     };
@@ -368,6 +388,8 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
             matches
                 .value_of("architecture")
                 .expect("architecture missing"),
+            matches.value_of("platform").expect("platform missing"),
+            matches.value_of("format").expect("format missing"),
             base_url.as_ref(),
         )?)
     };
