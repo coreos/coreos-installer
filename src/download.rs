@@ -13,16 +13,97 @@
 // limitations under the License.
 
 use byte_unit::Byte;
+use error_chain::bail;
 use flate2::read::GzDecoder;
 use progress_streams::ProgressReader;
-use std::fs::File;
+use std::fs::{remove_file, File, OpenOptions};
 use std::io::{copy, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use xz2::read::XzDecoder;
 
+use crate::cmdline::*;
 use crate::errors::*;
 use crate::source::*;
 use crate::verify::*;
+
+// Download an image and verify its signature.
+pub fn download(config: &DownloadConfig) -> Result<()> {
+    // set up image source
+    let mut source = config.location.source()?;
+    if source.signature.is_none() {
+        if config.insecure {
+            eprintln!("Signature not found; skipping verification as requested");
+        } else {
+            bail!("--insecure not specified and signature not found");
+        }
+    }
+
+    // calculate paths
+    let filename = if config.decompress {
+        // Drop any compression suffix.  Hacky.
+        source
+            .filename
+            .trim_end_matches(".gz")
+            .trim_end_matches(".xz")
+            .to_string()
+    } else {
+        source.filename.to_string()
+    };
+    let mut path = PathBuf::new();
+    path.push(&config.directory);
+    path.push(&filename);
+    let sig_path = path.with_file_name(format!("{}.sig", &filename));
+
+    // write the image and signature
+    if let Err(err) = write_image_and_sig(&mut source, &path, &sig_path, config.decompress) {
+        // delete output files, which may not have been created yet
+        let _ = remove_file(&path);
+        let _ = remove_file(&sig_path);
+
+        // fail
+        return Err(err);
+    }
+
+    // report the output file path
+    println!("{}", path.display());
+
+    Ok(())
+}
+
+/// Copy the image to disk, and also the signature if appropriate.
+fn write_image_and_sig(
+    source: &mut ImageSource,
+    path: &Path,
+    sig_path: &Path,
+    decompress: bool,
+) -> Result<()> {
+    // open output
+    let mut dest = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .chain_err(|| format!("opening {}", path.display()))?;
+
+    // download and verify image
+    write_image(source, &mut dest, decompress)?;
+
+    // write signature, if relevant
+    if !decompress && source.signature.is_some() {
+        let mut sig_dest = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(sig_path)
+            .chain_err(|| format!("opening {}", sig_path.display()))?;
+        sig_dest
+            .write_all(source.signature.as_ref().unwrap())
+            .chain_err(|| "writing signature data")?;
+    }
+
+    Ok(())
+}
 
 /// Copy the image to disk and verify its signature.
 pub fn write_image(source: &mut ImageSource, dest: &mut File, decompress: bool) -> Result<()> {

@@ -24,6 +24,7 @@ mod verify;
 use error_chain::quick_main;
 
 use crate::cmdline::*;
+use crate::download::*;
 use crate::errors::*;
 use crate::install::*;
 use crate::iso::*;
@@ -34,6 +35,7 @@ fn run() -> Result<()> {
     let config = parse_args().chain_err(|| "parsing arguments")?;
 
     match config {
+        Config::Download(c) => download(&c),
         Config::Install(c) => install(&c),
         Config::IsoEmbed(c) => iso_embed(&c),
         Config::IsoShow(c) => iso_show(&c),
