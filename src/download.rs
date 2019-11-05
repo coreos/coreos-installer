@@ -55,6 +55,17 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
     path.push(&filename);
     let sig_path = path.with_file_name(format!("{}.sig", &filename));
 
+    // check existing image and signature; don't redownload if OK
+    // If we decompressed last time, the call will fail because we can't
+    // check the old signature.  If we didn't decompress last time but are
+    // decompressing this time, we're not smart enough to decompress the
+    // existing file.
+    if !config.decompress && check_image_and_sig(&source, &path, &sig_path).is_ok() {
+        // report the output file path and return early
+        println!("{}", path.display());
+        return Ok(());
+    }
+
     // write the image and signature
     if let Err(err) = write_image_and_sig(&mut source, &path, &sig_path, config.decompress) {
         // delete output files, which may not have been created yet
@@ -67,6 +78,41 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
 
     // report the output file path
     println!("{}", path.display());
+
+    Ok(())
+}
+
+// Check an existing image and signature for validity.  The image cannot
+// have been decompressed after downloading.  Return an error if invalid for
+// any reason.
+fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Result<()> {
+    // ensure we have something to check
+    if source.signature.is_none() {
+        return Err("no signature available; can't check existing file".into());
+    }
+    let signature = source.signature.as_ref().unwrap();
+
+    // compare signature to expectation
+    let mut sig_file = OpenOptions::new()
+        .read(true)
+        .open(sig_path)
+        .chain_err(|| format!("opening {}", sig_path.display()))?;
+    let mut buf = Vec::new();
+    sig_file
+        .read_to_end(&mut buf)
+        .chain_err(|| format!("reading {}", sig_path.display()))?;
+    if &buf != signature {
+        return Err("signature file doesn't match source".into());
+    }
+
+    // open image file
+    let mut file = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .chain_err(|| format!("opening {}", path.display()))?;
+
+    // perform GPG verification
+    GpgReader::new(&mut file, signature)?.consume()?;
 
     Ok(())
 }

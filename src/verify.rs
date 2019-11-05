@@ -103,6 +103,14 @@ impl<R: Read> GpgReader<R> {
             child: verify,
         })
     }
+
+    /// Read and discard all the bytes from the underlying reader, and
+    /// verify the signature.
+    pub fn consume(&mut self) -> Result<()> {
+        let mut buf: [u8; 4096] = [0; 4096];
+        while self.read(&mut buf).chain_err(|| "reading signed content")? > 0 {}
+        Ok(())
+    }
 }
 
 impl<R: Read> Read for GpgReader<R> {
