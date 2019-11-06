@@ -26,7 +26,12 @@ use crate::source::*;
 
 pub fn install(config: &InstallConfig) -> Result<()> {
     // set up image source
-    let mut source = config.location.source()?;
+    // we only support installing from a single artifact
+    let mut sources = config.location.sources()?;
+    let mut source = sources.pop().chain_err(|| "no artifacts found")?;
+    if !sources.is_empty() {
+        bail!("found multiple artifacts");
+    }
     if source.signature.is_none() {
         if config.insecure {
             eprintln!("Signature not found; skipping verification as requested");

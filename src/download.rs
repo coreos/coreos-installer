@@ -27,57 +27,63 @@ use crate::errors::*;
 use crate::source::*;
 use crate::verify::*;
 
-// Download an image and verify its signature.
+// Download all artifacts for an image and verify their signatures.
 pub fn download(config: &DownloadConfig) -> Result<()> {
-    // set up image source
-    let mut source = config.location.source()?;
-    if source.signature.is_none() {
-        if config.insecure {
-            eprintln!("Signature not found; skipping verification as requested");
-        } else {
-            bail!("--insecure not specified and signature not found");
+    // walk sources
+    let mut sources = config.location.sources()?;
+    if sources.is_empty() {
+        bail!("no artifacts found");
+    }
+    for mut source in sources.iter_mut() {
+        // set up image source
+        if source.signature.is_none() {
+            if config.insecure {
+                eprintln!("Signature not found; skipping verification as requested");
+            } else {
+                bail!("--insecure not specified and signature not found");
+            }
         }
-    }
 
-    // calculate paths
-    let filename = if config.decompress {
-        // Drop any compression suffix.  Hacky.
-        source
-            .filename
-            .trim_end_matches(".gz")
-            .trim_end_matches(".xz")
-            .to_string()
-    } else {
-        source.filename.to_string()
-    };
-    let mut path = PathBuf::new();
-    path.push(&config.directory);
-    path.push(&filename);
-    let sig_path = path.with_file_name(format!("{}.sig", &filename));
+        // calculate paths
+        let filename = if config.decompress {
+            // Drop any compression suffix.  Hacky.
+            source
+                .filename
+                .trim_end_matches(".gz")
+                .trim_end_matches(".xz")
+                .to_string()
+        } else {
+            source.filename.to_string()
+        };
+        let mut path = PathBuf::new();
+        path.push(&config.directory);
+        path.push(&filename);
+        let sig_path = path.with_file_name(format!("{}.sig", &filename));
 
-    // check existing image and signature; don't redownload if OK
-    // If we decompressed last time, the call will fail because we can't
-    // check the old signature.  If we didn't decompress last time but are
-    // decompressing this time, we're not smart enough to decompress the
-    // existing file.
-    if !config.decompress && check_image_and_sig(&source, &path, &sig_path).is_ok() {
-        // report the output file path and return early
+        // check existing image and signature; don't redownload if OK
+        // If we decompressed last time, the call will fail because we can't
+        // check the old signature.  If we didn't decompress last time but are
+        // decompressing this time, we're not smart enough to decompress the
+        // existing file.
+        if !config.decompress && check_image_and_sig(&source, &path, &sig_path).is_ok() {
+            // report the output file path and keep going
+            println!("{}", path.display());
+            continue;
+        }
+
+        // write the image and signature
+        if let Err(err) = write_image_and_sig(&mut source, &path, &sig_path, config.decompress) {
+            // delete output files, which may not have been created yet
+            let _ = remove_file(&path);
+            let _ = remove_file(&sig_path);
+
+            // fail
+            return Err(err);
+        }
+
+        // report the output file path
         println!("{}", path.display());
-        return Ok(());
     }
-
-    // write the image and signature
-    if let Err(err) = write_image_and_sig(&mut source, &path, &sig_path, config.decompress) {
-        // delete output files, which may not have been created yet
-        let _ = remove_file(&path);
-        let _ = remove_file(&sig_path);
-
-        // fail
-        return Err(err);
-    }
-
-    // report the output file path
-    println!("{}", path.display());
 
     Ok(())
 }

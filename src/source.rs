@@ -26,8 +26,8 @@ use crate::errors::*;
 const DEFAULT_STREAM_BASE_URL: &str = "https://builds.coreos.fedoraproject.org/streams/";
 
 pub trait ImageLocation: Display {
-    // Obtain the image length and signature and start fetching the image
-    fn source(&self) -> Result<ImageSource>;
+    // Obtain image lengths and signatures and start fetching the images
+    fn sources(&self) -> Result<Vec<ImageSource>>;
 }
 
 // Local image source
@@ -84,7 +84,7 @@ impl Display for FileLocation {
 }
 
 impl ImageLocation for FileLocation {
-    fn source(&self) -> Result<ImageSource> {
+    fn sources(&self) -> Result<Vec<ImageSource>> {
         // open local file for reading
         let mut out = OpenOptions::new()
             .read(true)
@@ -117,13 +117,13 @@ impl ImageLocation for FileLocation {
             .to_string_lossy()
             .to_string();
 
-        Ok(ImageSource {
+        Ok(vec![ImageSource {
             reader: Box::new(out),
             length_hint: Some(length),
             signature,
             filename,
             artifact_type: "disk".to_string(),
-        })
+        }])
     }
 }
 
@@ -154,7 +154,7 @@ impl Display for UrlLocation {
 }
 
 impl ImageLocation for UrlLocation {
-    fn source(&self) -> Result<ImageSource> {
+    fn sources(&self) -> Result<Vec<ImageSource>> {
         let client = reqwest::Client::new();
 
         // fetch signature
@@ -194,13 +194,13 @@ impl ImageLocation for UrlLocation {
             .chain_err(|| "walking image URL")?
             .to_string();
 
-        Ok(ImageSource {
+        Ok(vec![ImageSource {
             reader: Box::new(resp),
             length_hint,
             signature,
             filename,
             artifact_type: self.artifact_type.clone(),
-        })
+        }])
     }
 }
 
@@ -241,7 +241,7 @@ impl Display for StreamLocation {
 }
 
 impl ImageLocation for StreamLocation {
-    fn source(&self) -> Result<ImageSource> {
+    fn sources(&self) -> Result<Vec<ImageSource>> {
         let client = reqwest::Client::new();
 
         // fetch stream metadata
@@ -288,7 +288,7 @@ impl ImageLocation for StreamLocation {
                 .chain_err(|| "parsing signature URL from stream metadata")?,
             &artifact_type,
         )
-        .source()
+        .sources()
     }
 }
 
