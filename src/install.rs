@@ -79,7 +79,7 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
     try_discard_all(dest)?;
 
     // copy the image
-    write_image(source, dest)?;
+    write_image(source, dest, true)?;
     reread_partition_table(dest)?;
     udev_settle()?;
 

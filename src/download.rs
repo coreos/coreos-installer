@@ -25,7 +25,7 @@ use crate::source::*;
 use crate::verify::*;
 
 /// Copy the image to disk and verify its signature.
-pub fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
+pub fn write_image(source: &mut ImageSource, dest: &mut File, decompress: bool) -> Result<()> {
     // wrap source for GPG verification
     let mut verify_reader: Box<dyn Read> = {
         if let Some(signature) = source.signature.as_ref() {
@@ -72,7 +72,9 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File) -> Result<()> {
         // verify default buffer size >= the largest magic number we might
         // care about
         assert!(sniff.len() >= 8);
-        if &sniff[0..2] == b"\x1f\x8b" {
+        if !decompress {
+            Box::new(buf_reader)
+        } else if &sniff[0..2] == b"\x1f\x8b" {
             Box::new(GzDecoder::new(buf_reader))
         } else if &sniff[0..6] == b"\xfd7zXZ\x00" {
             Box::new(XzDecoder::new(buf_reader))
