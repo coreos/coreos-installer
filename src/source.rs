@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
 use crate::errors::*;
 
@@ -57,6 +58,7 @@ pub struct ImageSource {
     pub reader: Box<dyn Read>,
     pub length_hint: Option<u64>,
     pub signature: Option<Vec<u8>>,
+    pub filename: String,
     pub artifact_type: String,
 }
 
@@ -107,11 +109,17 @@ impl ImageLocation for FileLocation {
             eprintln!("Couldn't read signature file: {}", result.unwrap_err());
             None
         };
+        let filename = Path::new(&self.image_path)
+            .file_name()
+            .chain_err(|| "extracting filename")?
+            .to_string_lossy()
+            .to_string();
 
         Ok(ImageSource {
             reader: Box::new(out),
             length_hint: Some(length),
             signature,
+            filename,
             artifact_type: "disk".to_string(),
         })
     }
@@ -175,11 +183,20 @@ impl ImageLocation for UrlLocation {
             s => bail!("image fetch failed: {}", s),
         };
         let length_hint = resp.content_length();
+        // ignores the Content-Disposition filename
+        let filename = resp
+            .url()
+            .path_segments()
+            .chain_err(|| "splitting image URL")?
+            .next_back()
+            .chain_err(|| "walking image URL")?
+            .to_string();
 
         Ok(ImageSource {
             reader: Box::new(resp),
             length_hint,
             signature,
+            filename,
             artifact_type: self.artifact_type.clone(),
         })
     }
