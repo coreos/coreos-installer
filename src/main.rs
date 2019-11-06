@@ -28,6 +28,7 @@ use crate::download::*;
 use crate::errors::*;
 use crate::install::*;
 use crate::iso::*;
+use crate::source::*;
 
 quick_main!(run);
 
@@ -36,6 +37,7 @@ fn run() -> Result<()> {
 
     match config {
         Config::Download(c) => download(&c),
+        Config::ListStream(c) => list_stream(&c),
         Config::Install(c) => install(&c),
         Config::IsoEmbed(c) => iso_embed(&c),
         Config::IsoShow(c) => iso_show(&c),

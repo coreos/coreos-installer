@@ -19,8 +19,10 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
+use std::iter::FromIterator;
 use std::path::Path;
 
+use crate::cmdline::*;
 use crate::errors::*;
 
 const DEFAULT_STREAM_BASE_URL: &str = "https://builds.coreos.fedoraproject.org/streams/";
@@ -274,6 +276,53 @@ impl ImageLocation for StreamLocation {
         sources.sort_by_key(|k| k.artifact_type.to_string());
         Ok(sources)
     }
+}
+
+/// Subcommand to list objects available in stream metadata.
+pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
+    // fetch stream metadata
+    let stream_url = build_stream_url(&config.stream, config.stream_base_url.as_ref())?;
+    let client = reqwest::Client::new();
+    let stream = fetch_stream(client, &stream_url)?;
+
+    // build results
+    // default to arch list
+    let mut header = format!("Architectures for stream {}:", &config.stream);
+    let mut result = Vec::from_iter(stream.architectures.keys());
+    if let Some(architecture_name) = config.architecture.as_ref() {
+        // the user specified an arch
+        if let Some(architecture) = stream.architectures.get(architecture_name) {
+            // ...and we found it
+            header = format!(
+                "Platforms for stream {}, architecture {}:",
+                &config.stream, architecture_name
+            );
+            result = Vec::from_iter(architecture.artifacts.keys());
+            if let Some(platform_name) = config.platform.as_ref() {
+                // the user also specified a platform
+                if let Some(platform) = architecture.artifacts.get(platform_name) {
+                    // ...and we found it
+                    header = format!(
+                        "Formats for stream {}, architecture {}, platform {}:",
+                        &config.stream, architecture_name, platform_name
+                    );
+                    result = Vec::from_iter(platform.formats.keys());
+                } else {
+                    bail!("No such platform: {}", platform_name);
+                }
+            }
+        } else {
+            bail!("No such architecture: {}", architecture_name);
+        }
+    }
+    result.sort();
+
+    // report results
+    println!("{}", header);
+    for item in result {
+        println!("{}", item);
+    }
+    Ok(())
 }
 
 /// Generate a stream URL from a stream name and base URL, or the default

@@ -22,6 +22,7 @@ use crate::source::*;
 pub enum Config {
     Install(InstallConfig),
     Download(DownloadConfig),
+    ListStream(ListStreamConfig),
     IsoEmbed(IsoEmbedConfig),
     IsoShow(IsoShowConfig),
     IsoRemove(IsoRemoveConfig),
@@ -41,6 +42,13 @@ pub struct DownloadConfig {
     pub directory: String,
     pub decompress: bool,
     pub insecure: bool,
+}
+
+pub struct ListStreamConfig {
+    pub stream_base_url: Option<Url>,
+    pub stream: String,
+    pub architecture: Option<String>,
+    pub platform: Option<String>,
 }
 
 pub struct IsoEmbedConfig {
@@ -229,6 +237,39 @@ pub fn parse_args() -> Result<Config> {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("list-stream")
+                .about("List available images in a Fedora CoreOS stream")
+                .usage("coreos-installer list-stream [OPTIONS] [<architecture> [<platform>]]")
+                .arg(
+                    Arg::with_name("stream")
+                        .short("s")
+                        .long("stream")
+                        .value_name("name")
+                        .help("Fedora CoreOS stream")
+                        .default_value("stable")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("architecture")
+                        .value_name("architecture")
+                        .help("Target CPU architecture")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("platform")
+                        .value_name("platform")
+                        .help("Fedora CoreOS platform name")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("stream-base-url")
+                        .long("stream-base-url")
+                        .value_name("URL")
+                        .help("Base URL for Fedora CoreOS stream metadata")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("iso")
                 .about("Embed an Ignition config in a CoreOS live ISO image")
                 .subcommand(
@@ -300,6 +341,7 @@ pub fn parse_args() -> Result<Config> {
     match app_matches.subcommand() {
         ("install", Some(matches)) => parse_install(&matches),
         ("download", Some(matches)) => parse_download(&matches),
+        ("list-stream", Some(matches)) => parse_list_stream(&matches),
         ("iso", Some(iso_matches)) => match iso_matches.subcommand() {
             ("embed", Some(matches)) => parse_iso_embed(&matches),
             ("show", Some(matches)) => parse_iso_show(&matches),
@@ -403,6 +445,30 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
             .expect("directory missing"),
         decompress: matches.is_present("decompress"),
         insecure: matches.is_present("insecure"),
+    }))
+}
+
+fn parse_list_stream(matches: &ArgMatches) -> Result<Config> {
+    let stream_base_url = if matches.is_present("stream-base-url") {
+        Some(
+            Url::parse(
+                matches
+                    .value_of("stream-base-url")
+                    .expect("stream-base-url missing"),
+            )
+            .chain_err(|| "parsing stream base URL")?,
+        )
+    } else {
+        None
+    };
+    Ok(Config::ListStream(ListStreamConfig {
+        stream_base_url,
+        stream: matches
+            .value_of("stream")
+            .map(String::from)
+            .expect("stream missing"),
+        architecture: matches.value_of("architecture").map(String::from),
+        platform: matches.value_of("platform").map(String::from),
     }))
 }
 
