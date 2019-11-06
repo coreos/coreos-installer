@@ -21,6 +21,7 @@ use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
+use crate::cmdline::*;
 use crate::errors::*;
 
 const DEFAULT_STREAM_BASE_URL: &str = "https://builds.coreos.fedoraproject.org/streams/";
@@ -274,6 +275,62 @@ impl ImageLocation for StreamLocation {
         sources.sort_by_key(|k| k.artifact_type.to_string());
         Ok(sources)
     }
+}
+
+/// Subcommand to list objects available in stream metadata.
+pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    struct Row<'a> {
+        architecture: &'a str,
+        platform: &'a str,
+        format: &'a str,
+    }
+
+    // fetch stream metadata
+    let stream_url = build_stream_url(&config.stream, config.stream_base_url.as_ref())?;
+    let client = reqwest::Client::new();
+    let stream = fetch_stream(client, &stream_url)?;
+
+    // walk formats
+    let mut rows: Vec<Row> = Vec::new();
+    for (architecture_name, architecture) in stream.architectures.iter() {
+        for (platform_name, platform) in architecture.artifacts.iter() {
+            for format_name in platform.formats.keys() {
+                rows.push(Row {
+                    architecture: architecture_name,
+                    platform: platform_name,
+                    format: format_name,
+                });
+            }
+        }
+    }
+    rows.sort();
+
+    // add header row
+    rows.insert(
+        0,
+        Row {
+            architecture: "Architecture",
+            platform: "Platform",
+            format: "Format",
+        },
+    );
+
+    // calculate field widths
+    let mut widths: [usize; 2] = [0; 2];
+    for row in &rows {
+        widths[0] = widths[0].max(row.architecture.len());
+        widths[1] = widths[1].max(row.platform.len());
+    }
+
+    // report results
+    for row in &rows {
+        println!(
+            "{:3$}  {:4$}  {}",
+            row.architecture, row.platform, row.format, widths[0], widths[1]
+        );
+    }
+    Ok(())
 }
 
 /// Generate a stream URL from a stream name and base URL, or the default
