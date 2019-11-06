@@ -261,34 +261,34 @@ impl ImageLocation for StreamLocation {
         // parse it
         let stream: Stream =
             serde_json::from_reader(resp).chain_err(|| "decoding stream metadata")?;
-        let artifact_type = "disk";
-        let artifact = stream
+        let artifacts = stream
             .architectures
             .get(&self.architecture)
             .map(|arch| arch.artifacts.get(&self.platform))
             .unwrap_or(None)
             .map(|platform| platform.formats.get(&self.format))
             .unwrap_or(None)
-            .map(|format| format.get(artifact_type))
-            .unwrap_or(None)
             .chain_err(|| {
                 format!(
-                    "couldn't find architecture {}, platform {}, format {} disk image in stream metadata",
-                    self.architecture,
-                    self.platform,
-                    self.format
+                    "couldn't find architecture {}, platform {}, format {} in stream metadata",
+                    self.architecture, self.platform, self.format
                 )
             })?;
 
-        // let UrlLocation handle the rest
-        UrlLocation::new_with_sig_and_type(
-            &Url::parse(&artifact.location)
-                .chain_err(|| "parsing image URL from stream metadata")?,
-            &Url::parse(&artifact.signature)
-                .chain_err(|| "parsing signature URL from stream metadata")?,
-            &artifact_type,
-        )
-        .sources()
+        // build sources, letting UrlLocation handle the details
+        let mut sources: Vec<ImageSource> = Vec::new();
+        for (artifact_type, artifact) in artifacts.iter() {
+            let artifact_url = Url::parse(&artifact.location)
+                .chain_err(|| "parsing artifact URL from stream metadata")?;
+            let signature_url = Url::parse(&artifact.signature)
+                .chain_err(|| "parsing signature URL from stream metadata")?;
+            let mut artifact_sources =
+                UrlLocation::new_with_sig_and_type(&artifact_url, &signature_url, &artifact_type)
+                    .sources()?;
+            sources.append(&mut artifact_sources);
+        }
+        sources.sort_by_key(|k| k.artifact_type.to_string());
+        Ok(sources)
     }
 }
 
