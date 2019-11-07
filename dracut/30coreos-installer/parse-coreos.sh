@@ -43,11 +43,14 @@ local NETWORKING_ARGS="rd.neednet=1"
 declare -a DRACUT_NET_ARGS=("ip=" "ifname=" "rd.route=" "bootdev=" "BOOTIF=" "rd.bootif=" "nameserver=" "rd.peerdns=" "biosdevname=" "vlan=" "bond=" "team=" "bridge=" "rd.net.timeout.carrier=")
 for NET_ARG in "${KERNEL_NET_ARGS[@]}" "${DRACUT_NET_ARGS[@]}"
 do
-    NET_OPT=$(getarg $NET_ARG)
+    NET_OPT=$(getargs $NET_ARG)
     if [ ! -z "$NET_OPT" ]
     then
-        echo "persist $NET_ARG to $NET_OPT" >> /tmp/debug
-        NETWORKING_ARGS+=" ${NET_ARG}${NET_OPT}"
+        for VAL in $NET_OPT
+        do
+            echo "persist $NET_ARG to $VAL" >> /tmp/debug
+            NETWORKING_ARGS+=" ${NET_ARG}${VAL}"
+        done
     fi
 done
 # only write /tmp/networking_opts if additional networking options have been specified
