@@ -2,6 +2,36 @@
 
 . /lib/dracut-lib.sh
 
+# certain kernel argument might have multiple values and
+# getarg() from dracut-lib.sh would grab the last value
+# e.g. `nameserver=192.168.122.1 namserver=1.1.1.1` would
+# only echo 1.1.1.1
+# related bug: https://bugzilla.redhat.com/show_bug.cgi?id=1763341
+getargs_multiple() {
+    local _o _val _doecho
+    local CMDLINE="$(cat /proc/cmdline)"
+    unset _val
+    unset _o
+    unset _doecho
+
+    for _o in $CMDLINE; do
+        if [ "${_o%%=*}" = "${1%%=*}" ]; then
+            if [ "${_o#*=}" = "$_o" ]; then
+                # cmdline argument has no "=<value>"
+                continue
+            fi
+
+            # concatenate the value with previous result
+            _val="${_val} ${_o#*=}"
+            _doecho=1
+        fi
+    done
+    if [ -n "$_val" ]; then
+        [ "x$_doecho" != "x" ] && echo "$_val";
+        return 0;
+    fi
+    return 1;
+}
 
 local IMAGE_URL=$(getarg coreos.inst.image_url=)
 if [ ! -z "$IMAGE_URL" ]
@@ -43,11 +73,14 @@ local NETWORKING_ARGS="rd.neednet=1"
 declare -a DRACUT_NET_ARGS=("ip=" "ifname=" "rd.route=" "bootdev=" "BOOTIF=" "rd.bootif=" "nameserver=" "rd.peerdns=" "biosdevname=" "vlan=" "bond=" "team=" "bridge=" "rd.net.timeout.carrier=")
 for NET_ARG in "${KERNEL_NET_ARGS[@]}" "${DRACUT_NET_ARGS[@]}"
 do
-    NET_OPT=$(getarg $NET_ARG)
+    NET_OPT=$(getargs_multiple $NET_ARG)
     if [ ! -z "$NET_OPT" ]
     then
-        echo "persist $NET_ARG to $NET_OPT" >> /tmp/debug
-        NETWORKING_ARGS+=" ${NET_ARG}${NET_OPT}"
+        for VAL in $NET_OPT
+        do
+            echo "persist $NET_ARG to $VAL" >> /tmp/debug
+            NETWORKING_ARGS+=" ${NET_ARG}${VAL}"
+        done
     fi
 done
 # only write /tmp/networking_opts if additional networking options have been specified
