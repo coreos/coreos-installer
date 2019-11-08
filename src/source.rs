@@ -19,14 +19,15 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
 use crate::errors::*;
 
 const DEFAULT_STREAM_BASE_URL: &str = "https://builds.coreos.fedoraproject.org/streams/";
 
 pub trait ImageLocation: Display {
-    // Obtain the image length and signature and start fetching the image
-    fn source(&self) -> Result<ImageSource>;
+    // Obtain image lengths and signatures and start fetching the images
+    fn sources(&self) -> Result<Vec<ImageSource>>;
 }
 
 // Local image source
@@ -41,6 +42,7 @@ pub struct FileLocation {
 pub struct UrlLocation {
     image_url: Url,
     sig_url: Url,
+    artifact_type: String,
 }
 
 // Remote image source specified by Fedora CoreOS stream metadata
@@ -50,12 +52,16 @@ pub struct StreamLocation {
     stream: String,
     stream_url: Url,
     architecture: String,
+    platform: String,
+    format: String,
 }
 
 pub struct ImageSource {
     pub reader: Box<dyn Read>,
     pub length_hint: Option<u64>,
     pub signature: Option<Vec<u8>>,
+    pub filename: String,
+    pub artifact_type: String,
 }
 
 impl FileLocation {
@@ -78,7 +84,7 @@ impl Display for FileLocation {
 }
 
 impl ImageLocation for FileLocation {
-    fn source(&self) -> Result<ImageSource> {
+    fn sources(&self) -> Result<Vec<ImageSource>> {
         // open local file for reading
         let mut out = OpenOptions::new()
             .read(true)
@@ -105,12 +111,19 @@ impl ImageLocation for FileLocation {
             eprintln!("Couldn't read signature file: {}", result.unwrap_err());
             None
         };
+        let filename = Path::new(&self.image_path)
+            .file_name()
+            .chain_err(|| "extracting filename")?
+            .to_string_lossy()
+            .to_string();
 
-        Ok(ImageSource {
+        Ok(vec![ImageSource {
             reader: Box::new(out),
             length_hint: Some(length),
             signature,
-        })
+            filename,
+            artifact_type: "disk".to_string(),
+        }])
     }
 }
 
@@ -118,13 +131,14 @@ impl UrlLocation {
     pub fn new(url: &Url) -> Self {
         let mut sig_url = url.clone();
         sig_url.set_path(&format!("{}.sig", sig_url.path()));
-        Self::new_with_sig(url, &sig_url)
+        Self::new_with_sig_and_type(url, &sig_url, "disk")
     }
 
-    fn new_with_sig(url: &Url, sig_url: &Url) -> Self {
+    fn new_with_sig_and_type(url: &Url, sig_url: &Url, artifact_type: &str) -> Self {
         Self {
             image_url: url.clone(),
             sig_url: sig_url.clone(),
+            artifact_type: artifact_type.to_string(),
         }
     }
 }
@@ -140,7 +154,7 @@ impl Display for UrlLocation {
 }
 
 impl ImageLocation for UrlLocation {
-    fn source(&self) -> Result<ImageSource> {
+    fn sources(&self) -> Result<Vec<ImageSource>> {
         let client = reqwest::Client::new();
 
         // fetch signature
@@ -171,17 +185,33 @@ impl ImageLocation for UrlLocation {
             s => bail!("image fetch failed: {}", s),
         };
         let length_hint = resp.content_length();
+        // ignores the Content-Disposition filename
+        let filename = resp
+            .url()
+            .path_segments()
+            .chain_err(|| "splitting image URL")?
+            .next_back()
+            .chain_err(|| "walking image URL")?
+            .to_string();
 
-        Ok(ImageSource {
+        Ok(vec![ImageSource {
             reader: Box::new(resp),
             length_hint,
             signature,
-        })
+            filename,
+            artifact_type: self.artifact_type.clone(),
+        }])
     }
 }
 
 impl StreamLocation {
-    pub fn new(stream: &str, architecture: &str, base_url: Option<&Url>) -> Result<Self> {
+    pub fn new(
+        stream: &str,
+        architecture: &str,
+        platform: &str,
+        format: &str,
+        base_url: Option<&Url>,
+    ) -> Result<Self> {
         Ok(Self {
             stream_base_url: base_url.cloned(),
             stream: stream.to_string(),
@@ -190,6 +220,8 @@ impl StreamLocation {
                 .join(&format!("{}.json", stream))
                 .chain_err(|| "building stream URL")?,
             architecture: architecture.to_string(),
+            platform: platform.to_string(),
+            format: format.to_string(),
         })
     }
 }
@@ -209,7 +241,7 @@ impl Display for StreamLocation {
 }
 
 impl ImageLocation for StreamLocation {
-    fn source(&self) -> Result<ImageSource> {
+    fn sources(&self) -> Result<Vec<ImageSource>> {
         let client = reqwest::Client::new();
 
         // fetch stream metadata
@@ -229,30 +261,34 @@ impl ImageLocation for StreamLocation {
         // parse it
         let stream: Stream =
             serde_json::from_reader(resp).chain_err(|| "decoding stream metadata")?;
-        let artifact = stream
+        let artifacts = stream
             .architectures
             .get(&self.architecture)
-            .map(|arch| arch.artifacts.get("metal"))
+            .map(|arch| arch.artifacts.get(&self.platform))
             .unwrap_or(None)
-            .map(|platform| platform.formats.get("raw.xz"))
-            .unwrap_or(None)
-            .map(|format| format.get("disk"))
+            .map(|platform| platform.formats.get(&self.format))
             .unwrap_or(None)
             .chain_err(|| {
                 format!(
-                    "couldn't find metal raw.xz disk image in stream metadata for architecture {}",
-                    self.architecture
+                    "couldn't find architecture {}, platform {}, format {} in stream metadata",
+                    self.architecture, self.platform, self.format
                 )
             })?;
 
-        // let UrlLocation handle the rest
-        UrlLocation::new_with_sig(
-            &Url::parse(&artifact.location)
-                .chain_err(|| "parsing image URL from stream metadata")?,
-            &Url::parse(&artifact.signature)
-                .chain_err(|| "parsing signature URL from stream metadata")?,
-        )
-        .source()
+        // build sources, letting UrlLocation handle the details
+        let mut sources: Vec<ImageSource> = Vec::new();
+        for (artifact_type, artifact) in artifacts.iter() {
+            let artifact_url = Url::parse(&artifact.location)
+                .chain_err(|| "parsing artifact URL from stream metadata")?;
+            let signature_url = Url::parse(&artifact.signature)
+                .chain_err(|| "parsing signature URL from stream metadata")?;
+            let mut artifact_sources =
+                UrlLocation::new_with_sig_and_type(&artifact_url, &signature_url, &artifact_type)
+                    .sources()?;
+            sources.append(&mut artifact_sources);
+        }
+        sources.sort_by_key(|k| k.artifact_type.to_string());
+        Ok(sources)
     }
 }
 

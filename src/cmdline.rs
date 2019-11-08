@@ -21,6 +21,7 @@ use crate::source::*;
 
 pub enum Config {
     Install(InstallConfig),
+    Download(DownloadConfig),
     IsoEmbed(IsoEmbedConfig),
     IsoShow(IsoShowConfig),
     IsoRemove(IsoRemoveConfig),
@@ -32,6 +33,13 @@ pub struct InstallConfig {
     pub ignition: Option<String>,
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
+    pub insecure: bool,
+}
+
+pub struct DownloadConfig {
+    pub location: Box<dyn ImageLocation>,
+    pub directory: String,
+    pub decompress: bool,
     pub insecure: bool,
 }
 
@@ -147,6 +155,80 @@ pub fn parse_args() -> Result<Config> {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("download")
+                .about("Download a CoreOS image")
+                .arg(
+                    Arg::with_name("stream")
+                        .short("s")
+                        .long("stream")
+                        .value_name("name")
+                        .help("Fedora CoreOS stream")
+                        .default_value("stable")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("architecture")
+                        .long("architecture")
+                        .value_name("name")
+                        .help("Target CPU architecture")
+                        .default_value(uname.machine())
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("platform")
+                        .short("p")
+                        .long("platform")
+                        .value_name("name")
+                        .help("Fedora CoreOS platform name")
+                        .default_value("metal")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("format")
+                        .short("f")
+                        .long("format")
+                        .value_name("name")
+                        .help("Image format")
+                        .default_value("raw.xz")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("image-url")
+                        .short("u")
+                        .long("image-url")
+                        .value_name("URL")
+                        .help("Manually specify the image URL")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("directory")
+                        .short("C")
+                        .long("directory")
+                        .value_name("path")
+                        .help("Destination directory")
+                        .default_value(".")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("decompress")
+                        .short("d")
+                        .long("decompress")
+                        .help("Decompress image and don't save signature"),
+                )
+                .arg(
+                    Arg::with_name("insecure")
+                        .long("insecure")
+                        .help("Skip signature verification"),
+                )
+                .arg(
+                    Arg::with_name("stream-base-url")
+                        .long("stream-base-url")
+                        .value_name("URL")
+                        .help("Base URL for Fedora CoreOS stream metadata")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("iso")
                 .about("Embed an Ignition config in a CoreOS live ISO image")
                 .subcommand(
@@ -217,6 +299,7 @@ pub fn parse_args() -> Result<Config> {
 
     match app_matches.subcommand() {
         ("install", Some(matches)) => parse_install(&matches),
+        ("download", Some(matches)) => parse_download(&matches),
         ("iso", Some(iso_matches)) => match iso_matches.subcommand() {
             ("embed", Some(matches)) => parse_iso_embed(&matches),
             ("show", Some(matches)) => parse_iso_show(&matches),
@@ -257,11 +340,13 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             matches
                 .value_of("architecture")
                 .expect("architecture missing"),
+            "metal",
+            "raw.xz",
             base_url.as_ref(),
         )?)
     };
     // and report it to the user
-    println!("{}", location);
+    eprintln!("{}", location);
 
     // build configuration
     Ok(Config::Install(InstallConfig {
@@ -273,6 +358,50 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         ignition: matches.value_of("ignition-path").map(String::from),
         platform: matches.value_of("platform").map(String::from),
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
+        insecure: matches.is_present("insecure"),
+    }))
+}
+
+fn parse_download(matches: &ArgMatches) -> Result<Config> {
+    // Build image location.  Ideally we'd use conflicts_with (and an
+    // ArgGroup for streams), but that doesn't play well with default
+    // arguments, so we manually prioritize modes.
+    let location: Box<dyn ImageLocation> = if matches.is_present("image-url") {
+        let image_url = Url::parse(matches.value_of("image-url").expect("image-url missing"))
+            .chain_err(|| "parsing image URL")?;
+        Box::new(UrlLocation::new(&image_url))
+    } else {
+        let base_url = if matches.is_present("stream-base-url") {
+            Some(
+                Url::parse(
+                    matches
+                        .value_of("stream-base-url")
+                        .expect("stream-base-url missing"),
+                )
+                .chain_err(|| "parsing stream base URL")?,
+            )
+        } else {
+            None
+        };
+        Box::new(StreamLocation::new(
+            matches.value_of("stream").expect("stream missing"),
+            matches
+                .value_of("architecture")
+                .expect("architecture missing"),
+            matches.value_of("platform").expect("platform missing"),
+            matches.value_of("format").expect("format missing"),
+            base_url.as_ref(),
+        )?)
+    };
+
+    // build configuration
+    Ok(Config::Download(DownloadConfig {
+        location,
+        directory: matches
+            .value_of("directory")
+            .map(String::from)
+            .expect("directory missing"),
+        decompress: matches.is_present("decompress"),
         insecure: matches.is_present("insecure"),
     }))
 }
