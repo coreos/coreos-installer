@@ -1,0 +1,12 @@
+[Unit]
+Description=CoreOS Installer Target
+OnFailure=emergency.target
+OnFailureJobMode=isolate
+AllowIsolate=yes
+
+Requires=coreos-installer.service
+Requires=coreos-installer-reboot.service
+
+# Run after most things are up
+Requires=basic.target
+After=basic.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=CoreOS Installer
+Before=coreos-installer.target
+ConditionKernelCommandLine=coreos.inst.install_dev
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/coreos-installer-service
+StandardOutput=kmsg+console
