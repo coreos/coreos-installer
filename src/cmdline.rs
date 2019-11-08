@@ -350,15 +350,8 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             .chain_err(|| "parsing image URL")?;
         Box::new(UrlLocation::new(&image_url))
     } else {
-        let base_url = if matches.is_present("stream-base-url") {
-            Some(
-                Url::parse(
-                    matches
-                        .value_of("stream-base-url")
-                        .expect("stream-base-url missing"),
-                )
-                .chain_err(|| "parsing stream base URL")?,
-            )
+        let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
+            Some(Url::parse(stream_base_url).chain_err(|| "parsing stream base URL")?)
         } else {
             None
         };
@@ -398,15 +391,8 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
             .chain_err(|| "parsing image URL")?;
         Box::new(UrlLocation::new(&image_url))
     } else {
-        let base_url = if matches.is_present("stream-base-url") {
-            Some(
-                Url::parse(
-                    matches
-                        .value_of("stream-base-url")
-                        .expect("stream-base-url missing"),
-                )
-                .chain_err(|| "parsing stream base URL")?,
-            )
+        let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
+            Some(Url::parse(stream_base_url).chain_err(|| "parsing stream base URL")?)
         } else {
             None
         };
