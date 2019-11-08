@@ -99,17 +99,17 @@ impl ImageLocation for FileLocation {
             .chain_err(|| "seeking source image file")?;
 
         // load signature file if present
-        let result = OpenOptions::new().read(true).open(&self.sig_path);
-        let signature = if result.is_ok() {
-            let mut sig_vec = Vec::new();
-            result
-                .unwrap()
-                .read_to_end(&mut sig_vec)
-                .chain_err(|| "reading signature file")?;
-            Some(sig_vec)
-        } else {
-            eprintln!("Couldn't read signature file: {}", result.unwrap_err());
-            None
+        let signature = match OpenOptions::new().read(true).open(&self.sig_path) {
+            Ok(mut file) => {
+                let mut sig_vec = Vec::new();
+                file.read_to_end(&mut sig_vec)
+                    .chain_err(|| "reading signature file")?;
+                Some(sig_vec)
+            }
+            Err(err) => {
+                eprintln!("Couldn't read signature file: {}", err);
+                None
+            }
         };
         let filename = Path::new(&self.image_path)
             .file_name()
