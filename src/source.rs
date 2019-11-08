@@ -21,6 +21,7 @@ use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
+use crate::cmdline::*;
 use crate::errors::*;
 
 const DEFAULT_STREAM_BASE_URL: &str = "https://builds.coreos.fedoraproject.org/streams/";
@@ -215,10 +216,7 @@ impl StreamLocation {
         Ok(Self {
             stream_base_url: base_url.cloned(),
             stream: stream.to_string(),
-            stream_url: base_url
-                .unwrap_or(&Url::parse(DEFAULT_STREAM_BASE_URL).unwrap())
-                .join(&format!("{}.json", stream))
-                .chain_err(|| "building stream URL")?,
+            stream_url: build_stream_url(stream, base_url)?,
             architecture: architecture.to_string(),
             platform: platform.to_string(),
             format: format.to_string(),
@@ -244,23 +242,10 @@ impl ImageLocation for StreamLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
         let client = reqwest::Client::new();
 
-        // fetch stream metadata
-        let resp = client
-            .get(self.stream_url.clone())
-            .send()
-            .chain_err(|| "fetching stream metadata")?;
-        match resp.status() {
-            StatusCode::OK => (),
-            s => bail!(
-                "stream metadata fetch from {} failed: {}",
-                self.stream_url,
-                s
-            ),
-        };
+        // fetch and parse stream metadata
+        let stream = fetch_stream(client, &self.stream_url)?;
 
-        // parse it
-        let stream: Stream =
-            serde_json::from_reader(resp).chain_err(|| "decoding stream metadata")?;
+        // descend it
         let artifacts = stream
             .architectures
             .get(&self.architecture)
@@ -290,6 +275,88 @@ impl ImageLocation for StreamLocation {
         sources.sort_by_key(|k| k.artifact_type.to_string());
         Ok(sources)
     }
+}
+
+/// Subcommand to list objects available in stream metadata.
+pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    struct Row<'a> {
+        architecture: &'a str,
+        platform: &'a str,
+        format: &'a str,
+    }
+
+    // fetch stream metadata
+    let stream_url = build_stream_url(&config.stream, config.stream_base_url.as_ref())?;
+    let client = reqwest::Client::new();
+    let stream = fetch_stream(client, &stream_url)?;
+
+    // walk formats
+    let mut rows: Vec<Row> = Vec::new();
+    for (architecture_name, architecture) in stream.architectures.iter() {
+        for (platform_name, platform) in architecture.artifacts.iter() {
+            for format_name in platform.formats.keys() {
+                rows.push(Row {
+                    architecture: architecture_name,
+                    platform: platform_name,
+                    format: format_name,
+                });
+            }
+        }
+    }
+    rows.sort();
+
+    // add header row
+    rows.insert(
+        0,
+        Row {
+            architecture: "Architecture",
+            platform: "Platform",
+            format: "Format",
+        },
+    );
+
+    // calculate field widths
+    let mut widths: [usize; 2] = [0; 2];
+    for row in &rows {
+        widths[0] = widths[0].max(row.architecture.len());
+        widths[1] = widths[1].max(row.platform.len());
+    }
+
+    // report results
+    for row in &rows {
+        println!(
+            "{:3$}  {:4$}  {}",
+            row.architecture, row.platform, row.format, widths[0], widths[1]
+        );
+    }
+    Ok(())
+}
+
+/// Generate a stream URL from a stream name and base URL, or the default
+/// base URL if none is specified.
+fn build_stream_url(stream: &str, base_url: Option<&Url>) -> Result<Url> {
+    Ok(base_url
+        .unwrap_or(&Url::parse(DEFAULT_STREAM_BASE_URL).unwrap())
+        .join(&format!("{}.json", stream))
+        .chain_err(|| "building stream URL")?)
+}
+
+/// Fetch and parse stream metadata.
+fn fetch_stream(client: reqwest::Client, url: &Url) -> Result<Stream> {
+    // fetch stream metadata
+    let resp = client
+        .get(url.clone())
+        .send()
+        .chain_err(|| "fetching stream metadata")?;
+    match resp.status() {
+        StatusCode::OK => (),
+        s => bail!("stream metadata fetch from {} failed: {}", url, s),
+    };
+
+    // parse it
+    let stream: Stream = serde_json::from_reader(resp).chain_err(|| "decoding stream metadata")?;
+    Ok(stream)
 }
 
 #[derive(Debug, Deserialize)]
