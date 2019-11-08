@@ -115,14 +115,16 @@ impl Drop for Mount {
         // Unmount sometimes fails immediately after closing the last open
         // file on the partition.  Retry several times before giving up.
         for retries in (0..20).rev() {
-            let result = mount::umount(&self.mountpoint);
-            if result.is_ok() {
-                break;
-            } else if retries == 0 {
-                eprintln!("umounting {}: {}", self.device, result.unwrap_err());
-                return;
-            } else {
-                sleep(Duration::from_millis(100));
+            match mount::umount(&self.mountpoint) {
+                Ok(_) => break,
+                Err(err) => {
+                    if retries == 0 {
+                        eprintln!("umounting {}: {}", self.device, err);
+                        return;
+                    } else {
+                        sleep(Duration::from_millis(100));
+                    }
+                }
             }
         }
         if let Err(err) = remove_dir(&self.mountpoint) {
