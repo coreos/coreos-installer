@@ -5,7 +5,7 @@ license = "Apache-2.0"
 edition = "2018"
 authors = [ "Benjamin Gilbert <bgilbert@redhat.com>" ]
 description = "Installer for Fedora CoreOS and RHEL CoreOS"
-version = "0.0.1"
+version = "0.1.1-alpha.0"
 
 [package.metadata.release]
 sign-commit = true
