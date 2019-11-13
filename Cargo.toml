@@ -34,7 +34,7 @@ flate2 = "^1.0.12"
 nix = "^0.15.0"
 progress-streams = "^1.1.0"
 reqwest = "^0.9.22"
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tempdir = "0.3"
 xz2 = "^0.1.6"
