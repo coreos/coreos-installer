@@ -820,17 +820,11 @@ write_image_to_disk() {
         fi
     elif [[ "$arch" == "s390x" ]]
     then
-        case $(systemd-detect-virt) in
-            none|zvm) # 'none' means LPAR
-                if [[ "${DEST_DEV}" =~ "dasd" ]]; then
-                    write_image_to_dasd
-                else
-                    write_image_to_zfcp_disk
-                fi
-                ;;
-            kvm|qemu) log "Use qcow images for KVM s390x installation instead"; exit 1 ;;
-            *) log "Unsupported hypervisor"; exit 1 ;;
-        esac
+        if [[ "${DEST_DEV}" =~ "dasd" ]]; then
+            write_image_to_dasd
+        else
+            write_image_to_zfcp_disk
+        fi
     else
         log "Unsupported architecture"
         exit 1
