@@ -752,7 +752,7 @@ EOF
     set -- ${boot_partition[@]} ${root_partition[@]}
     while [ $# -gt 0 ]; do
         dd bs=4096 if="${imagefile}" iflag=fullblock of="${DEST_DEV}" \
-            status=progress \
+            status=none \
             skip="$1" \
             count="$2" \
             seek="$(( $3 * $block_per_tracks ))"
@@ -795,7 +795,7 @@ write_image_to_zfcp_disk() {
     do
         eval ${line%%:*} ${line##*:}
         dd if=${imagefile} bs=512 iflag=fullblock \
-            of="${DEST_DEV}" status=progress skip=$start seek=$start count=$size
+            of="${DEST_DEV}" status=none skip=$start seek=$start count=$size
         if [[ $? -ne 0 ]]; then
             log "failed to write image to zFCP SCSI disk"
             exit 1
