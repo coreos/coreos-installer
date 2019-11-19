@@ -3,6 +3,7 @@ name = "coreos-installer"
 repository = "https://github.com/coreos/coreos-installer"
 license = "Apache-2.0"
 edition = "2018"
+exclude = ["/.github", "/.gitignore", "/.travis.yml", "/Dockerfile"]
 authors = [ "Benjamin Gilbert <bgilbert@redhat.com>" ]
 description = "Installer for Fedora CoreOS and RHEL CoreOS"
 version = "0.1.1-alpha.0"
@@ -33,7 +34,7 @@ flate2 = "^1.0.13"
 nix = "^0.15.0"
 progress-streams = "^1.1.0"
 reqwest = "^0.9.22"
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tempdir = "0.3"
 xz2 = "^0.1.6"

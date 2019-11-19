@@ -58,11 +58,11 @@ Push access to the upstream repository is required in order to publish the new t
 
 - publish this release on GitHub:
   - [ ] open a web browser and [create a GitHub Release](https://github.com/coreos/coreos-installer/releases/new) for the tag above
-  - [ ] write a short changelog (i.e. re-use the PR content) and publish the release
+  - [ ] write a short changelog (i.e. re-use the PR content)
   - [ ] upload `target/coreos-installer-${RELEASE_VER}-vendor.tar.gz`
-  - record digests of local artifacts:
-    - [ ] `sha256sum target/package/coreos-installer-${RELEASE_VER}.crate`
-    - [ ] `sha256sum target/coreos-installer-${RELEASE_VER}-vendor.tar.gz`
+  - [ ] record digests of local artifacts:
+    - `sha256sum target/package/coreos-installer-${RELEASE_VER}.crate`
+    - `sha256sum target/coreos-installer-${RELEASE_VER}-vendor.tar.gz`
   - [ ] publish release
 
 - update the `release` tag on Quay:
@@ -70,13 +70,14 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] click the gear next to the tag, select "Add New Tag", enter `release`, and confirm
 
 - clean up:
-  - [ ] `unset RELEASE_VER`
-  - [ ] `unset UPSTREAM_REMOTE`
   - [ ] `cargo clean`
   - [ ] `rm -rf vendor`
   - [ ] `git checkout master`
   - [ ] `git pull ${UPSTREAM_REMOTE} master`
   - [ ] `git push ${UPSTREAM_REMOTE} :release-${RELEASE_VER}`
+  - [ ] `git branch -d `release-${RELEASE_VER}`
+  - [ ] `unset RELEASE_VER`
+  - [ ] `unset UPSTREAM_REMOTE`
 
 [cargo-release]: https://github.com/sunng87/cargo-release
 [rustup]: https://rustup.rs/
