@@ -140,12 +140,24 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
     // giving up.
     for retries in (0..20).rev() {
         let result = unsafe { blkrrpart(fd) };
-        if result.is_ok() {
-            break;
-        } else if retries == 0 {
-            return result.and(Ok(())).chain_err(|| "rereading partition table");
-        } else {
-            sleep(Duration::from_millis(100));
+        match result {
+            Ok(_) => break,
+            Err(err) => {
+                if retries == 0 {
+                    if err == nix::Error::from_errno(Errno::EINVAL) {
+                        return Err(err).chain_err(|| {
+                            "couldn't reread partition table: device may not support partitions"
+                        });
+                    } else if err == nix::Error::from_errno(Errno::EBUSY) {
+                        return Err(err)
+                            .chain_err(|| "couldn't reread partition table: device is in use");
+                    } else {
+                        return Err(err).chain_err(|| "couldn't reread partition table");
+                    }
+                } else {
+                    sleep(Duration::from_millis(100));
+                }
+            }
         }
     }
     Ok(())
