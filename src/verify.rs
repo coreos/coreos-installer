@@ -65,6 +65,61 @@ impl<R: Read> GpgReader<R> {
             bail!("gpg --import failed");
         }
 
+        // list the public keys we just imported
+        let mut list = Command::new("gpg")
+            .arg("--homedir")
+            .arg(gpgdir.path())
+            .arg("--batch")
+            .arg("--list-keys")
+            .arg("--with-colons")
+            .stdout(Stdio::piped())
+            .spawn()
+            .chain_err(|| "running gpg --list-keys")?;
+        let mut list_output = String::new();
+        list.stdout
+            .as_mut()
+            .unwrap()
+            .read_to_string(&mut list_output)
+            .chain_err(|| "listing GPG keys")?;
+        if !list
+            .wait()
+            .chain_err(|| "waiting for gpg --list-keys")?
+            .success()
+        {
+            bail!("gpg --list-keys failed");
+        }
+
+        // accumulate key IDs into trust arguments
+        let mut trust: Vec<&str> = Vec::new();
+        for line in list_output.lines() {
+            let fields: Vec<&str> = line.split(':').collect();
+            // only look at public keys
+            if fields[0] != "pub" {
+                continue;
+            }
+            // extract key ID
+            if fields.len() >= 5 {
+                trust.append(&mut vec!["--trusted-key", fields[4]]);
+            }
+        }
+
+        // mark keys trusted in trustdb
+        // We do this as a separate pass to keep the resulting log lines
+        // out of the verify output.
+        let trustdb = Command::new("gpg")
+            .arg("--homedir")
+            .arg(gpgdir.path())
+            .arg("--batch")
+            .arg("--check-trustdb")
+            .args(trust)
+            .output()
+            .chain_err(|| "running gpg --check-trustdb")?;
+        if !trustdb.status.success() {
+            // copy out its stderr
+            eprint!("{}", String::from_utf8_lossy(&*trustdb.stderr));
+            bail!("gpg --check-trustdb failed");
+        }
+
         // write signature to file
         let mut signature_path = gpgdir.path().to_path_buf();
         signature_path.push("signature");
@@ -85,8 +140,6 @@ impl<R: Read> GpgReader<R> {
             .arg("--homedir")
             .arg(gpgdir.path())
             .arg("--batch")
-            .arg("--trust-model")
-            .arg("always")
             .arg("--verify")
             .arg(&signature_path)
             .arg("-")
