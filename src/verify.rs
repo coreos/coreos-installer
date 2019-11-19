@@ -85,11 +85,8 @@ impl<R: Read> GpgReader<R> {
             .arg("--homedir")
             .arg(gpgdir.path())
             .arg("--batch")
-            // avoid warnings about untrusted keys
             .arg("--trust-model")
-            .arg("tofu")
-            .arg("--tofu-default-policy")
-            .arg("good")
+            .arg("always")
             .arg("--verify")
             .arg(&signature_path)
             .arg("-")
