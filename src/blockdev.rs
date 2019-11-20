@@ -15,7 +15,8 @@
 use error_chain::bail;
 use nix::errno::Errno;
 use nix::{self, ioctl_none, ioctl_write_ptr_bad, mount, request_code_none};
-use serde::Deserialize;
+use regex::Regex;
+use std::collections::HashMap;
 use std::fs::{remove_dir, File};
 use std::io::{Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
@@ -36,23 +37,17 @@ pub fn mount_boot(device: &str) -> Result<Mount> {
     }
 }
 
-#[derive(Deserialize)]
-struct LsBlk {
-    blockdevices: Vec<BlkDev>,
-}
-
-#[derive(Deserialize)]
 struct BlkDev {
     path: String,
-    label: Option<String>,
     fstype: Option<String>,
 }
 
 fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>> {
+    // have lsblk enumerate partitions on the device
     let result = Command::new("lsblk")
-        .arg("--json")
+        .arg("--pairs")
         .arg("--output")
-        .arg("PATH,LABEL,FSTYPE")
+        .arg("NAME,LABEL,FSTYPE")
         .arg(device)
         .output()
         .chain_err(|| "running lsblk")?;
@@ -61,19 +56,56 @@ fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>>
         eprint!("{}", String::from_utf8_lossy(&*result.stderr));
         bail!("lsblk of {} failed", device);
     }
-    let output: LsBlk =
-        serde_json::from_slice(&*result.stdout).chain_err(|| "decoding lsblk JSON")?;
+    let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
+
+    // walk each device in the output
     let mut found: Option<BlkDev> = None;
-    for dev in output.blockdevices {
-        if dev.label.is_none() || dev.label.as_ref().unwrap() != label {
-            continue;
+    for line in output.lines() {
+        // parse key-value pairs
+        let fields = split_lsblk_line(line);
+
+        // does the label match?
+        match fields.get("LABEL") {
+            None => continue,
+            Some(l) => {
+                if l != label {
+                    continue;
+                }
+            }
         }
+
+        // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH.
+        // Assemble device path from dirname and NAME.
+        let mut path = Path::new(device)
+            .parent()
+            .chain_err(|| format!("couldn't get parent directory of {}", device))?
+            .to_path_buf();
+        match fields.get("NAME") {
+            None => continue,
+            Some(name) => path.push(name),
+        }
+
+        // accept
         if found.is_some() {
             bail!("found multiple devices on {} with label: {}", device, label);
         }
-        found = Some(dev);
+        found = Some(BlkDev {
+            path: path.to_str().expect("couldn't round-trip path").to_string(),
+            fstype: fields.get("FSTYPE").map(|v| v.to_string()),
+        });
     }
     Ok(found)
+}
+
+/// Parse key-value pairs from lsblk --pairs.
+/// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
+fn split_lsblk_line(line: &str) -> HashMap<String, String> {
+    let re = Regex::new(r#"([A-Z-]+)="([^"]+)""#).unwrap();
+    let mut fields: HashMap<String, String> = HashMap::new();
+    for cap in re.captures_iter(line) {
+        fields.insert(cap[1].to_string(), cap[2].to_string());
+    }
+    fields
 }
 
 #[derive(Debug)]
@@ -216,4 +248,45 @@ pub fn udev_settle() -> Result<()> {
         bail!("udevadm settle failed");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maplit::hashmap;
+
+    #[test]
+    fn lsblk_split() {
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda" LABEL="" FSTYPE="""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda"),
+            }
+        );
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda1" LABEL="" FSTYPE="vfat""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda1"),
+                String::from("FSTYPE") => String::from("vfat")
+            }
+        );
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda2" LABEL="boot" FSTYPE="ext4""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda2"),
+                String::from("LABEL") => String::from("boot"),
+                String::from("FSTYPE") => String::from("ext4"),
+            }
+        );
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda3" LABEL="foo=\x22bar\x22 baz" FSTYPE="ext4""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda3"),
+                // for now, we don't care about resolving lsblk's hex escapes,
+                // so we just pass them through
+                String::from("LABEL") => String::from(r#"foo=\x22bar\x22 baz"#),
+                String::from("FSTYPE") => String::from("ext4"),
+            }
+        );
+    }
 }
