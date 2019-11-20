@@ -249,3 +249,44 @@ pub fn udev_settle() -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maplit::hashmap;
+
+    #[test]
+    fn lsblk_split() {
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda" LABEL="" FSTYPE="""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda"),
+            }
+        );
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda1" LABEL="" FSTYPE="vfat""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda1"),
+                String::from("FSTYPE") => String::from("vfat")
+            }
+        );
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda2" LABEL="boot" FSTYPE="ext4""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda2"),
+                String::from("LABEL") => String::from("boot"),
+                String::from("FSTYPE") => String::from("ext4"),
+            }
+        );
+        assert_eq!(
+            split_lsblk_line(r#"NAME="sda3" LABEL="foo=\x22bar\x22 baz" FSTYPE="ext4""#),
+            hashmap! {
+                String::from("NAME") => String::from("sda3"),
+                // for now, we don't care about resolving lsblk's hex escapes,
+                // so we just pass them through
+                String::from("LABEL") => String::from(r#"foo=\x22bar\x22 baz"#),
+                String::from("FSTYPE") => String::from("ext4"),
+            }
+        );
+    }
+}
