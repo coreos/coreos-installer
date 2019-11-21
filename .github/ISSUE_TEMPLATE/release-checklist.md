@@ -75,7 +75,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `git checkout master`
   - [ ] `git pull ${UPSTREAM_REMOTE} master`
   - [ ] `git push ${UPSTREAM_REMOTE} :release-${RELEASE_VER}`
-  - [ ] `git branch -d `release-${RELEASE_VER}`
+  - [ ] `git branch -d release-${RELEASE_VER}`
   - [ ] `unset RELEASE_VER`
   - [ ] `unset UPSTREAM_REMOTE`
 
