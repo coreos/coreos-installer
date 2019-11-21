@@ -294,6 +294,12 @@ ZskQ/mDUv6F4w6N8Vk9R/nJTfpI36vWTcH7xxLNoNRlL2b/7ra6dB8YPsOdLy158
 -----END PGP PUBLIC KEY BLOCK-----
 "
 
+arch=$(uname -m)
+boot_partition="/mnt/boot_partition"
+tmpfs_mountpoint="/mnt/dl"
+imagefile="$tmpfs_mountpoint/imagefile"
+imagefile_compressed="$tmpfs_mountpoint/imagefile.compressed"
+imagefile_compressed_sig="$tmpfs_mountpoint/imagefile.compressed.sig"
 
 ############################################################
 # Helper to mount the boot partition from the device
@@ -313,16 +319,14 @@ mount_boot_partition() {
     # The first command will find the partition with the boot label
     # and the eval command will set the $UUID variable that we use later.
     set -o pipefail
-    output=$(lsblk "${DEST_DEV}" --output NAME,LABEL,UUID --pairs | grep 'LABEL="boot"')
-    eval $(echo $output | tr ' ' '\n' | tail -n 1)
-    set +o pipefail
-
     let retry=0
     while true
     do
-        mount "/dev/disk/by-uuid/${UUID}" /mnt/boot_partition
+        output=$(lsblk "${DEST_DEV}" --output NAME,LABEL,UUID --pairs | grep 'LABEL="boot"')
+        eval $(echo $output | tr ' ' '\n' | tail -n 1)
+        mount "/dev/disk/by-uuid/${UUID}" "$boot_partition"
         RETCODE=$?
-        if [[ $RETCODE -ne 0 ]]; then
+        if [[ -z "$output" ]] || [[ $RETCODE -ne 0 ]]; then
             if [[ $retry -lt 30 ]]; then
                 # retry and sleep to allow udevd to populate /dev/disk/by-uuid
                 sleep 1
@@ -334,6 +338,7 @@ mount_boot_partition() {
         fi
         break;
     done
+    set +o pipefail
 }
 
 ############################################################
@@ -347,12 +352,12 @@ write_ignition_file() {
 
     log "Embedding provided Ignition config"
     # mount the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
 
-    mkdir -p /mnt/boot_partition/ignition
-    cp /tmp/ignition.ign /mnt/boot_partition/ignition/config.ign
+    mkdir -p "${boot_partition}/ignition"
+    cp /tmp/ignition.ign "${boot_partition}/ignition/config.ign"
     RETCODE=$?
     if [[ $RETCODE -ne 0 ]]; then
         log "failed writing ignition config"
@@ -371,11 +376,11 @@ write_networking_opts() {
 
     log "Embedding provided networking options"
     # check for the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
 
-    echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> /mnt/boot_partition/ignition.firstboot
+    echo "set ignition_network_kcmdline=\"$(cat /tmp/networking_opts)\"" >> "${boot_partition}/ignition.firstboot"
 }
 
 #########################################################
@@ -394,10 +399,10 @@ write_platform_id() {
 
     log "Overwriting ignition platform id"
     # check for the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
-    local conf_files=$(ls /mnt/boot_partition/loader/entries/*conf)
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
+    local conf_files=$(ls ${boot_partition}/loader/entries/*conf)
 
     for f in $conf_files
     do
@@ -425,11 +430,11 @@ write_additional_opts() {
 
     log "Embedding provided additional options"
     # check for the boot partition
-    mkdir -p /mnt/boot_partition
-    mount_boot_partition /mnt/boot_partition
-    trap 'umount /mnt/boot_partition; trap - RETURN' RETURN
+    mkdir -p "$boot_partition"
+    mount_boot_partition "$boot_partition"
+    trap 'umount $boot_partition; trap - RETURN' RETURN
 
-    echo "set ignition_extra_kcmdline=\"$(cat /tmp/additional_opts)\"" >> /mnt/boot_partition/ignition.firstboot
+    echo "set ignition_extra_kcmdline=\"$(cat /tmp/additional_opts)\"" >> "${boot_partition}/ignition.firstboot"
 }
 
 ############################################################
@@ -572,8 +577,13 @@ get_ignition_url() {
 #########################################################
 mount_tmpfs() {
     log "Mounting tmpfs"
-    mkdir -p /mnt/dl
-    mount -t tmpfs -o size=${TMPFS_MBSIZE}m tmpfs /mnt/dl
+    if [ -n "$1" ]; then
+        options="remount,size=${1}m"
+    else
+        options="size=${TMPFS_MBSIZE}m"
+    fi
+    mkdir -p "$tmpfs_mountpoint"
+    mount -t tmpfs -o "$options" tmpfs "$tmpfs_mountpoint"
 }
 
 #########################################################
@@ -581,15 +591,15 @@ mount_tmpfs() {
 #########################################################
 download_image() {
     log "Downloading install image"
-    (curl -L -s -o /mnt/dl/imagefile.compressed $IMAGE_URL; echo $? > /tmp/curl-rc) &
+    (curl -L -s -o ${imagefile_compressed} $IMAGE_URL; echo $? > /tmp/curl-rc) &
 
     while [ ! -f /tmp/curl-rc ]; do
         # If the image hasn't show up yet then wait a sec and loop
-        if [ ! -f /mnt/dl/imagefile.compressed ]; then
+        if [ ! -f ${imagefile_compressed} ]; then
             sleep 1
             continue
         fi
-        PART_FILE_SIZE=$(ls -l /mnt/dl/imagefile.compressed | awk '{print $5}') 2>/dev/null
+        PART_FILE_SIZE=$(ls -l ${imagefile_compressed} | awk '{print $5}') 2>/dev/null
         PCT=$(dc -e"2 k $PART_FILE_SIZE $IMAGE_SIZE / 100 * p" | sed -e"s/\..*$//" 2>/dev/null)
         echo "${PCT}%" >&2
         sleep 1
@@ -601,6 +611,18 @@ download_image() {
         log "Image download failed"
         exit 1
     fi
+
+    # Check for gzip and xz correspondingly
+    if [ "$(dd count=2 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\x1f\x8b')" ]
+    then
+        DECOMPRESSION_TOOL='zcat'
+    elif [ "$(dd count=5 bs=1 if=${imagefile_compressed} status=none)" = "$(printf '\xfd\x37\x7a\x58\x5a')" ]
+    then
+        DECOMPRESSION_TOOL='xzcat'
+    else
+        log "Compressed file format is not supported. Supported formats: '.xz', '.gz'"
+        exit 1
+    fi
 }
 
 #########################################################
@@ -608,7 +630,7 @@ download_image() {
 #########################################################
 download_sig() {
     log "Getting signature"
-    curl -L -s -o /mnt/dl/imagefile.compressed.sig $SIG_URL
+    curl -L -s -o ${imagefile_compressed_sig} $SIG_URL
     if [ $? -ne 0 ]
     then
         log "Unable to download sig file."
@@ -625,7 +647,7 @@ validate_image() {
     then
         if [ "$SIG_TYPE" == "gpg" ]
         then
-            gpg2 --trusted-key "${GPG_LONG_ID}" --verify /mnt/dl/imagefile.compressed.sig >/dev/null 2>&1
+            gpg2 --trusted-key "${GPG_LONG_ID}" --verify ${imagefile_compressed_sig} >/dev/null 2>&1
             if [ $? -ne 0 ]
             then
                 log "Install Image is corrupted."
@@ -633,8 +655,9 @@ validate_image() {
             fi
         elif [ "$SIG_TYPE" == "sha" ]
         then
-            sed -i -e"s/$/\ \/mnt\/dl\/imagefile\.gz/" /mnt/dl/imagefile.compressed.sig
-            sha256sum -c /mnt/dl/imagefile.compressed.sig
+            # sed original file path with current path in signature file
+            sed -i -e "s@/.*/@$tmpfs_mountpoint/@g" ${imagefile_compressed_sig}
+            sha256sum -c ${imagefile_compressed_sig}
             if [ $? -ne 0 ]
             then
                 log "Install Image is corrupted."
@@ -663,29 +686,147 @@ log() {
 }
 
 #########################################################
+#Update bootloader if needed
+#########################################################
+write_zipl_bootloader() {
+    if [[ "$arch" == "s390x" ]]; then
+        log "Updating zipl"
+        mkdir -p "$boot_partition"
+        mount_boot_partition "$boot_partition"
+        trap 'umount $boot_partition; trap - RETURN' RETURN
+
+
+        blsfile=$(ls ${boot_partition}/loader/entries/*.conf)
+        # We need to propagate s390x parameter to later boots via BLS files
+        # More details : https://github.com/coreos/fedora-coreos-tracker/issues/305
+        options="$(grep options $blsfile | cut -d' ' -f2-) $(cat /tmp/s390x_opts)"
+        sed -i -e "s@^options.*@options $options@g" $blsfile
+        # And also keep networking parameters for first boot
+        echo "$options $(cat /tmp/networking_opts) ignition.firstboot" > /tmp/zipl_prm
+        zipl --verbose -p /tmp/zipl_prm -i $(ls ${boot_partition}/ostree/*/*vmlinuz*) -r $(ls ${boot_partition}/ostree/*/*initramfs*) --target "$boot_partition"
+        if [[ $? -ne 0 ]]; then
+            log "failed updating bootloder"
+            exit 1
+        fi
+        # this allows a reboot into new installed disk
+        chreipl "${DEST_DEV}"
+    fi
+}
+
+#########################################################
+#Handle s390x ECKD DASD devices
+#########################################################
+write_image_to_dasd() {
+    log "Extracting disk image"
+    mount_tmpfs $(( $($DECOMPRESSION_TOOL ${imagefile_compressed} | wc --bytes) / 1024 / 1024 + ${TMPFS_MBSIZE} + 100 ))
+    $DECOMPRESSION_TOOL ${imagefile_compressed} > ${imagefile}
+
+    # low-level format the ECKD DASD using dasdfmt, if needed
+    DEST_DEV_BUS=$(lszdev --by-node ${DEST_DEV} | tail -n 1  | awk '{print $2}')
+    if [ "$(< /sys/bus/ccw/devices/${DEST_DEV_BUS}/status)" = "unformatted" ]; then
+        dasdfmt --blocksize 4096 --disk_layout cdl --mode full -ypv "${DEST_DEV}"
+    fi
+    block_per_tracks=$(fdasd -p ${DEST_DEV} | grep blocks\ per\ track | awk '{print $5}')
+
+    # the first 2 tracks of the ECKD DASD are reserved
+    first_track=2
+    # in RHCOS4.2 using anaconda, we have root partition at index 2 while in FCOS it's 4
+    BOOTPN=1
+    ROOTPN=2
+    if [[ -n $(grep -i fedora /usr/lib/initrd-release) ]]; then
+        ROOTPN=4
+    fi
+    boot_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}${BOOTPN}" | awk '{print $2,$3}'))
+    root_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}${ROOTPN}" | awk '{print $2,$3}'))
+    boot_partition+=( $first_track $(dc -e "${boot_partition[1]} $block_per_tracks 1 - + $block_per_tracks / p") )
+    root_partition+=($(( ${boot_partition[2]} + ${boot_partition[3]} )) "last")
+    cat > "/tmp/fdasd_conf" <<- EOF
+[$first_track,$(( ${root_partition[2]} - 1 )),native]
+[${root_partition[2]},${root_partition[3]},native]
+EOF
+
+    # format the ECKD DASD using fdasd program
+    fdasd --silent --config /tmp/fdasd_conf "${DEST_DEV}"
+
+    # copy the content of each partition
+    set -- ${boot_partition[@]} ${root_partition[@]}
+    while [ $# -gt 0 ]; do
+        dd bs=4096 if="${imagefile}" iflag=fullblock of="${DEST_DEV}" \
+            status=none \
+            skip="$1" \
+            count="$2" \
+            seek="$(( $3 * $block_per_tracks ))"
+        if [[ $? -ne 0 ]]; then
+            log "failed to write image to ECKD DASD device"
+            exit 1
+        fi
+        shift 4
+    done
+}
+
+#########################################################
+#Handle s390x zFCP SCSI devices
+#########################################################
+write_image_to_zfcp_disk() {
+    log "Extracting disk image"
+    mount_tmpfs $(( $($DECOMPRESSION_TOOL ${imagefile_compressed} | wc --bytes) / 1024 / 1024 + ${TMPFS_MBSIZE} + 100 ))
+    $DECOMPRESSION_TOOL ${imagefile_compressed} > ${imagefile}
+
+    # we have to store the strings to a file because any change in this
+    # while-do block would not take effect outside
+    (while IFS='' read -r line || [ -n "$line" ]
+    do
+        if [[ $line =~ "start=" ]]
+        then
+            # we save the start= and size= here, then dd the partitions later
+            printf "%s:%s\n" \
+                "$(echo $line | cut -d: -f 2 | cut -d, -f 1 | tr -d ' ')" \
+                "$(echo $line | cut -d: -f 2 | cut -d, -f 2 | tr -d ' ')" \
+                >> /tmp/sfdisk_info
+        elif ! [[ $line =~ "label:" || $line =~ "label-id:" || $line =~ "unit:" ]]
+        then
+            continue
+        fi
+        echo $line
+    done <<< $(sfdisk -d ${imagefile})
+    ) | sfdisk "${DEST_DEV}"
+
+    while IFS='' read -r line || [ -n "$line" ]
+    do
+        eval ${line%%:*} ${line##*:}
+        dd if=${imagefile} bs=512 iflag=fullblock \
+            of="${DEST_DEV}" status=none skip=$start seek=$start count=$size
+        if [[ $? -ne 0 ]]; then
+            log "failed to write image to zFCP SCSI disk"
+            exit 1
+        fi
+    done < /tmp/sfdisk_info
+}
+#########################################################
 #And Write the image to disk
 #########################################################
 write_image_to_disk() {
     log "Writing disk image"
 
     set -o pipefail
-    # Check for gzip and xz correspondingly
-    if [ "$(dd count=2 bs=1 if=/mnt/dl/imagefile.compressed status=none)" = "$(printf '\x1f\x8b')" ]
+    if [[ "${arch}" =~ (aarch64|ppc64le|x86_64) ]]
     then
-        DECOMPRESSION_TOOL='zcat'
-    elif [ "$(dd count=5 bs=1 if=/mnt/dl/imagefile.compressed status=none)" = "$(printf '\xfd\x37\x7a\x58\x5a')" ]
+        $DECOMPRESSION_TOOL ${imagefile_compressed} |\
+        dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
+        RETCODE=$?
+        if [[ $RETCODE -ne 0 ]]; then
+            log "failed to write image to disk"
+            exit 1
+        fi
+    elif [[ "$arch" == "s390x" ]]
     then
-        DECOMPRESSION_TOOL='xzcat'
+        if [[ "${DEST_DEV}" =~ "dasd" ]]; then
+            write_image_to_dasd
+        else
+            write_image_to_zfcp_disk
+        fi
     else
-        log "Compressed file format is not supported. Supported formats: '.xz', '.gz'"
-        exit 1
-    fi
-
-    $DECOMPRESSION_TOOL /mnt/dl/imagefile.compressed |\
-    dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
-    RETCODE=$?
-    if [[ $RETCODE -ne 0 ]]; then
-        log "failed to write image to disk"
+        log "Unsupported architecture"
         exit 1
     fi
     set +o pipefail
@@ -787,6 +928,9 @@ main() {
 
     # If ignition platform id is provided, overwrite ignition.platform.id in BLS
     write_platform_id
+
+    # If platform is s390x, update bootloader records
+    write_zipl_bootloader
 
     log "Install complete"
 }

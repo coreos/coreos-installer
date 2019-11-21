@@ -17,6 +17,11 @@ cmdline_arg() {
     echo "${value}"
 }
 
+# allow adding boot parameters at boot time
+if [[ $(uname -m) == "s390x" ]]; then
+    echo -e '\nRequires=dracut-cmdline-ask.service\nAfter=dracut-cmdline-ask.service' >> /usr/lib/systemd/system/coreos-installer.target
+fi
+
 if [[ $(cmdline_arg coreos.inst) == "yes" ]]; then
     ln -sf "/usr/lib/systemd/system/coreos-installer.target" \
         "${UNIT_DIR}/default.target"
