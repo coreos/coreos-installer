@@ -21,26 +21,21 @@ mod iso;
 mod source;
 mod verify;
 
+use crate::cmdline::Config;
+use crate::errors::{Result, ResultExt};
 use error_chain::quick_main;
-
-use crate::cmdline::*;
-use crate::download::*;
-use crate::errors::*;
-use crate::install::*;
-use crate::iso::*;
-use crate::source::*;
 
 quick_main!(run);
 
 fn run() -> Result<()> {
-    let config = parse_args().chain_err(|| "parsing arguments")?;
+    let config = cmdline::parse_args().chain_err(|| "parsing arguments")?;
 
     match config {
-        Config::Download(c) => download(&c),
-        Config::ListStream(c) => list_stream(&c),
-        Config::Install(c) => install(&c),
-        Config::IsoEmbed(c) => iso_embed(&c),
-        Config::IsoShow(c) => iso_show(&c),
-        Config::IsoRemove(c) => iso_remove(&c),
+        Config::Download(c) => download::download(&c),
+        Config::ListStream(c) => source::list_stream(&c),
+        Config::Install(c) => install::install(&c),
+        Config::IsoEmbed(c) => iso::iso_embed(&c),
+        Config::IsoShow(c) => iso::iso_show(&c),
+        Config::IsoRemove(c) => iso::iso_remove(&c),
     }
 }
