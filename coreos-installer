@@ -724,6 +724,7 @@ write_image_to_dasd() {
     # low-level format the ECKD DASD using dasdfmt, if needed
     DEST_DEV_BUS=$(lszdev --by-node ${DEST_DEV} | tail -n 1  | awk '{print $2}')
     if [ "$(< /sys/bus/ccw/devices/${DEST_DEV_BUS}/status)" = "unformatted" ]; then
+        log "Formatting DASD device ${DEST_DEV_BUS}"
         dasdfmt --blocksize 4096 --disk_layout cdl --mode full -ypv "${DEST_DEV}"
     fi
     block_per_tracks=$(fdasd -p ${DEST_DEV} | grep blocks\ per\ track | awk '{print $5}')
@@ -765,51 +766,15 @@ EOF
 }
 
 #########################################################
-#Handle s390x zFCP SCSI devices
-#########################################################
-write_image_to_zfcp_disk() {
-    log "Extracting disk image"
-    mount_tmpfs $(( $($DECOMPRESSION_TOOL ${imagefile_compressed} | wc --bytes) / 1024 / 1024 + ${TMPFS_MBSIZE} + 100 ))
-    $DECOMPRESSION_TOOL ${imagefile_compressed} > ${imagefile}
-
-    # we have to store the strings to a file because any change in this
-    # while-do block would not take effect outside
-    (while IFS='' read -r line || [ -n "$line" ]
-    do
-        if [[ $line =~ "start=" ]]
-        then
-            # we save the start= and size= here, then dd the partitions later
-            printf "%s:%s\n" \
-                "$(echo $line | cut -d: -f 2 | cut -d, -f 1 | tr -d ' ')" \
-                "$(echo $line | cut -d: -f 2 | cut -d, -f 2 | tr -d ' ')" \
-                >> /tmp/sfdisk_info
-        elif ! [[ $line =~ "label:" || $line =~ "label-id:" || $line =~ "unit:" ]]
-        then
-            continue
-        fi
-        echo $line
-    done <<< $(sfdisk -d ${imagefile})
-    ) | sfdisk "${DEST_DEV}"
-
-    while IFS='' read -r line || [ -n "$line" ]
-    do
-        eval ${line%%:*} ${line##*:}
-        dd if=${imagefile} bs=512 iflag=fullblock \
-            of="${DEST_DEV}" status=none skip=$start seek=$start count=$size
-        if [[ $? -ne 0 ]]; then
-            log "failed to write image to zFCP SCSI disk"
-            exit 1
-        fi
-    done < /tmp/sfdisk_info
-}
-#########################################################
 #And Write the image to disk
 #########################################################
 write_image_to_disk() {
     log "Writing disk image"
 
     set -o pipefail
-    if [[ "${arch}" =~ (aarch64|ppc64le|x86_64) ]]
+    # only s390x DASD devices require a special code path
+    if [[ "${arch}" =~ (aarch64|ppc64le|x86_64) || \
+         ! ( "${arch}" = s390x && "${DEST_DEV}" =~ ^.*dasd.*$ ) ]]
     then
         $DECOMPRESSION_TOOL ${imagefile_compressed} |\
         dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
@@ -818,13 +783,8 @@ write_image_to_disk() {
             log "failed to write image to disk"
             exit 1
         fi
-    elif [[ "$arch" == "s390x" ]]
-    then
-        if [[ "${DEST_DEV}" =~ "dasd" ]]; then
-            write_image_to_dasd
-        else
-            write_image_to_zfcp_disk
-        fi
+    elif [[ "${arch}" = s390x && "${DEST_DEV}" =~ ^.*dasd.*$ ]]; then
+        write_image_to_dasd
     else
         log "Unsupported architecture"
         exit 1
