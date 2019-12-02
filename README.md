@@ -1,8 +1,12 @@
 # coreos-installer
 
-`coreos-installer` is a script to install Fedora CoreOS (FCOS) or Red Hat 
-Enterprise Linux CoreOS (RHCOS) to a target disk. It can be invoked as a 
-standalone script or during bootup via a dracut module.
+[![Build status](https://travis-ci.org/coreos/coreos-installer.svg?branch=master)](https://travis-ci.org/coreos/coreos-installer)
+[![Container image](https://quay.io/repository/coreos/coreos-installer/status)](https://quay.io/repository/coreos/coreos-installer)
+[![crates.io](https://img.shields.io/crates/v/coreos-installer.svg)](https://crates.io/crates/coreos-installer)
+
+`coreos-installer` is a simple installer for Fedora CoreOS (FCOS) and Red Hat Enterprise Linux CoreOS (RHCOS).
+It contains minimal logic to download, verify and write an OS image to a target disk.
+It can be invoked as a standalone binary or during bootup via a dracut module.
 
 ## Kernel command line options for coreos-installer running in the initramfs
 
