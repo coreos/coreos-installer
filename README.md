@@ -4,94 +4,137 @@
 [![Container image](https://quay.io/repository/coreos/coreos-installer/status)](https://quay.io/repository/coreos/coreos-installer)
 [![crates.io](https://img.shields.io/crates/v/coreos-installer.svg)](https://crates.io/crates/coreos-installer)
 
-`coreos-installer` is a simple installer for Fedora CoreOS (FCOS) and Red Hat Enterprise Linux CoreOS (RHCOS).
-It contains minimal logic to download, verify and write an OS image to a target disk.
-It can be invoked as a standalone binary or during bootup via a dracut module.
+coreos-installer is a program to assist with installing Fedora CoreOS
+(FCOS) and Red Hat Enterprise Linux CoreOS (RHCOS). It can do the following:
 
-## Kernel command line options for coreos-installer running in the initramfs
+* Download and install the operating system to a target disk, optionally
+  customizing it with an Ignition config or first-boot kernel parameters
+  (`coreos-installer install`)
+* Download and verify an operating system image for various cloud,
+  virtualization, or bare metal platforms (`coreos-installer download`)
+* List Fedora CoreOS images available for download
+  (`coreos-installer list-stream`)
+* Embed an Ignition config in a live ISO image to customize the running
+  system that boots from it (`coreos-installer iso`)
 
-* `coreos.inst=yes` - Instruct the installer to run
-* `coreos.inst.install_dev` - The block device on the system to install to
-* `coreos.inst.image_url` - The URL of the CoreOS image to install to this device
-* `coreos.inst.ignition_url` - The URL of the CoreOS Ignition config (optional, enter
-  `coreos.inst.ignition_url=skip` to not load an Ignition config)
-* `coreos.inst.platform_id` - The Ignition platform ID of the platform the CoreOS image is being installed on
+The options available for each subcommand are available via the `--help`
+option.  This documentation will focus on how to obtain and run
+coreos-installer.
 
-## Using the installer on FCOS or RHCOS
+# On Fedora CoreOS or RHEL CoreOS
 
-This installer is incorporated into FCOS and RHCOS.
-There are ISO and PXE images that can be downloaded that will allow for an
-install to be performed on bare metal hardware. While ISO install is
-supported, we recommend PXE if you environment supports it since it is
-more friendly to automation.
+coreos-installer is included in Fedora CoreOS and RHEL CoreOS.  Just run
+`coreos-installer` from the command line.  Fedora CoreOS provides
+[live CD and network boot images](https://getfedora.org/coreos/download/)
+you can run from RAM; you can use these to run coreos-installer to install
+Fedora CoreOS or RHEL CoreOS to disk.
 
-### Installing from ISO
+# On other Fedora editions
 
-#### Grab an ISO image and bare metal image URL
+On other Fedora editions, you can install coreos-installer with DNF in the
+usual way:
 
-For Fedora CoreOS you can download an ISO image from the
-[download page](https://getfedora.org/coreos/download/).
-You'll also need the URL of the bare metal raw image linked from that
-page.
+```sh
+sudo dnf install coreos-installer
+```
 
+# Install with Cargo
+
+You can also install coreos-installer with Rust's Cargo package manager:
+
+```sh
+cargo install coreos-installer
+```
+
+# Run from a container
+
+You can run coreos-installer from a container.  You'll need to bind-mount
+`/dev` and `/run/udev`, as well as a data directory if you want to access
+files in the host.  For example:
+
+```sh
+sudo podman run --pull=always --privileged --rm \
+    -v /dev:/dev -v /run/udev:/run/udev -v .:/data \
+    quay.io/coreos/coreos-installer:release \
+    install /dev/vdb -s testing -i /data/config.ign
+```
+
+# Run from a live image using kernel command-line options
+
+If you want a fully automated install, you can configure the Fedora CoreOS
+live CD or netboot image to run coreos-installer and then reboot the system.
+You do this by passing `coreos.inst.<arg>` arguments on the kernel command
+line.
+
+## Kernel command line options for coreos-installer running as a service
+
+* `coreos.inst.install_dev` - The block device on the system to install to,
+  such as `/dev/sda`.  Mandatory.
+* `coreos.inst.stream` - The Fedora CoreOS stream to install.  Optional;
+  defaults to `stable` unless `coreos.inst.image_url` is specified.
+* `coreos.inst.image_url` - The URL of the CoreOS image to install,
+  overriding `coreos.inst.stream`.  Optional.
+* `coreos.inst.ignition_url` - The URL of the Ignition config.  Optional.
+  If missing, no Ignition config will be embedded, which is probably not
+  what you want.
+* `coreos.inst.platform_id` - The Ignition platform ID of the platform the
+  CoreOS image is being installed on.  Optional; defaults to `metal`.
+  Normally this should be specified only if installing inside a virtual
+  machine.
+* `coreos.inst.insecure` - Permit the OS image to be unsigned.  Optional.
+* `coreos.inst.skip_reboot` - Don't reboot after installing.  Optional.
+* `coreos.inst.stream_base_url` - Override the base URL of Fedora CoreOS
+  stream metadata.  Optional.
+
+## Installing from ISO
+
+[Download a Fedora CoreOS ISO image](https://getfedora.org/coreos/download/).
 The ISO image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
 
-#### Perform the install
-
-You can install on a bare metal machine by burning the ISO to
-disk and booting it or using ISO redirection via a LOM interface.
+Burn the ISO to disk and boot it, or use ISO redirection via a LOM interface.
 Alternatively you can use a VM like so:
 
 ```
-virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-30.20190801.0-installer.iso --network default
+virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-30.20191014.1-live.x86_64.iso --network default
 ```
 
-**NOTE**: To test UEFI boot add `--boot uefi` to the CLI call.
-
-Alternatively you can use `qemu` directly.
-Create a disk image which we can use as install target:
+Alternatively you can use `qemu` directly.  Create a disk image to use as
+install target:
 
 ```
-qemu-img create -f qcow2 fcos.qcow2 10G
+qemu-img create -f qcow2 fcos.qcow2 8G
 ```
+
 Now, run the following qemu command:
 
 ```
-qemu-system-x86_64 -accel kvm -name fcos -m 2048 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-30.20190801.0-installer.iso
+qemu-system-x86_64 -accel kvm -name fcos -m 2048 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-30.20191014.1-live.x86_64.iso
 ```
 
 Once you have reached the boot menu, press `<TAB>` (isolinux) or
 `e` (grub) to edit the kernel command line. Add the parameters to the
 kernel command line telling it what you want it to do. For example:
 
-- `coreos.inst.install_dev=sda`
-- `coreos.inst.image_url=http://example.com/fedora-coreos-30.20190801.0-metal.raw.xz`
+- `coreos.inst.install_dev=/dev/sda`
+- `coreos.inst.stream=testing`
 - `coreos.inst.ignition_url=http://example.com/config.ign`
 - `coreos.inst.platform_id=qemu`
 
 Now press `<ENTER>` (isolinux) or `<CTRL-x>` (grub) to kick off the
-install. The install will occur on tty2 and there are very few good
-log statements or debug opportunities. The user experience here
-needs work and is tracked in [#5](https://github.com/coreos/coreos-installer/issues/5).
+install.
 
 The install will complete and eventually reboot the machine. After
 reboot the machine will boot into the installed system and the
 embedded Ignition config will run on first boot.
 
-### Installing from PXE
+## Installing from PXE
 
-#### Grab a PXE image and bare metal image
-
-For Fedora CoreOS you can download a PXE kernel, initramfs image, and bare
-metal image from the [download page](https://getfedora.org/coreos/download/).
-
+[Download a Fedora CoreOS PXE kernel and initramfs image](https://getfedora.org/coreos/download/).
 The PXE image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
-
-#### Perform the install
 
 Here is an example `pxelinux.cfg` for booting the installer images with
 PXELINUX:
@@ -101,100 +144,29 @@ DEFAULT pxeboot
 TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
-    KERNEL fedora-coreos-30.20190801.0-installer-kernel
-    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-30.20190801.0-installer-initramfs.img console=tty0 console=ttyS0 coreos.inst=yes coreos.inst.install_dev=sda coreos.inst.image_url=http://192.168.1.101:8000/fedora-coreos-30.20190801.0-metal.raw.xz coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    KERNEL fedora-coreos-30.20191014.1-live-kernel-x86_64
+    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-30.20191014.1-live-initramfs.x86_64.img console=tty0 console=ttyS0 coreos.inst.install_dev=/dev/sda coreos.inst.stream=testing coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
 If you don't know how to use this information to test a PXE install
 you can start with something like
 [these instructions](https://dustymabe.com/2019/01/04/easy-pxe-boot-testing-with-only-http-using-ipxe-and-libvirt/)
-for testing out PXE installs via a local VM + Libvirt.
+for testing out PXE installs via a local VM + libvirt.
 
-## Testing out the installer script by running it directly
+# Build and test the installer for development
 
-Grab `coreos-installer` and execute it on an already booted system.
+**NOTE:** The `install` subcommand writes directly to a block device (disk)
+and consumes the entire device.  The device specified to the installer needs
+to be available and not currently in use.  You cannot target a disk that is
+currently mounted.
 
-**NOTE** The installer writes directly to a block device (disk) and
-         consumes the entire device. The device specified to the
-         installer needs to be available and not currently in use. You
-         cannot target a disk that is currently mounted.
+Build coreos-installer and use it to install a Fedora CoreOS `testing`
+image to a partitionable loop device:
 
-The easiest way to access a disk that is not currently in use is to
-boot up the coreos-installer ISO. If you boot the ISO and don't provide
-any extra arguments you will be presented with a usage message and
-then a prompt where you can execute the installer via the CLI:
-
-```
-/usr/libexec/coreos-installer -d sdd -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-30.20190801.0-metal.raw.xz
-```
-
-Afterwards you'll need to reboot the machine.
-
-Alternatively, you can install coreos-installer on a desktop/laptop
-machine and write out an image to a spare disk attached to the system.
-This can be dangerous if you specify the wrong disk to the installer.
-
-You'll want to make sure all of the 
-[dependencies](https://github.com/coreos/coreos-installer/blob/master/dracut/30coreos-installer/module-setup.sh#L18)
-are installed on your machine. If you are on Fedora you can install
-the coreos-installer rpm (and all dependencies) using DNF via
-`dnf install coreos-installer`. The path to the script will be
-`/usr/libexec/coreos-installer`.
-
-```
-sudo /path/to/coreos-installer -d sdg -i https://example.com/ignition.cfg -b https://example.com/fedora-coreos-30.20190801.0-metal.raw.xz
-```
-
-Afterwards, remove the disk from the computer and insert it into and
-boot the target machine where it is desired to run CoreOS.
-
-
-## Testing out the installer running in the initramfs (early boot)
-
-You can build an initramfs with the installer/dracut module by cloning
-this repo and building the initramfs locally like so:
-
-```
-git clone https://github.com/coreos/coreos-installer
-cd coreos-installer
-sudo dnf -y install dracut dracut-network
-sudo dnf -y install $(grep inst_multiple dracut/30coreos-installer/module-setup.sh | sed 's|inst_multiple||' | tr '\n' ' ')
-sudo cp ./coreos-installer /usr/libexec/coreos-installer
-sudo rsync -avh dracut/30coreos-installer /usr/lib/dracut/modules.d/
-sudo dracut --kernel-cmdline="ip=dhcp rd.neednet=1" --add coreos-installer --no-hostonly -f ./initramfs.img --kver $(uname -r)
-```
-
-You can then boot a system with that initrd and a kernel and see the
-installer run. First we will grab the kernel.
-
-```
-cp /usr/lib/modules/$(uname -r)/vmlinuz ./vmlinuz
-```
-
-Then create a treeinfo file that can be used with `virt-install`:
-This won't be necessary [in the future](https://bugzilla.redhat.com/show_bug.cgi?id=1677425).
-
-```
-cat <<'EOF' > .treeinfo
-[general]
-arch = x86_64
-family = Fedora
-platforms = x86_64
-version = 29
-[images-x86_64]
-initrd = initramfs.img
-kernel = vmlinuz
-EOF
-```
-
-Set our kernel arguments for the install and kick it off using
-`virt-install`:
-
-```
-args='coreos.inst=yes '
-args+='coreos.inst.install_dev=vda '
-args+='coreos.inst.image_url=http://example.com/fedora-coreos-30.20190801.0-metal.raw.xz '
-args+='coreos.inst.ignition_url=http://example.com/config.ign '
-sudo virt-install --location ./ --extra-args="${args}" --network network=default --name installer --memory 2048 --disk size=10
+```sh
+cargo build
+truncate -s 8G image-file
+sudo losetup -P /dev/loop0 image-file
+sudo target/debug/coreos-installer install /dev/loop0 -s testing
 ```
