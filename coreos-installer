@@ -487,14 +487,14 @@ get_img_url() {
 }
 
 ############################################################
-# Validate that selected device exists
+# Wait for selected device to appear
 ############################################################
 check_selected_device() {
-    if [ ! -b $DEST_DEV ]
-    then
-        log "${DEST_DEV} does not exist."
-        exit 1
-    fi
+
+    while [ ! -b $DEST_DEV ]; do
+        log "Awaiting ${DEST_DEV}"
+        sleep 3
+    done
     log "Selected device is ${DEST_DEV}"
 }
 
