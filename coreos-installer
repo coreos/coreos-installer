@@ -730,11 +730,11 @@ write_image_to_dasd() {
 
     # the first 2 tracks of the ECKD DASD are reserved
     first_track=2
-    # in RHCOS4.2 using anaconda, we have root partition at index 2 while in FCOS it's 4
+    # in RHCOS 4.2 using anaconda, root partition index is 2
     BOOTPN=1
-    ROOTPN=2
-    if [[ -n $(grep -i fedora /usr/lib/initrd-release) ]]; then
-        ROOTPN=4
+    ROOTPN=4
+    if [[ -n $(grep -i 'Red Hat Enterprise Linux CoreOS 42' /usr/lib/initrd-release) ]]; then
+        ROOTPN=2
     fi
     boot_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}${BOOTPN}" | awk '{print $2,$3}'))
     root_partition=($(fdisk -b 4096 -o DEVICE,START,SECTORS -l ${imagefile} | grep "${imagefile}${ROOTPN}" | awk '{print $2,$3}'))
