@@ -6,7 +6,7 @@ edition = "2018"
 exclude = ["/.github", "/.gitignore", "/.travis.yml", "/Dockerfile"]
 authors = [ "Benjamin Gilbert <bgilbert@redhat.com>" ]
 description = "Installer for Fedora CoreOS and RHEL CoreOS"
-version = "0.1.1"
+version = "0.1.2-alpha.0"
 
 [package.metadata.release]
 sign-commit = true
