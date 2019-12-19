@@ -24,7 +24,7 @@ karg() {
 }
 
 karg_bool() {
-    local value=$(cmdline_arg "$@")
+    local value=$(karg "$@")
     case "$value" in
         ""|0|no|off) return 1;;
         *) return 0;;
@@ -82,7 +82,7 @@ fi
 firstboot_args=""
 for param in "${PERSIST_KERNEL_NET_PARAMS[@]}" "${PERSIST_DRACUT_NET_PARAMS[@]}"
 do
-    value=$(getarg "${param}")
+    value=$(karg "${param}")
     if [ -n "${value}" ]; then
         firstboot_args+="${param}=${value} "
     fi
