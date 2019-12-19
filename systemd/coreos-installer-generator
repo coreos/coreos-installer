@@ -7,7 +7,7 @@ set -e
 UNIT_DIR="${1:-/tmp}"
 
 cmdline=( $(</proc/cmdline) )
-cmdline_arg() {
+karg() {
     local name="$1" value="$2"
     for arg in "${cmdline[@]}"; do
         if [[ "${arg%%=*}" == "${name}" ]]; then
@@ -17,7 +17,7 @@ cmdline_arg() {
     echo "${value}"
 }
 
-if [ -n "$(cmdline_arg coreos.inst.install_dev)" ]; then
+if [ -n "$(karg coreos.inst.install_dev)" ]; then
     ln -sf "/usr/lib/systemd/system/coreos-installer.target" \
         "${UNIT_DIR}/default.target"
 fi
