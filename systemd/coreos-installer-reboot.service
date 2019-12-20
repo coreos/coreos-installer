@@ -7,4 +7,4 @@ ConditionPathExists=/run/coreos-installer-reboot
 
 [Service]
 Type=simple
-ExecStart=/sbin/systemctl --no-block reboot
+ExecStart=/usr/bin/systemctl --no-block reboot
