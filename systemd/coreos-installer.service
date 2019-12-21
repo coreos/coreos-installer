@@ -5,6 +5,6 @@ Wants=network-online.target
 ConditionKernelCommandLine=coreos.inst.install_dev
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=/usr/libexec/coreos-installer-service
 StandardOutput=kmsg+console

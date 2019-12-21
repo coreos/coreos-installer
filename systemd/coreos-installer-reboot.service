@@ -1,6 +1,6 @@
 [Unit]
 Description=Reboot after CoreOS Installer
-After=coreos-installer.target
+After=coreos-installer.service
 OnFailure=emergency.target
 OnFailureJobMode=isolate
 ConditionPathExists=/run/coreos-installer-reboot
