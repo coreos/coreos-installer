@@ -1,0 +1,13 @@
+[Unit]
+Description=Give Login Shell After CoreOS Installer
+After=coreos-installer.service
+ConditionPathExists=!/run/coreos-installer-reboot
+
+[Service]
+Type=oneshot
+StandardInput=tty-force
+StandardOutput=inherit
+StandardError=inherit
+ExecStartPre=/usr/bin/echo -e "\nCoreOS install complete. Starting login shell\n"
+ExecStart=/usr/sbin/sulogin --force
+ExecStartPost=/usr/bin/systemctl --no-block reboot

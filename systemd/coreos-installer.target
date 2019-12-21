@@ -6,6 +6,7 @@ AllowIsolate=yes
 
 Requires=coreos-installer.service
 Requires=coreos-installer-reboot.service
+Requires=coreos-installer-noreboot.service
 
 # Run after most things are up
 Requires=basic.target
