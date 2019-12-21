@@ -1,7 +1,7 @@
 [Unit]
 Description=CoreOS Installer Target
 OnFailure=emergency.target
-OnFailureJobMode=isolate
+OnFailureJobMode=replace-irreversibly
 AllowIsolate=yes
 
 Requires=coreos-installer.service
