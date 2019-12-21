@@ -8,3 +8,5 @@ ConditionPathExists=/run/coreos-installer-reboot
 [Service]
 Type=simple
 ExecStart=/usr/bin/systemctl --no-block reboot
+StandardOutput=kmsg+console
+StandardError=kmsg+console

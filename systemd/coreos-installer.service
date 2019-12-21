@@ -8,3 +8,4 @@ ConditionKernelCommandLine=coreos.inst.install_dev
 Type=oneshot
 ExecStart=/usr/libexec/coreos-installer-service
 StandardOutput=kmsg+console
+StandardError=kmsg+console
