@@ -17,7 +17,20 @@ karg() {
     echo "${value}"
 }
 
+karg_bool() {
+    local value=$(karg "$@")
+    case "$value" in
+        ""|0|no|off) return 1;;
+        *) return 0;;
+    esac
+}
+
 if [ -n "$(karg coreos.inst.install_dev)" ]; then
     ln -sf "/usr/lib/systemd/system/coreos-installer.target" \
         "${UNIT_DIR}/default.target"
+
+    # Create precondition for coreos-installer-reboot.service if requested
+    if ! karg_bool coreos.inst.skip_reboot; then
+        touch /run/coreos-installer-reboot
+    fi
 fi

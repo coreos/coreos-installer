@@ -112,7 +112,3 @@ udevadm settle
 echo "coreos-installer ${args[@]}"
 coreos-installer "${args[@]}"
 
-# Create precondition for coreos-installer-reboot.service if requested
-if ! karg_bool coreos.inst.skip_reboot; then
-    touch /run/coreos-installer-reboot
-fi
