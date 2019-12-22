@@ -33,4 +33,9 @@ if [ -n "$(karg coreos.inst.install_dev)" ]; then
     if ! karg_bool coreos.inst.skip_reboot; then
         touch /run/coreos-installer-reboot
     fi
+
+    # Allow emergency.service to execute even with locked root account
+    mkdir -p /etc/systemd/system/emergency.service.d
+    echo -e '[Service]\nEnvironment=SYSTEMD_SULOGIN_FORCE=1\n' \
+        > /etc/systemd/system/emergency.service.d/override.conf
 fi
