@@ -38,9 +38,26 @@ usual way:
 sudo dnf install coreos-installer
 ```
 
+# Build and install from source tree
+
+To build from the source tree:
+
+```sh
+make
+```
+
+To install the binary and systemd units to a target rootfs
+(e.g. under a
+[coreos-assembler](https://github.com/coreos/coreos-assembler)
+workdir):
+
+```sh
+make install DESTDIR=/my/dest/dir
+```
+
 # Install with Cargo
 
-You can also install coreos-installer with Rust's Cargo package manager:
+You can also install just the coreos-installer binary with Rust's Cargo package manager:
 
 ```sh
 cargo install coreos-installer
