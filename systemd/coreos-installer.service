@@ -1,0 +1,11 @@
+[Unit]
+Description=CoreOS Installer
+Before=coreos-installer.target
+Wants=network-online.target
+ConditionKernelCommandLine=coreos.inst.install_dev
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/coreos-installer-service
+StandardOutput=kmsg+console
+StandardError=kmsg+console

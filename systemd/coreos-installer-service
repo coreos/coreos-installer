@@ -1,0 +1,114 @@
+#!/bin/bash
+
+set -e
+
+# Kernel networking params to persist
+PERSIST_KERNEL_NET_PARAMS=("ipv6.disable")
+
+# Dracut networking params to persist
+# Everything other than rd.neednet.
+# List from https://www.mankier.com/7/dracut.cmdline#Description-Network
+PERSIST_DRACUT_NET_PARAMS=("ip" "ifname" "rd.route" "bootdev" "BOOTIF" "rd.bootif" "nameserver" "rd.peerdns" "biosdevname" "vlan" "bond" "team" "bridge" "rd.net.timeout.carrier" "coreos.no_persist_ip")
+
+args=("install")
+
+cmdline=( $(</proc/cmdline) )
+karg() {
+    local name="$1" value="$2"
+    for arg in "${cmdline[@]}"; do
+        if [[ "${arg%%=*}" == "${name}" ]]; then
+            value="${arg#*=}"
+        fi
+    done
+    echo "${value}"
+}
+
+karg_bool() {
+    local value=$(karg "$@")
+    case "$value" in
+        ""|0|no|off) return 1;;
+        *) return 0;;
+    esac
+}
+
+copy_arg() {
+    local arg="$1"; shift
+    local opt="$1"; shift
+
+    local value="$(karg "${arg}")"
+    if [ ! -z "${value}" ]; then
+        args+=("${opt}" "${value}")
+    fi
+}
+
+# Wait for the network to be up by trying to HEAD a URL.
+# If an image URL was specified, use that.
+check_url="$(karg coreos.inst.image_url)"
+# Otherwise, an Ignition config URL.
+check_url="${check_url:-$(karg coreos.inst.ignition_url)}"
+# Otherwise, fall back to a globally accessible URL.  Try this last because
+# we might not have access to the Internet.
+check_url="${check_url:-http://fedoraproject.org/static/hotspot.txt}"
+# We'd like to disable the progress meter but we can only do that completely
+# with --silent, which also disables status updates.  Use the compact
+# progress bar instead, since at least it's smaller.
+curl --head --progress-bar --fail \
+    --retry 60 --retry-delay 1 --retry-connrefused \
+    -o /dev/null "${check_url}"
+
+# Get install device
+device="$(karg coreos.inst.install_dev)"
+if [ -z "${device}" ]; then
+    echo "No install device specified."
+    exit 1
+fi
+if [ "${device##*/}" = "${device}" ]; then
+    # karg contains no slashes.  Prepend "/dev/" for compatibility.
+    device="/dev/${device}"
+fi
+args+=("${device}")
+
+# Fetch the Ignition URL, if any, and cache it locally.
+ignition_url="$(karg coreos.inst.ignition_url)"
+# Ignore "skip" for compatibility
+if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
+    ignition_file="$(mktemp -t coreos-installer-XXXXXX)"
+    trap "rm -f \"${ignition_file}\"" EXIT
+    curl --progress-bar --fail -o "${ignition_file}" "${ignition_url}"
+    args+=("--ignition" "${ignition_file}")
+fi
+
+# First-boot kernel arguments
+firstboot_args=""
+for param in "${PERSIST_KERNEL_NET_PARAMS[@]}" "${PERSIST_DRACUT_NET_PARAMS[@]}"
+do
+    value=$(karg "${param}")
+    if [ -n "${value}" ]; then
+        firstboot_args+="${param}=${value} "
+    fi
+done
+# Only pass firstboot-kargs if additional networking options have been
+# specified, since the default in ignition-dracut specifies
+# `rd.neednet=1 ip=dhcp` when no options are persisted
+if [ -n "${firstboot_args}" ]; then
+    args+=("--firstboot-args" "rd.neednet=1 ${firstboot_args}")
+fi
+
+# Other args that should just be copied over
+copy_arg coreos.inst.image_url       --image-url
+copy_arg coreos.inst.platform_id     --platform
+copy_arg coreos.inst.stream          --stream
+copy_arg coreos.inst.stream_base_url --stream-base-url
+
+# Insecure boolean
+if karg_bool coreos.inst.insecure; then
+    args+=("--insecure")
+fi
+
+# Ensure device nodes have been created
+udevadm settle
+
+# Install
+echo "coreos-installer ${args[@]}"
+coreos-installer "${args[@]}"
+
