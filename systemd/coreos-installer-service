@@ -42,19 +42,35 @@ copy_arg() {
 }
 
 # Wait for the network to be up by trying to HEAD a URL.
-# If an image URL was specified, use that.
-check_url="$(karg coreos.inst.image_url)"
-# Otherwise, an Ignition config URL.
-check_url="${check_url:-$(karg coreos.inst.ignition_url)}"
-# Otherwise, fall back to a globally accessible URL.  Try this last because
-# we might not have access to the Internet.
-check_url="${check_url:-http://fedoraproject.org/static/hotspot.txt}"
-# We'd like to disable the progress meter but we can only do that completely
-# with --silent, which also disables status updates.  Use the compact
-# progress bar instead, since at least it's smaller.
-curl --head --progress-bar --fail \
-    --retry 60 --retry-delay 1 --retry-connrefused \
-    -o /dev/null "${check_url}"
+# There are a few corner cases we have to account for:
+#
+#   - The user gave both ignition_url and image_url
+#       - We need to try both URLs because one could be IP
+#         based and the other could be DNS based. If both are
+#         IP based then we don't need to wait on DNS.
+#   - The user provided only image_url
+#       - This case is simple. Check image_url and continue.
+#   - The user did not provide image_url
+#       - This case implies we are going to contact a remote
+#         service (most likely fedora infra) so we need to
+#         test DNS is working befrore continuing. In this case
+#         we'll check the fedora hotspot globally accessible URL:
+#         http://fedoraproject.org/static/hotspot.txt
+#
+ignition_url="$(karg coreos.inst.ignition_url)"
+image_url="$(karg coreos.inst.image_url)"
+check_urls="${image_url:-http://fedoraproject.org/static/hotspot.txt}"
+if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
+    check_urls+=" ${ignition_url}"
+fi
+for check_url in $check_urls; do
+    # We'd like to disable the progress meter but we can only do that
+    # completely with --silent, which also disables status updates. Use
+    # the compact progress bar instead, since at least it's smaller.
+    curl --head --progress-bar --fail \
+        --retry 60 --retry-delay 1 --retry-connrefused \
+        -o /dev/null "${check_url}"
+done
 
 # Get install device
 device="$(karg coreos.inst.install_dev)"
@@ -69,7 +85,6 @@ fi
 args+=("${device}")
 
 # Fetch the Ignition URL, if any, and cache it locally.
-ignition_url="$(karg coreos.inst.ignition_url)"
 # Ignore "skip" for compatibility
 if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
     ignition_file="$(mktemp -t coreos-installer-XXXXXX)"
