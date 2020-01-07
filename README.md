@@ -100,8 +100,6 @@ line.
   machine.
 * `coreos.inst.insecure` - Permit the OS image to be unsigned.  Optional.
 * `coreos.inst.skip_reboot` - Don't reboot after installing.  Optional.
-* `coreos.inst.stream_base_url` - Override the base URL of Fedora CoreOS
-  stream metadata.  Optional.
 
 ## Installing from ISO
 

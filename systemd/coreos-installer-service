@@ -98,7 +98,6 @@ fi
 copy_arg coreos.inst.image_url       --image-url
 copy_arg coreos.inst.platform_id     --platform
 copy_arg coreos.inst.stream          --stream
-copy_arg coreos.inst.stream_base_url --stream-base-url
 
 # Insecure boolean
 if karg_bool coreos.inst.insecure; then
