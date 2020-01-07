@@ -41,21 +41,6 @@ copy_arg() {
     fi
 }
 
-# Wait for the network to be up by trying to HEAD a URL.
-# If an image URL was specified, use that.
-check_url="$(karg coreos.inst.image_url)"
-# Otherwise, an Ignition config URL.
-check_url="${check_url:-$(karg coreos.inst.ignition_url)}"
-# Otherwise, fall back to a globally accessible URL.  Try this last because
-# we might not have access to the Internet.
-check_url="${check_url:-http://fedoraproject.org/static/hotspot.txt}"
-# We'd like to disable the progress meter but we can only do that completely
-# with --silent, which also disables status updates.  Use the compact
-# progress bar instead, since at least it's smaller.
-curl --head --progress-bar --fail \
-    --retry 60 --retry-delay 1 --retry-connrefused \
-    -o /dev/null "${check_url}"
-
 # Get install device
 device="$(karg coreos.inst.install_dev)"
 if [ -z "${device}" ]; then
