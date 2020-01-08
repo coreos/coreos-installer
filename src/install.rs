@@ -40,6 +40,19 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         }
     }
 
+    // if an Ignition config is provided, open it upfront so we don't waste time downloading the
+    // main image and writing it to disk first
+    let ignition = config
+        .ignition
+        .as_ref()
+        .map(|f| {
+            OpenOptions::new()
+                .read(true)
+                .open(f)
+                .chain_err(|| format!("opening source Ignition config {}", f))
+        })
+        .transpose()?;
+
     // open output; ensure it's a block device and we have exclusive access
     let mut dest = OpenOptions::new()
         .write(true)
@@ -59,7 +72,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
-    if let Err(err) = write_disk(&config, &mut source, &mut dest) {
+    if let Err(err) = write_disk(&config, &mut source, &mut dest, ignition) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
         eprint!("{}", ChainedError::display_chain(&err));
@@ -78,7 +91,12 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 /// Copy the image source to the target disk and do all post-processing.
 /// If this function fails, the caller should wipe the partition table
 /// to ensure the user doesn't boot from a partially-written disk.
-fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File) -> Result<()> {
+fn write_disk(
+    config: &InstallConfig,
+    source: &mut ImageSource,
+    dest: &mut File,
+    ignition: Option<File>,
+) -> Result<()> {
     // Try to discard the entire device as a courtesy to the SSD wear
     // leveler or LVM thin pool.
     try_discard_all(dest)?;
@@ -89,9 +107,9 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
     udev_settle()?;
 
     // postprocess
-    if config.ignition.is_some() || config.firstboot_kargs.is_some() || config.platform.is_some() {
+    if ignition.is_some() || config.firstboot_kargs.is_some() || config.platform.is_some() {
         let mount = mount_boot(&config.device)?;
-        if let Some(ignition) = config.ignition.as_ref() {
+        if let Some(ignition) = ignition {
             write_ignition(mount.mountpoint(), ignition)?;
         }
         if let Some(firstboot_kargs) = config.firstboot_kargs.as_ref() {
@@ -106,7 +124,7 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
 }
 
 /// Write the Ignition config.
-fn write_ignition(mountpoint: &Path, config_src: &str) -> Result<()> {
+fn write_ignition(mountpoint: &Path, mut config_in: File) -> Result<()> {
     eprintln!("Writing Ignition config");
 
     // make parent directory
@@ -116,10 +134,6 @@ fn write_ignition(mountpoint: &Path, config_src: &str) -> Result<()> {
 
     // do the copy
     config_dest.push("config.ign");
-    let mut config_in = OpenOptions::new()
-        .read(true)
-        .open(config_src)
-        .chain_err(|| format!("opening source Ignition config {}", config_src))?;
     let mut config_out = OpenOptions::new()
         .write(true)
         .create_new(true)
