@@ -15,7 +15,6 @@ disable-publish = true
 pre-release-commit-message = "cargo: coreos-installer release {{version}}"
 pro-release-commit-message = "cargo: development version bump"
 tag-message = "coreos-installer v{{version}}"
-tag-prefix = "v"
 
 [[bin]]
 name = "coreos-installer"
