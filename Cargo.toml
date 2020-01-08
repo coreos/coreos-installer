@@ -13,7 +13,7 @@ sign-commit = true
 disable-push = true
 disable-publish = true
 pre-release-commit-message = "cargo: coreos-installer release {{version}}"
-pro-release-commit-message = "cargo: development version bump"
+post-release-commit-message = "cargo: development version bump"
 tag-message = "coreos-installer v{{version}}"
 
 [[bin]]
