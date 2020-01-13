@@ -59,7 +59,7 @@ ignition_url="$(karg coreos.inst.ignition_url)"
 if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
     ignition_file="$(mktemp -t coreos-installer-XXXXXX)"
     trap "rm -f \"${ignition_file}\"" EXIT
-    curl --progress-bar --fail -o "${ignition_file}" "${ignition_url}"
+    curl --progress-bar --retry 5 --fail -o "${ignition_file}" "${ignition_url}"
     args+=("--ignition" "${ignition_file}")
 fi
 
