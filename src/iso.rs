@@ -275,3 +275,16 @@ fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
             .chain_err(|| "finishing reading CPIO entry")?;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cpio_roundtrip() {
+        let input = r#"{}"#;
+        let cpio = make_cpio(input.as_bytes()).unwrap();
+        let output = extract_cpio(&cpio).unwrap();
+        assert_eq!(input.as_bytes(), output.as_slice());
+    }
+}
