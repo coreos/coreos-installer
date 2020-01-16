@@ -16,9 +16,9 @@ use error_chain::error_chain;
 
 error_chain! {
     foreign_links {
-        Io(::std::io::Error);
-        Reqwest(::reqwest::Error);
-        Url(::reqwest::UrlError);
-        Nix(::nix::Error);
+        Io(std::io::Error);
+        Reqwest(reqwest::Error);
+        Url(url::ParseError);
+        Nix(nix::Error);
     }
 }
