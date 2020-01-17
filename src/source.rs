@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use error_chain::bail;
-use reqwest::{StatusCode, Url};
+use reqwest::{blocking, StatusCode, Url};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -156,7 +156,7 @@ impl Display for UrlLocation {
 
 impl ImageLocation for UrlLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
-        let client = reqwest::Client::new();
+        let client = blocking::Client::new();
 
         // fetch signature
         let mut resp = client
@@ -240,9 +240,8 @@ impl Display for StreamLocation {
 
 impl ImageLocation for StreamLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
-        let client = reqwest::Client::new();
-
         // fetch and parse stream metadata
+        let client = blocking::Client::new();
         let stream = fetch_stream(client, &self.stream_url)?;
 
         // descend it
@@ -287,8 +286,8 @@ pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
     }
 
     // fetch stream metadata
+    let client = blocking::Client::new();
     let stream_url = build_stream_url(&config.stream, config.stream_base_url.as_ref())?;
-    let client = reqwest::Client::new();
     let stream = fetch_stream(client, &stream_url)?;
 
     // walk formats
@@ -343,7 +342,7 @@ fn build_stream_url(stream: &str, base_url: Option<&Url>) -> Result<Url> {
 }
 
 /// Fetch and parse stream metadata.
-fn fetch_stream(client: reqwest::Client, url: &Url) -> Result<Stream> {
+fn fetch_stream(client: blocking::Client, url: &Url) -> Result<Stream> {
     // fetch stream metadata
     let resp = client
         .get(url.clone())
