@@ -15,9 +15,11 @@
 use byte_unit::Byte;
 use error_chain::bail;
 use flate2::read::GzDecoder;
+use nix::unistd::isatty;
 use progress_streams::ProgressReader;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{copy, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{copy, stderr, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use xz2::read::XzDecoder;
@@ -169,6 +171,19 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File, decompress: bool) 
     };
 
     // wrap again for progress reporting
+    let stderr_is_tty = isatty(stderr().as_raw_fd()).chain_err(|| "checking if stderr is a TTY")?;
+    let (progress_prologue, progress_epilogue) = if stderr_is_tty {
+        // Draw a status line that updates itself in place.
+        // The prologue leaves a place for the cursor to rest between updates.
+        // The epilogue writes three spaces to cover the switch from e.g.
+        // 1000 KiB to 1 MiB, and then uses CR to return to the start of
+        // the line.
+        ("> ", "   \r")
+    } else {
+        // stderr is being read by another process, e.g. journald, and
+        // fanciness may confuse it.  Just log regular lines.
+        ("", "\n")
+    };
     let artifact_type = source.artifact_type.clone();
     let have_length = source.length_hint.is_some();
     let length_hint = source.length_hint.unwrap_or(0);
@@ -182,14 +197,22 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File, decompress: bool) 
             last_report = Instant::now();
             if have_length {
                 eprint!(
-                    "> Read {} {}/{} ({}%)   \r",
+                    "{}Read {} {}/{} ({}%){}",
+                    progress_prologue,
                     &artifact_type,
                     format_bytes(position),
                     format_bytes(length_hint),
-                    100 * position / length_hint
+                    100 * position / length_hint,
+                    progress_epilogue
                 );
             } else {
-                eprint!("> Read {} {}   \r", &artifact_type, format_bytes(position));
+                eprint!(
+                    "{}Read {} {}{}",
+                    progress_prologue,
+                    &artifact_type,
+                    format_bytes(position),
+                    progress_epilogue
+                );
             }
             let _ = std::io::stdout().flush();
         }
@@ -250,8 +273,10 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File, decompress: bool) 
     dest.flush().chain_err(|| "flushing data to disk")?;
     dest.sync_all().chain_err(|| "syncing data to disk")?;
 
-    // log final newline
-    eprintln!();
+    // if we reported progress using CRs, log final newline
+    if stderr_is_tty {
+        eprintln!();
+    }
 
     Ok(())
 }
