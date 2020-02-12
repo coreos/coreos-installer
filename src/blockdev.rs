@@ -225,6 +225,22 @@ pub fn try_discard_all(file: &mut File) -> Result<bool> {
 ioctl_none!(blkrrpart, 0x12, 95);
 ioctl_write_ptr_bad!(blkdiscard, request_code_none!(0x12, 119), [u64; 2]);
 
+pub fn udev_settle_until_partition_appears(device: &str, label: &str) -> Result<()> {
+    eprint!("Waiting for partition label {} to come online", label);
+    for _ in (0..10).rev() {
+        udev_settle()?;
+
+        let dev = get_partition_with_label(device, label)?;
+        if dev.is_some() {
+            return Ok(());
+        }
+
+        sleep(Duration::from_millis(100));
+    }
+
+    return Err("timed out waiting for boot partition to show up".into());
+}
+
 pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
@@ -233,12 +249,6 @@ pub fn udev_settle() -> Result<()> {
             "udevd socket missing; are we running in a container without /run/udev mounted?".into(),
         );
     }
-
-    // There's a potential window after rereading the partition table where
-    // udevd hasn't yet received updates from the kernel, settle will return
-    // immediately, and lsblk won't pick up partition labels.  Try to sleep
-    // our way out of this.
-    sleep(Duration::from_millis(200));
 
     let status = Command::new("udevadm")
         .arg("settle")
