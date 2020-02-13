@@ -19,6 +19,7 @@ use std::path::Path;
 
 use crate::blockdev::*;
 use crate::errors::*;
+use crate::install::IgnitionHash;
 use crate::source::*;
 
 pub enum Config {
@@ -34,6 +35,7 @@ pub struct InstallConfig {
     pub device: String,
     pub location: Box<dyn ImageLocation>,
     pub ignition: Option<String>,
+    pub ignition_hash: Option<IgnitionHash>,
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
     pub insecure: bool,
@@ -119,6 +121,13 @@ pub fn parse_args() -> Result<Config> {
                         .alias("ignition")
                         .value_name("path")
                         .help("Embed an Ignition config from a file")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("ignition-hash")
+                        .long("ignition-hash")
+                        .value_name("digest")
+                        .help("Digest (type-value) of the Ignition config")
                         .takes_value(true),
                 )
                 .arg(
@@ -405,6 +414,11 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         device,
         location,
         ignition: matches.value_of("ignition-file").map(String::from),
+        ignition_hash: matches
+            .value_of("ignition-hash")
+            .map(IgnitionHash::try_parse)
+            .transpose()
+            .chain_err(|| "parsing Ignition config hash")?,
         platform: matches.value_of("platform").map(String::from),
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
         insecure: matches.is_present("insecure"),

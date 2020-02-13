@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::{bail, ChainedError};
+use error_chain::{bail, ensure, ChainedError};
 use nix::mount;
 use std::fs::{create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
@@ -24,6 +24,63 @@ use crate::cmdline::*;
 use crate::download::*;
 use crate::errors::*;
 use crate::source::*;
+
+/// Integrity verification hash for an Ignition config.
+#[derive(Debug)]
+pub enum IgnitionHash {
+    /// SHA-512 digest.
+    Sha512(Vec<u8>),
+}
+
+impl IgnitionHash {
+    /// Try to parse an hash-digest argument.
+    ///
+    /// This expects an input value following the `ignition.config.verification.hash`
+    /// spec, i.e. `<type>-<value>` format.
+    pub fn try_parse(input: &str) -> Result<Self> {
+        let parts: Vec<_> = input.splitn(2, '-').collect();
+        if parts.len() != 2 {
+            bail!("failed to detect hash-type and digest in '{}'", input);
+        }
+        let (hash_kind, hex_digest) = (parts[0], parts[1]);
+
+        let hash = match hash_kind {
+            "sha512" => {
+                let digest = hex::decode(hex_digest).chain_err(|| "decoding hex digest")?;
+                ensure!(
+                    digest.len().saturating_mul(8) == 512,
+                    "wrong digest length ({})",
+                    digest.len().saturating_mul(8)
+                );
+                IgnitionHash::Sha512(digest)
+            }
+            x => bail!("unknown hash type '{}'", x),
+        };
+
+        Ok(hash)
+    }
+
+    /// Digest and validate input data.
+    pub fn validate(&self, input: &mut impl Read) -> Result<()> {
+        use sha2::digest::Digest;
+
+        let (mut hasher, digest) = match self {
+            IgnitionHash::Sha512(val) => (sha2::Sha512::new(), val),
+        };
+        copy(input, &mut hasher).chain_err(|| "copying input to hasher")?;
+        let computed = hasher.result();
+
+        if computed.as_slice() != digest.as_slice() {
+            bail!(
+                "hash mismatch, computed '{}' but expected '{}'",
+                hex::encode(computed),
+                hex::encode(digest),
+            );
+        }
+
+        Ok(())
+    }
+}
 
 pub fn install(config: &InstallConfig) -> Result<()> {
     // set up image source
@@ -114,13 +171,15 @@ fn write_disk(
     if ignition.is_some() || config.firstboot_kargs.is_some() || config.platform.is_some() {
         let mount = mount_partition_by_label(&config.device, "boot", mount::MsFlags::empty())?;
         if let Some(ignition) = ignition {
-            write_ignition(mount.mountpoint(), ignition)?;
+            write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
+                .chain_err(|| "writing Ignition configuration")?;
         }
         if let Some(firstboot_kargs) = config.firstboot_kargs.as_ref() {
-            write_firstboot_kargs(mount.mountpoint(), firstboot_kargs)?;
+            write_firstboot_kargs(mount.mountpoint(), firstboot_kargs)
+                .chain_err(|| "writing firstboot kargs")?;
         }
         if let Some(platform) = config.platform.as_ref() {
-            write_platform(mount.mountpoint(), platform)?;
+            write_platform(mount.mountpoint(), platform).chain_err(|| "writing platform ID")?;
         }
     }
 
@@ -128,8 +187,22 @@ fn write_disk(
 }
 
 /// Write the Ignition config.
-fn write_ignition(mountpoint: &Path, mut config_in: File) -> Result<()> {
+fn write_ignition(
+    mountpoint: &Path,
+    digest_in: &Option<IgnitionHash>,
+    mut config_in: File,
+) -> Result<()> {
     eprintln!("Writing Ignition config");
+
+    // Verify configuration digest, if any.
+    if let Some(ref digest) = digest_in {
+        digest
+            .validate(&mut config_in)
+            .chain_err(|| "failed to validate Ignition configuration digest")?;
+        config_in
+            .seek(SeekFrom::Start(0))
+            .chain_err(|| "rewinding Ignition configuration file")?;
+    };
 
     // make parent directory
     let mut config_dest = mountpoint.to_path_buf();
@@ -248,4 +321,29 @@ fn clear_partition_table(dest: &mut File) -> Result<()> {
     reread_partition_table(dest)?;
     udev_settle()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ignition_hash_cli_parse() {
+        let err_cases = vec!["", "foo-bar", "-bar", "sha512", "sha512-", "sha512-00"];
+        for arg in err_cases {
+            IgnitionHash::try_parse(arg).expect_err(&format!("input: {}", arg));
+        }
+
+        let null_digest = "sha512-cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
+        IgnitionHash::try_parse(null_digest).unwrap();
+    }
+
+    #[test]
+    fn test_ignition_hash_validate() {
+        let input = vec![b'a', b'b', b'c'];
+        let hash_arg = "sha512-ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f";
+        let hasher = IgnitionHash::try_parse(&hash_arg).unwrap();
+        let mut rd = std::io::Cursor::new(input);
+        hasher.validate(&mut rd).unwrap();
+    }
 }
