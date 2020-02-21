@@ -29,20 +29,33 @@ use tempdir::TempDir;
 use crate::errors::*;
 
 pub fn mount_boot(device: &str) -> Result<Mount> {
-    let dev = get_partition_with_label(device, "boot")?
-        .chain_err(|| format!("couldn't find boot device for {}", device))?;
-    match dev.fstype {
+    // find the partition
+    let partitions = get_partitions(device)?;
+    let boot_partitions = partitions
+        .iter()
+        .filter(|d| d.label.as_ref().unwrap_or(&"".to_string()) == "boot")
+        .collect::<Vec<&BlkDev>>();
+    let dev = match boot_partitions.len() {
+        0 => bail!("couldn't find boot device for {}", device),
+        1 => boot_partitions[0],
+        _ => bail!("found multiple devices on {} with label \"boot\"", device),
+    };
+
+    // mount it
+    match &dev.fstype {
         Some(fstype) => Mount::try_mount(&dev.path, &fstype),
         None => Err(format!("couldn't get filesystem type of boot device for {}", device).into()),
     }
 }
 
+#[derive(Debug)]
 struct BlkDev {
     path: String,
+    label: Option<String>,
     fstype: Option<String>,
 }
 
-fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>> {
+fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
     // have lsblk enumerate partitions on the device
     let result = Command::new("lsblk")
         .arg("--pairs")
@@ -59,20 +72,10 @@ fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>>
     let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
 
     // walk each device in the output
-    let mut found: Option<BlkDev> = None;
+    let mut result: Vec<BlkDev> = Vec::new();
     for line in output.lines() {
         // parse key-value pairs
         let fields = split_lsblk_line(line);
-
-        // does the label match?
-        match fields.get("LABEL") {
-            None => continue,
-            Some(l) => {
-                if l != label {
-                    continue;
-                }
-            }
-        }
 
         // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH.
         // Assemble device path from dirname and NAME.
@@ -84,17 +87,18 @@ fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>>
             None => continue,
             Some(name) => path.push(name),
         }
-
-        // accept
-        if found.is_some() {
-            bail!("found multiple devices on {} with label: {}", device, label);
+        // Skip the device itself
+        if path == Path::new(device) {
+            continue;
         }
-        found = Some(BlkDev {
+
+        result.push(BlkDev {
             path: path.to_str().expect("couldn't round-trip path").to_string(),
+            label: fields.get("LABEL").map(|v| v.to_string()),
             fstype: fields.get("FSTYPE").map(|v| v.to_string()),
         });
     }
-    Ok(found)
+    Ok(result)
 }
 
 /// Parse key-value pairs from lsblk --pairs.
