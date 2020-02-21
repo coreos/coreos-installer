@@ -20,10 +20,15 @@ use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::time::Duration;
 
 use crate::cmdline::*;
 use crate::errors::*;
 
+/// Completion timeout for HTTP requests (4 hours).
+const HTTP_COMPLETION_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
+
+/// Default base URL to Fedora CoreOS streams metadata.
 const DEFAULT_STREAM_BASE_URL: &str = "https://builds.coreos.fedoraproject.org/streams/";
 
 pub trait ImageLocation: Display {
@@ -156,8 +161,7 @@ impl Display for UrlLocation {
 
 impl ImageLocation for UrlLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
-        let client = blocking::Client::new();
-
+        let client = new_http_client()?;
         // fetch signature
         let mut resp = client
             .get(self.sig_url.clone())
@@ -241,7 +245,7 @@ impl Display for StreamLocation {
 impl ImageLocation for StreamLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
         // fetch and parse stream metadata
-        let client = blocking::Client::new();
+        let client = new_http_client()?;
         let stream = fetch_stream(client, &self.stream_url)?;
 
         // descend it
@@ -286,7 +290,7 @@ pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
     }
 
     // fetch stream metadata
-    let client = blocking::Client::new();
+    let client = new_http_client()?;
     let stream_url = build_stream_url(&config.stream, config.stream_base_url.as_ref())?;
     let stream = fetch_stream(client, &stream_url)?;
 
@@ -358,6 +362,14 @@ fn fetch_stream(client: blocking::Client, url: &Url) -> Result<Stream> {
     Ok(stream)
 }
 
+/// Customize and build a new HTTP client.
+fn new_http_client() -> Result<blocking::Client> {
+    blocking::ClientBuilder::new()
+        .timeout(HTTP_COMPLETION_TIMEOUT)
+        .build()
+        .chain_err(|| "building HTTP client")
+}
+
 #[derive(Debug, Deserialize)]
 struct Stream {
     architectures: HashMap<String, Arch>,
@@ -377,4 +389,14 @@ struct Platform {
 struct Artifact {
     location: String,
     signature: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_http_client() {
+        let _ = new_http_client().unwrap();
+    }
 }
