@@ -29,8 +29,13 @@ use tempdir::TempDir;
 use crate::errors::*;
 
 pub fn mount_boot(device: &str) -> Result<Mount> {
-    // find the partition
+    // get partition list
     let partitions = get_partitions(device)?;
+    if partitions.is_empty() {
+        bail!("couldn't find any partitions on {}", device);
+    }
+
+    // find the boot partition
     let boot_partitions = partitions
         .iter()
         .filter(|d| d.label.as_ref().unwrap_or(&"".to_string()) == "boot")
