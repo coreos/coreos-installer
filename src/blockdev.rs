@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
-use tempdir::TempDir;
+use tempfile;
 
 use crate::errors::*;
 
@@ -116,8 +116,10 @@ pub struct Mount {
 
 impl Mount {
     fn try_mount(device: &str, fstype: &str) -> Result<Mount> {
-        let tempdir =
-            TempDir::new("coreos-installer").chain_err(|| "creating temporary directory")?;
+        let tempdir = tempfile::Builder::new()
+            .prefix("coreos-installer-")
+            .tempdir()
+            .chain_err(|| "creating temporary directory")?;
         // avoid auto-cleanup of tempdir, which could recursively remove
         // the partition contents if umount failed
         let mountpoint = tempdir.into_path();
