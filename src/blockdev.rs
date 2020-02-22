@@ -14,11 +14,14 @@
 
 use error_chain::bail;
 use nix::errno::Errno;
-use nix::{self, ioctl_none, ioctl_write_ptr_bad, mount, request_code_none};
+use nix::{self, ioctl_none, ioctl_read_bad, ioctl_write_ptr_bad, mount, request_code_none};
 use regex::Regex;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fs::{remove_dir, File};
 use std::io::{Seek, SeekFrom};
+use std::num::NonZeroU32;
+use std::os::raw::c_int;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -204,6 +207,21 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
     Ok(())
 }
 
+/// Get the logical sector size of a block device.
+pub fn get_sector_size(file: &mut File) -> Result<NonZeroU32> {
+    let fd = file.as_raw_fd();
+    let mut size: c_int = 0;
+    match unsafe { blksszget(fd, &mut size) } {
+        Ok(_) => {
+            let size_u32: u32 = size
+                .try_into()
+                .chain_err(|| format!("sector size {} doesn't fit in u32", size))?;
+            NonZeroU32::new(size_u32).ok_or_else(|| "found sector size of zero".into())
+        }
+        Err(e) => Err(Error::with_chain(e, "getting sector size")),
+    }
+}
+
 /// Try discarding all blocks from the underlying block device.
 /// Return true if successful, false if the underlying device doesn't
 /// support discard, or an error otherwise.
@@ -232,6 +250,7 @@ pub fn try_discard_all(file: &mut File) -> Result<bool> {
 
 // create unsafe ioctl wrappers
 ioctl_none!(blkrrpart, 0x12, 95);
+ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
 ioctl_write_ptr_bad!(blkdiscard, request_code_none!(0x12, 119), [u64; 2]);
 
 pub fn udev_settle() -> Result<()> {
@@ -257,6 +276,23 @@ pub fn udev_settle() -> Result<()> {
         bail!("udevadm settle failed");
     }
     Ok(())
+}
+
+/// Inspect a buffer from the start of a disk image and return its formatted
+/// sector size, if any can be determined.
+pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
+    let gpt_magic: &[u8; 8] = b"EFI PART";
+
+    if buf.len() >= 520 && buf[512..520] == gpt_magic[..] {
+        // GPT at offset 512
+        NonZeroU32::new(512)
+    } else if buf.len() >= 4104 && buf[4096..4104] == gpt_magic[..] {
+        // GPT at offset 4096
+        NonZeroU32::new(4096)
+    } else {
+        // Unknown
+        None
+    }
 }
 
 #[cfg(test)]

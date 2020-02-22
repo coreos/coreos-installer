@@ -19,11 +19,13 @@ use nix::unistd::isatty;
 use progress_streams::ProgressReader;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{copy, stderr, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use xz2::read::XzDecoder;
 
+use crate::blockdev::detect_formatted_sector_size;
 use crate::cmdline::*;
 use crate::errors::*;
 use crate::source::*;
@@ -141,7 +143,8 @@ fn write_image_and_sig(
         .chain_err(|| format!("opening {}", path.display()))?;
 
     // download and verify image
-    write_image(source, &mut dest, decompress)?;
+    // don't check sector size
+    write_image(source, &mut dest, decompress, None)?;
 
     // write signature, if relevant
     if !decompress && source.signature.is_some() {
@@ -160,7 +163,12 @@ fn write_image_and_sig(
 }
 
 /// Copy the image to disk and verify its signature.
-pub fn write_image(source: &mut ImageSource, dest: &mut File, decompress: bool) -> Result<()> {
+pub fn write_image(
+    source: &mut ImageSource,
+    dest: &mut File,
+    decompress: bool,
+    expected_sector_size: Option<NonZeroU32>,
+) -> Result<()> {
     // wrap source for GPG verification
     let mut verify_reader: Box<dyn Read> = {
         if let Some(signature) = source.signature.as_ref() {
@@ -239,15 +247,32 @@ pub fn write_image(source: &mut ImageSource, dest: &mut File, decompress: bool) 
         }
     };
 
-    // Cache the first MiB of input and write zeroes instead.  This ensures
-    // that the disk image can't be used accidentally before its GPG signature
-    // is verified.
+    // Read the first MiB of input and, if requested, check it against the
+    // image's formatted sector size.
     let mut first_mb: [u8; 1024 * 1024] = [0; 1024 * 1024];
-    dest.write_all(&first_mb)
-        .chain_err(|| "clearing first MiB of disk")?;
     decompress_reader
         .read_exact(&mut first_mb)
         .chain_err(|| "decoding first MiB of image")?;
+    // Were we asked to check sector size?
+    if let Some(expected) = expected_sector_size {
+        // Can we derive one from source data?
+        if let Some(actual) = detect_formatted_sector_size(&first_mb) {
+            // Do they match?
+            if expected != actual {
+                bail!(
+                    "source has sector size {} but destination has sector size {}",
+                    actual.get(),
+                    expected.get()
+                );
+            }
+        }
+    }
+
+    // Cache the first MiB and write zeroes to dest instead.  This ensures
+    // that the disk image can't be used accidentally before its GPG signature
+    // is verified.
+    dest.write_all(&first_mb)
+        .chain_err(|| "clearing first MiB of disk")?;
 
     // do the rest of the copy
     // This physically writes any runs of zeroes, rather than sparsifying,
