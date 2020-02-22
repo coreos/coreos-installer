@@ -78,7 +78,11 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         eprint!("{}", ChainedError::display_chain(&err));
 
         // clean up
-        clear_partition_table(&mut dest)?;
+        if config.preserve_on_error {
+            eprintln!("Preserving partition table as requested");
+        } else {
+            clear_partition_table(&mut dest)?;
+        }
 
         // return a generic error so our exit status is right
         bail!("install failed");
