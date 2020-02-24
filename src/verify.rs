@@ -18,7 +18,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Stdio};
 use std::result;
-use tempdir::TempDir;
+use tempfile::{self, TempDir};
 
 use crate::errors::*;
 
@@ -31,8 +31,10 @@ pub struct GpgReader<R: Read> {
 impl<R: Read> GpgReader<R> {
     pub fn new(source: R, signature: &[u8]) -> Result<Self> {
         // create GPG home directory with restrictive mode
-        let gpgdir =
-            TempDir::new("coreos-installer").chain_err(|| "creating temporary directory")?;
+        let gpgdir = tempfile::Builder::new()
+            .prefix("coreos-installer-")
+            .tempdir()
+            .chain_err(|| "creating temporary directory")?;
         let meta =
             metadata(gpgdir.path()).chain_err(|| "getting metadata for temporary directory")?;
         let mut permissions = meta.permissions();
