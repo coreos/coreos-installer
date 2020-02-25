@@ -97,10 +97,6 @@ fn write_disk(
     dest: &mut File,
     ignition: Option<File>,
 ) -> Result<()> {
-    // Try to discard the entire device as a courtesy to the SSD wear
-    // leveler or LVM thin pool.
-    try_discard_all(dest)?;
-
     // Get sector size of destination, for comparing with image
     let sector_size = get_sector_size(dest)?;
 
@@ -235,13 +231,6 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 /// Clear the partition table.  For use after a failure.
 fn clear_partition_table(dest: &mut File) -> Result<()> {
     eprintln!("Clearing partition table");
-    // Try to discard the entire device as a courtesy to the SSD wear
-    // leveler or LVM thin pool.  Report errors and continue.
-    if let Err(e) = try_discard_all(dest) {
-        eprint!("{}", ChainedError::display_chain(&e));
-    }
-    // Discard might fail and doesn't imply zeroing, so manually clear the
-    // first MiB.
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     let zeroes: [u8; 1024 * 1024] = [0; 1024 * 1024];
