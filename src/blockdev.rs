@@ -14,11 +14,14 @@
 
 use error_chain::bail;
 use nix::errno::Errno;
-use nix::{self, ioctl_none, ioctl_write_ptr_bad, mount, request_code_none};
+use nix::{self, ioctl_none, ioctl_read_bad, ioctl_write_ptr_bad, mount, request_code_none};
 use regex::Regex;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fs::{remove_dir, File};
 use std::io::{Seek, SeekFrom};
+use std::num::NonZeroU32;
+use std::os::raw::c_int;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -29,20 +32,38 @@ use tempfile;
 use crate::errors::*;
 
 pub fn mount_boot(device: &str) -> Result<Mount> {
-    let dev = get_partition_with_label(device, "boot")?
-        .chain_err(|| format!("couldn't find boot device for {}", device))?;
-    match dev.fstype {
+    // get partition list
+    let partitions = get_partitions(device)?;
+    if partitions.is_empty() {
+        bail!("couldn't find any partitions on {}", device);
+    }
+
+    // find the boot partition
+    let boot_partitions = partitions
+        .iter()
+        .filter(|d| d.label.as_ref().unwrap_or(&"".to_string()) == "boot")
+        .collect::<Vec<&BlkDev>>();
+    let dev = match boot_partitions.len() {
+        0 => bail!("couldn't find boot device for {}", device),
+        1 => boot_partitions[0],
+        _ => bail!("found multiple devices on {} with label \"boot\"", device),
+    };
+
+    // mount it
+    match &dev.fstype {
         Some(fstype) => Mount::try_mount(&dev.path, &fstype),
         None => Err(format!("couldn't get filesystem type of boot device for {}", device).into()),
     }
 }
 
+#[derive(Debug)]
 struct BlkDev {
     path: String,
+    label: Option<String>,
     fstype: Option<String>,
 }
 
-fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>> {
+fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
     // have lsblk enumerate partitions on the device
     let result = Command::new("lsblk")
         .arg("--pairs")
@@ -59,20 +80,10 @@ fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>>
     let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
 
     // walk each device in the output
-    let mut found: Option<BlkDev> = None;
+    let mut result: Vec<BlkDev> = Vec::new();
     for line in output.lines() {
         // parse key-value pairs
         let fields = split_lsblk_line(line);
-
-        // does the label match?
-        match fields.get("LABEL") {
-            None => continue,
-            Some(l) => {
-                if l != label {
-                    continue;
-                }
-            }
-        }
 
         // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH.
         // Assemble device path from dirname and NAME.
@@ -84,17 +95,18 @@ fn get_partition_with_label(device: &str, label: &str) -> Result<Option<BlkDev>>
             None => continue,
             Some(name) => path.push(name),
         }
-
-        // accept
-        if found.is_some() {
-            bail!("found multiple devices on {} with label: {}", device, label);
+        // Skip the device itself
+        if path == Path::new(device) {
+            continue;
         }
-        found = Some(BlkDev {
+
+        result.push(BlkDev {
             path: path.to_str().expect("couldn't round-trip path").to_string(),
+            label: fields.get("LABEL").map(|v| v.to_string()),
             fstype: fields.get("FSTYPE").map(|v| v.to_string()),
         });
     }
-    Ok(found)
+    Ok(result)
 }
 
 /// Parse key-value pairs from lsblk --pairs.
@@ -197,6 +209,21 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
     Ok(())
 }
 
+/// Get the logical sector size of a block device.
+pub fn get_sector_size(file: &mut File) -> Result<NonZeroU32> {
+    let fd = file.as_raw_fd();
+    let mut size: c_int = 0;
+    match unsafe { blksszget(fd, &mut size) } {
+        Ok(_) => {
+            let size_u32: u32 = size
+                .try_into()
+                .chain_err(|| format!("sector size {} doesn't fit in u32", size))?;
+            NonZeroU32::new(size_u32).ok_or_else(|| "found sector size of zero".into())
+        }
+        Err(e) => Err(Error::with_chain(e, "getting sector size")),
+    }
+}
+
 /// Try discarding all blocks from the underlying block device.
 /// Return true if successful, false if the underlying device doesn't
 /// support discard, or an error otherwise.
@@ -225,6 +252,7 @@ pub fn try_discard_all(file: &mut File) -> Result<bool> {
 
 // create unsafe ioctl wrappers
 ioctl_none!(blkrrpart, 0x12, 95);
+ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
 ioctl_write_ptr_bad!(blkdiscard, request_code_none!(0x12, 119), [u64; 2]);
 
 pub fn udev_settle() -> Result<()> {
@@ -252,10 +280,29 @@ pub fn udev_settle() -> Result<()> {
     Ok(())
 }
 
+/// Inspect a buffer from the start of a disk image and return its formatted
+/// sector size, if any can be determined.
+pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
+    let gpt_magic: &[u8; 8] = b"EFI PART";
+
+    if buf.len() >= 520 && buf[512..520] == gpt_magic[..] {
+        // GPT at offset 512
+        NonZeroU32::new(512)
+    } else if buf.len() >= 4104 && buf[4096..4104] == gpt_magic[..] {
+        // GPT at offset 4096
+        NonZeroU32::new(4096)
+    } else {
+        // Unknown
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use maplit::hashmap;
+    use std::io::Read;
+    use xz2::read::XzDecoder;
 
     #[test]
     fn lsblk_split() {
@@ -290,5 +337,59 @@ mod tests {
                 String::from("FSTYPE") => String::from("ext4"),
             }
         );
+    }
+
+    #[test]
+    fn disk_sector_size_reader() {
+        struct Test {
+            name: &'static str,
+            data: &'static [u8],
+            compressed: bool,
+            result: Option<NonZeroU32>,
+        };
+        let tests = vec![
+            Test {
+                name: "zero-length",
+                data: b"",
+                compressed: false,
+                result: None,
+            },
+            Test {
+                name: "empty-disk",
+                data: include_bytes!("../fixtures/empty.xz"),
+                compressed: true,
+                result: None,
+            },
+            Test {
+                name: "gpt-512",
+                data: include_bytes!("../fixtures/gpt-512.xz"),
+                compressed: true,
+                result: NonZeroU32::new(512),
+            },
+            Test {
+                name: "gpt-4096",
+                data: include_bytes!("../fixtures/gpt-4096.xz"),
+                compressed: true,
+                result: NonZeroU32::new(4096),
+            },
+        ];
+
+        for test in tests {
+            let data = if test.compressed {
+                let mut decoder = XzDecoder::new(test.data);
+                let mut data: Vec<u8> = Vec::new();
+                decoder.read_to_end(&mut data).expect("decompress failed");
+                data
+            } else {
+                test.data.to_vec()
+            };
+            let result = detect_formatted_sector_size(&data);
+            if result != test.result {
+                panic!(
+                    "\"{}\" returned incorrect result: expected {:?}, found {:?}",
+                    test.name, test.result, result
+                );
+            }
+        }
     }
 }

@@ -101,8 +101,11 @@ fn write_disk(
     // leveler or LVM thin pool.
     try_discard_all(dest)?;
 
+    // Get sector size of destination, for comparing with image
+    let sector_size = get_sector_size(dest)?;
+
     // copy the image
-    write_image(source, dest, true)?;
+    write_image(source, dest, true, Some(sector_size))?;
     reread_partition_table(dest)?;
     udev_settle()?;
 
