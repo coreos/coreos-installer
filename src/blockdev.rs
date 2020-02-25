@@ -299,6 +299,8 @@ pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
 mod tests {
     use super::*;
     use maplit::hashmap;
+    use std::io::Read;
+    use xz2::read::XzDecoder;
 
     #[test]
     fn lsblk_split() {
@@ -333,5 +335,59 @@ mod tests {
                 String::from("FSTYPE") => String::from("ext4"),
             }
         );
+    }
+
+    #[test]
+    fn disk_sector_size_reader() {
+        struct Test {
+            name: &'static str,
+            data: &'static [u8],
+            compressed: bool,
+            result: Option<NonZeroU32>,
+        };
+        let tests = vec![
+            Test {
+                name: "zero-length",
+                data: b"",
+                compressed: false,
+                result: None,
+            },
+            Test {
+                name: "empty-disk",
+                data: include_bytes!("../fixtures/empty.xz"),
+                compressed: true,
+                result: None,
+            },
+            Test {
+                name: "gpt-512",
+                data: include_bytes!("../fixtures/gpt-512.xz"),
+                compressed: true,
+                result: NonZeroU32::new(512),
+            },
+            Test {
+                name: "gpt-4096",
+                data: include_bytes!("../fixtures/gpt-4096.xz"),
+                compressed: true,
+                result: NonZeroU32::new(4096),
+            },
+        ];
+
+        for test in tests {
+            let data = if test.compressed {
+                let mut decoder = XzDecoder::new(test.data);
+                let mut data: Vec<u8> = Vec::new();
+                decoder.read_to_end(&mut data).expect("decompress failed");
+                data
+            } else {
+                test.data.to_vec()
+            };
+            let result = detect_formatted_sector_size(&data);
+            if result != test.result {
+                panic!(
+                    "\"{}\" returned incorrect result: expected {:?}, found {:?}",
+                    test.name, test.result, result
+                );
+            }
+        }
     }
 }
