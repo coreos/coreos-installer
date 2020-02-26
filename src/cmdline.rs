@@ -109,11 +109,13 @@ pub fn parse_args() -> Result<Config> {
                 )
                 // postprocessing options
                 .arg(
-                    Arg::with_name("ignition-path")
+                    Arg::with_name("ignition-file")
                         .short("i")
-                        .long("ignition")
+                        .long("ignition-file")
+                        // deprecated long name from <= 0.1.2
+                        .alias("ignition")
                         .value_name("path")
-                        .help("Embed an Ignition config")
+                        .help("Embed an Ignition config from a file")
                         .takes_value(true),
                 )
                 .arg(
@@ -375,7 +377,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             .map(String::from)
             .expect("device missing"),
         location,
-        ignition: matches.value_of("ignition-path").map(String::from),
+        ignition: matches.value_of("ignition-file").map(String::from),
         platform: matches.value_of("platform").map(String::from),
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
         insecure: matches.is_present("insecure"),
