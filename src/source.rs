@@ -147,6 +147,29 @@ impl UrlLocation {
             artifact_type: artifact_type.to_string(),
         }
     }
+
+    /// Fetch signature content from URL.
+    fn fetch_signature(sig_url: &Url) -> Result<Vec<u8>> {
+        let client = new_http_client()?;
+        let mut resp = client
+            .get(sig_url.clone())
+            .send()
+            .chain_err(|| "sending signature request")?;
+        match resp.status() {
+            StatusCode::OK => {
+                let mut sig_vec = Vec::new();
+                resp.read_to_end(&mut sig_vec)
+                    .chain_err(|| "reading signature URL")?;
+                Ok(sig_vec)
+            }
+            _ => {
+                bail!(
+                    "error response from signature URL: {}",
+                    resp.error_for_status().unwrap_err()
+                );
+            }
+        }
+    }
 }
 
 impl Display for UrlLocation {
@@ -161,26 +184,12 @@ impl Display for UrlLocation {
 
 impl ImageLocation for UrlLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
-        let client = new_http_client()?;
-        // fetch signature
-        let mut resp = client
-            .get(self.sig_url.clone())
-            .send()
-            .chain_err(|| "fetching signature URL")?;
-        let signature = match resp.status() {
-            StatusCode::OK => {
-                let mut sig_vec = Vec::new();
-                resp.read_to_end(&mut sig_vec)
-                    .chain_err(|| "reading signature URL")?;
-                Some(sig_vec)
-            }
-            s => {
-                eprintln!("Signature fetch failed: {}", s);
-                None
-            }
-        };
+        let signature = Self::fetch_signature(&self.sig_url)
+            .map_err(|e| eprintln!("Failed to fetch signature: {}", e))
+            .ok();
 
         // start fetch, get length
+        let client = new_http_client()?;
         let resp = client
             .get(self.image_url.clone())
             .send()
