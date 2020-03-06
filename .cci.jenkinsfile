@@ -1,0 +1,15 @@
+// Documentation: https://github.com/coreos/coreos-ci/blob/master/README-upstream-ci.md
+
+cosaPod(buildroot: true) {
+    checkout scm
+
+    fcosBuild(make: true)
+
+    stage("Build metal+live") {
+        shwrap("cd /srv/fcos && cosa build metal")
+        shwrap("cd /srv/fcos && cosa buildextend-live")
+    }
+    stage("Test ISO") {
+        shwrap("cd /srv/fcos && kola testiso --cosa-build builds/latest/x86_64/meta.json -S")
+    }
+}
