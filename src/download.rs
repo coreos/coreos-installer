@@ -147,7 +147,7 @@ fn write_image_and_sig(
     write_image(source, &mut dest, decompress, None)?;
 
     // write signature, if relevant
-    if !decompress && source.signature.is_some() {
+    if let (false, Some(signature)) = (decompress, source.signature.as_ref()) {
         let mut sig_dest = OpenOptions::new()
             .write(true)
             .create(true)
@@ -155,7 +155,7 @@ fn write_image_and_sig(
             .open(sig_path)
             .chain_err(|| format!("opening {}", sig_path.display()))?;
         sig_dest
-            .write_all(source.signature.as_ref().unwrap())
+            .write_all(signature)
             .chain_err(|| "writing signature data")?;
     }
 
