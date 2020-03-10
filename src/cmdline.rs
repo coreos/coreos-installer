@@ -35,6 +35,7 @@ pub struct InstallConfig {
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
     pub insecure: bool,
+    pub preserve_on_error: bool,
 }
 
 pub struct DownloadConfig {
@@ -153,6 +154,11 @@ pub fn parse_args() -> Result<Config> {
                         .help("Target CPU architecture")
                         .default_value(uname.machine())
                         .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("preserve-on-error")
+                        .long("preserve-on-error")
+                        .help("Don't clear partition table on error"),
                 )
                 // positional args
                 .arg(
@@ -381,6 +387,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         platform: matches.value_of("platform").map(String::from),
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
         insecure: matches.is_present("insecure"),
+        preserve_on_error: matches.is_present("preserve-on-error"),
     }))
 }
 
