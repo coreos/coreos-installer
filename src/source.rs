@@ -154,21 +154,14 @@ impl UrlLocation {
         let mut resp = client
             .get(sig_url.clone())
             .send()
-            .chain_err(|| "sending signature request")?;
-        match resp.status() {
-            StatusCode::OK => {
-                let mut sig_vec = Vec::new();
-                resp.read_to_end(&mut sig_vec)
-                    .chain_err(|| "reading signature URL")?;
-                Ok(sig_vec)
-            }
-            _ => {
-                bail!(
-                    "error response from signature URL: {}",
-                    resp.error_for_status().unwrap_err()
-                );
-            }
-        }
+            .chain_err(|| "sending signature request")?
+            .error_for_status()
+            .chain_err(|| "fetching signature URL")?;
+
+        let mut sig_bytes = Vec::new();
+        resp.read_to_end(&mut sig_bytes)
+            .chain_err(|| "reading signature content")?;
+        Ok(sig_bytes)
     }
 }
 
