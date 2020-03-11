@@ -10,6 +10,9 @@ PERSIST_KERNEL_NET_PARAMS=("ipv6.disable" "net.ifnames" "net.naming-scheme")
 # List from https://www.mankier.com/7/dracut.cmdline#Description-Network
 PERSIST_DRACUT_NET_PARAMS=("ip" "ifname" "rd.route" "bootdev" "BOOTIF" "rd.bootif" "nameserver" "rd.peerdns" "biosdevname" "vlan" "bond" "team" "bridge" "rd.net.timeout.carrier" "coreos.no_persist_ip")
 
+# IBM S390X params to persist
+PERSIST_S390X_PARAMS=("rd.dasd" "rd.zfcp" "rd.znet" "zfcp.allow_lun_scan" "cio_ignore")
+
 args=("install")
 
 cmdline=( $(</proc/cmdline) )
@@ -61,8 +64,11 @@ if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
     args+=("--ignition-url" "${ignition_url}" "--insecure-ignition")
 fi
 
-# First-boot kernel arguments. Filter out any args that aren't in our
-# list of networking arguments to forward and store them in $firstboot_args
+# Forward whitelisted kernel arguments to the installed system. We have
+# separate sets of whitelists for first-boot kargs and persistent kargs.
+# Only pass --firstboot-kargs if additional networking options have been
+# specified, since the default in coreos-assembler specifies
+# `rd.neednet=1 ip=dhcp` when no options are persisted.
 firstboot_args=""
 for item in "${cmdline[@]}"; do
     for param in "${PERSIST_KERNEL_NET_PARAMS[@]}" "${PERSIST_DRACUT_NET_PARAMS[@]}"; do
@@ -70,10 +76,12 @@ for item in "${cmdline[@]}"; do
             firstboot_args+="${item} "
         fi
     done
+    for param in "${PERSIST_S390X_PARAMS[@]}"; do
+        if [[ $item =~ ^$param(=.*)?$ ]]; then
+            args+=("--append-karg" "${item}")
+        fi
+    done
 done
-# Only pass firstboot-kargs if additional networking options have been
-# specified, since the default in ignition-dracut specifies
-# `rd.neednet=1 ip=dhcp` when no options are persisted
 if [ -n "${firstboot_args}" ]; then
     args+=("--firstboot-args" "rd.neednet=1 ${firstboot_args}")
 fi
@@ -94,4 +102,3 @@ udevadm settle
 # Install
 echo "coreos-installer ${args[@]}"
 coreos-installer "${args[@]}"
-

@@ -569,7 +569,7 @@ mod ioctl {
     ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
 }
 
-fn udev_settle() -> Result<()> {
+pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
     if !Path::new("/run/udev/control").exists() {
