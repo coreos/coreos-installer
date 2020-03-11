@@ -63,7 +63,7 @@ fi
 
 # Preserve s390x-specific user-provided parameters for zipl
 local S390X_ALL_ARGS=
-declare -a DRACUT_S390X_ARGS=("rd.dasd=" "rd.zfcp=" "rd.znet=" "zfcp.allow_lun_scan=" "cio_ignore=")
+declare -a DRACUT_S390X_ARGS=("rd.dasd=" "rd.zfcp=" "rd.znet=" "zfcp.allow_lun_scan=" "cio_ignore=" "rd.zdev=")
 for S390X_ARG in "${DRACUT_S390X_ARGS[@]}"
 do
     for S390X_OPT in $(getargs $S390X_ARG); do

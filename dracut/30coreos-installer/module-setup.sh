@@ -37,15 +37,20 @@ install() {
 
     if [ "$arch" = "s390x" ]; then
         inst_multiple -o /usr/bin/wc
+        inst_multiple -o /usr/bin/getopt
         inst_multiple -o /usr/sbin/zipl
         inst_multiple -o /usr/sbin/chreipl
         inst_multiple -o /usr/sbin/chzdev
         inst_multiple -o /usr/sbin/lszdev
+        inst_multiple -o /usr/sbin/lszfcp
         inst_multiple -o /usr/sbin/dasdfmt
         inst_multiple -o /usr/sbin/fdasd
         inst_multiple -o /usr/sbin/fdisk
         inst_multiple -o /usr/sbin/sfdisk
         inst_multiple -o /lib/s390-tools/stage3.bin
+        inst_multiple -o /lib/s390-tools/zipl_helper.device-mapper
+        inst_multiple -o /lib/s390-tools/chreipl_helper.device-mapper
+
     fi
 
     inst_simple /usr/libexec/coreos-installer

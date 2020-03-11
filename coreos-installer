@@ -300,6 +300,7 @@ tmpfs_mountpoint="/mnt/dl"
 imagefile="$tmpfs_mountpoint/imagefile"
 imagefile_compressed="$tmpfs_mountpoint/imagefile.compressed"
 imagefile_compressed_sig="$tmpfs_mountpoint/imagefile.compressed.sig"
+has_mpath=
 
 ############################################################
 # Helper to mount the boot partition from the device
@@ -724,6 +725,7 @@ write_image_to_dasd() {
     # low-level format the ECKD DASD using dasdfmt, if needed
     DEST_DEV_BUS=$(lszdev --by-node ${DEST_DEV} | tail -n 1  | awk '{print $2}')
     if [ "$(< /sys/bus/ccw/devices/${DEST_DEV_BUS}/status)" = "unformatted" ]; then
+        log "Formatting DASD device ${DEST_DEV_BUS}"
         dasdfmt --blocksize 4096 --disk_layout cdl --mode full -ypv "${DEST_DEV}"
     fi
     block_per_tracks=$(fdasd -p ${DEST_DEV} | grep blocks\ per\ track | awk '{print $5}')
@@ -765,51 +767,17 @@ EOF
 }
 
 #########################################################
-#Handle s390x zFCP SCSI devices
-#########################################################
-write_image_to_zfcp_disk() {
-    log "Extracting disk image"
-    mount_tmpfs $(( $($DECOMPRESSION_TOOL ${imagefile_compressed} | wc --bytes) / 1024 / 1024 + ${TMPFS_MBSIZE} + 100 ))
-    $DECOMPRESSION_TOOL ${imagefile_compressed} > ${imagefile}
-
-    # we have to store the strings to a file because any change in this
-    # while-do block would not take effect outside
-    (while IFS='' read -r line || [ -n "$line" ]
-    do
-        if [[ $line =~ "start=" ]]
-        then
-            # we save the start= and size= here, then dd the partitions later
-            printf "%s:%s\n" \
-                "$(echo $line | cut -d: -f 2 | cut -d, -f 1 | tr -d ' ')" \
-                "$(echo $line | cut -d: -f 2 | cut -d, -f 2 | tr -d ' ')" \
-                >> /tmp/sfdisk_info
-        elif ! [[ $line =~ "label:" || $line =~ "label-id:" || $line =~ "unit:" ]]
-        then
-            continue
-        fi
-        echo $line
-    done <<< $(sfdisk -d ${imagefile})
-    ) | sfdisk "${DEST_DEV}"
-
-    while IFS='' read -r line || [ -n "$line" ]
-    do
-        eval ${line%%:*} ${line##*:}
-        dd if=${imagefile} bs=512 iflag=fullblock \
-            of="${DEST_DEV}" status=none skip=$start seek=$start count=$size
-        if [[ $? -ne 0 ]]; then
-            log "failed to write image to zFCP SCSI disk"
-            exit 1
-        fi
-    done < /tmp/sfdisk_info
-}
-#########################################################
 #And Write the image to disk
 #########################################################
 write_image_to_disk() {
     log "Writing disk image"
 
     set -o pipefail
-    if [[ "${arch}" =~ (aarch64|ppc64le|x86_64) ]]
+    dev_driver="$(udevadm info -a -n ${DEST_DEV} | grep DRIVERS)"
+    # On s390x, there are ECKD DASD, FBA DASD (virtual), single- and multi-path zFCP SCSIs.
+    # We do not FBA DASD as of today. This if block would catch both zFCP SCSI cases.
+    if [[ "${arch}" =~ (aarch64|ppc64le|x86_64) || \
+         ( "${arch}" = s390x && ! "${dev_driver}" =~ ^.*dasd-.*$ ) ]]
     then
         $DECOMPRESSION_TOOL ${imagefile_compressed} |\
         dd bs=1M iflag=fullblock oflag=direct of="${DEST_DEV}" status=none
@@ -818,13 +786,9 @@ write_image_to_disk() {
             log "failed to write image to disk"
             exit 1
         fi
-    elif [[ "$arch" == "s390x" ]]
-    then
-        if [[ "${DEST_DEV}" =~ "dasd" ]]; then
-            write_image_to_dasd
-        else
-            write_image_to_zfcp_disk
-        fi
+    # match ECKD DASD only
+    elif [[ "${arch}" = s390x && "${dev_driver}" =~ ^.*dasd-eckd.*$ ]]; then
+        write_image_to_dasd
     else
         log "Unsupported architecture"
         exit 1
@@ -833,12 +797,49 @@ write_image_to_disk() {
 
     for try in 0 1 2 4; do
         sleep "$try"  # Give the device a bit more time on each attempt.
-        blockdev --rereadpt "${DEST_DEV}" && unset try && break
+        if [[ -z "$has_mpath" ]]; then
+            blockdev --rereadpt "${DEST_DEV}" && unset try && break
+        else
+            kpartx -a ${DEST_DEV} && unset try && break
+        fi
     done
 
     log "Waiting for udev"
     udevadm settle
 }
+
+check_mpath() {
+    zfcp_dev=()
+    num_zfcp=0
+    if [[ "${arch}" == s390x ]]; then
+        for opt in $(</proc/cmdline); do
+            case "$opt" in
+                rd.zfcp=*)
+                    ((num_zfcp++))
+                    for d in $(tr ',' ' ' <<< ${opt#*=}); do
+                        zfcp_dev+=($d)
+                    done
+                    ;;
+            esac
+        done
+        # return if only one rd.zfcp= was provided, aka single path
+        if [[ $num_zfcp -lt 2 ]]; then
+            return
+        fi
+    fi
+
+    if [[ "${DEST_DEV}" =~ ^mpath.*$ ]]
+    then
+        DEST_DEV="mapper/${DEST_DEV}"
+    elif [[ "${arch}" = s390x ]] && [[ "${DEST_DEV}" =~ ^auto$ ]]
+    then
+        scsi_bus="$(lszfcp -D -b ${zfcp_dev[0]} -p ${zfcp_dev[1]} -l ${zfcp_dev[2]} | awk '{print $2}')"
+        wwn="$(/usr/lib/udev/scsi_id --whitelisted /dev/"$(ls /sys/class/scsi_device/"$scsi_bus"/device/block/)")"
+        DEST_DEV="disk/by-id/dm-uuid-mpath-${wwn}"
+    fi
+    has_mpath=1
+}
+
 
 parse_args() {
     USAGE="Usage: $0 [options]
@@ -903,6 +904,8 @@ main() {
     # set a global environment variable that can be used
     # by a few of the functions below.
     DEST_DEV=$(cat /tmp/selected_dev)
+    # check if we are doing multipath disks
+    check_mpath
     DEST_DEV=/dev/$DEST_DEV
 
     #import_gpg_key
