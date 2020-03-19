@@ -210,7 +210,7 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
 }
 
 /// Get the logical sector size of a block device.
-pub fn get_sector_size(file: &mut File) -> Result<NonZeroU32> {
+pub fn get_sector_size(file: &File) -> Result<NonZeroU32> {
     let fd = file.as_raw_fd();
     let mut size: c_int = 0;
     match unsafe { ioctl::blksszget(fd, &mut size) } {
