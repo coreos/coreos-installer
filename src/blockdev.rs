@@ -30,28 +30,36 @@ use tempfile;
 
 use crate::errors::*;
 
-pub fn mount_boot(device: &str) -> Result<Mount> {
+pub fn mount_partition_by_label(device: &str, label: &str, flags: mount::MsFlags) -> Result<Mount> {
     // get partition list
     let partitions = get_partitions(device)?;
     if partitions.is_empty() {
         bail!("couldn't find any partitions on {}", device);
     }
 
-    // find the boot partition
-    let boot_partitions = partitions
+    // find the partition with the matching label
+    let matching_partitions = partitions
         .iter()
-        .filter(|d| d.label.as_ref().unwrap_or(&"".to_string()) == "boot")
+        .filter(|d| d.label.as_ref().unwrap_or(&"".to_string()) == label)
         .collect::<Vec<&BlkDev>>();
-    let dev = match boot_partitions.len() {
-        0 => bail!("couldn't find boot device for {}", device),
-        1 => boot_partitions[0],
-        _ => bail!("found multiple devices on {} with label \"boot\"", device),
+    let dev = match matching_partitions.len() {
+        0 => bail!("couldn't find {} device for {}", label, device),
+        1 => matching_partitions[0],
+        _ => bail!(
+            "found multiple devices on {} with label \"{}\"",
+            device,
+            label
+        ),
     };
 
     // mount it
     match &dev.fstype {
-        Some(fstype) => Mount::try_mount(&dev.path, &fstype),
-        None => Err(format!("couldn't get filesystem type of boot device for {}", device).into()),
+        Some(fstype) => Mount::try_mount(&dev.path, &fstype, flags),
+        None => Err(format!(
+            "couldn't get filesystem type of {} device for {}",
+            label, device
+        )
+        .into()),
     }
 }
 
@@ -126,7 +134,7 @@ pub struct Mount {
 }
 
 impl Mount {
-    fn try_mount(device: &str, fstype: &str) -> Result<Mount> {
+    fn try_mount(device: &str, fstype: &str, flags: mount::MsFlags) -> Result<Mount> {
         let tempdir = tempfile::Builder::new()
             .prefix("coreos-installer-")
             .tempdir()
@@ -135,14 +143,8 @@ impl Mount {
         // the partition contents if umount failed
         let mountpoint = tempdir.into_path();
 
-        mount::mount::<str, Path, str, str>(
-            Some(device),
-            &mountpoint,
-            Some(fstype),
-            mount::MsFlags::empty(),
-            None,
-        )
-        .chain_err(|| format!("mounting device {} on {}", device, mountpoint.display()))?;
+        mount::mount::<str, Path, str, str>(Some(device), &mountpoint, Some(fstype), flags, None)
+            .chain_err(|| format!("mounting device {} on {}", device, mountpoint.display()))?;
 
         Ok(Mount {
             device: device.to_string(),

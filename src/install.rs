@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use error_chain::{bail, ChainedError};
+use nix::mount;
 use std::fs::{create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
@@ -111,7 +112,7 @@ fn write_disk(
 
     // postprocess
     if ignition.is_some() || config.firstboot_kargs.is_some() || config.platform.is_some() {
-        let mount = mount_boot(&config.device)?;
+        let mount = mount_partition_by_label(&config.device, "boot", mount::MsFlags::empty())?;
         if let Some(ignition) = ignition {
             write_ignition(mount.mountpoint(), ignition)?;
         }
