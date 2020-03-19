@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use error_chain::bail;
-use nix::errno::Errno;
-use nix::{self, ioctl_none, ioctl_read_bad, mount, request_code_none};
+use nix::{errno::Errno, mount};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -186,7 +185,7 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
     // Reread sometimes fails inexplicably.  Retry several times before
     // giving up.
     for retries in (0..20).rev() {
-        let result = unsafe { blkrrpart(fd) };
+        let result = unsafe { ioctl::blkrrpart(fd) };
         match result {
             Ok(_) => break,
             Err(err) => {
@@ -214,7 +213,7 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
 pub fn get_sector_size(file: &mut File) -> Result<NonZeroU32> {
     let fd = file.as_raw_fd();
     let mut size: c_int = 0;
-    match unsafe { blksszget(fd, &mut size) } {
+    match unsafe { ioctl::blksszget(fd, &mut size) } {
         Ok(_) => {
             let size_u32: u32 = size
                 .try_into()
@@ -226,8 +225,13 @@ pub fn get_sector_size(file: &mut File) -> Result<NonZeroU32> {
 }
 
 // create unsafe ioctl wrappers
-ioctl_none!(blkrrpart, 0x12, 95);
-ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+#[allow(clippy::missing_safety_doc)]
+mod ioctl {
+    use super::c_int;
+    use nix::{ioctl_none, ioctl_read_bad, request_code_none};
+    ioctl_none!(blkrrpart, 0x12, 95);
+    ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+}
 
 pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
