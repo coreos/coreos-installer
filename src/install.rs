@@ -107,10 +107,10 @@ fn write_disk(
     // copy the image
     write_image(source, dest, true, Some(sector_size))?;
     reread_partition_table(dest)?;
-    udev_settle()?;
 
     // postprocess
     if ignition.is_some() || config.firstboot_kargs.is_some() || config.platform.is_some() {
+        udev_settle_until_partition_appears(&config.device, "boot")?;
         let mount = mount_boot(&config.device)?;
         if let Some(ignition) = ignition {
             write_ignition(mount.mountpoint(), ignition)?;
@@ -121,6 +121,8 @@ fn write_disk(
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform)?;
         }
+    } else {
+        udev_settle()?;
     }
 
     Ok(())
