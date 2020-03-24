@@ -23,6 +23,16 @@ karg() {
     echo "${value}"
 }
 
+kargs() {
+    local name="$1" values="$2"
+    for arg in "${cmdline[@]}"; do
+        if [[ "${arg%%=*}" == "${name}" ]]; then
+            values+="${arg#*=} "
+        fi
+    done
+    echo "${values}"
+}
+
 karg_bool() {
     local value=$(karg "$@")
     case "$value" in
@@ -67,9 +77,12 @@ fi
 firstboot_args=""
 for param in "${PERSIST_KERNEL_NET_PARAMS[@]}" "${PERSIST_DRACUT_NET_PARAMS[@]}"
 do
-    value=$(karg "${param}")
-    if [ -n "${value}" ]; then
-        firstboot_args+="${param}=${value} "
+    values=$(kargs "${param}")
+    if [ -n "${values}" ]; then
+        for value in values
+        do
+            firstboot_args+="${param}=${value} "
+        done
     fi
 done
 # Only pass firstboot-kargs if additional networking options have been
