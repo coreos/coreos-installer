@@ -18,6 +18,7 @@ mod download;
 mod errors;
 mod install;
 mod iso;
+mod osmet;
 mod source;
 mod verify;
 
@@ -37,5 +38,8 @@ fn run() -> Result<()> {
         Config::IsoEmbed(c) => iso::iso_embed(&c),
         Config::IsoShow(c) => iso::iso_show(&c),
         Config::IsoRemove(c) => iso::iso_remove(&c),
+        Config::OsmetFiemap(c) => osmet::osmet_fiemap(&c),
+        Config::OsmetPack(c) => osmet::osmet_pack(&c),
+        Config::OsmetUnpack(c) => osmet::osmet_unpack(&c),
     }
 }

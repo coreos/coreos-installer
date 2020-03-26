@@ -19,11 +19,12 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::cmdline::*;
 use crate::errors::*;
+use crate::osmet::*;
 
 /// Completion timeout for HTTP requests (4 hours).
 const HTTP_COMPLETION_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
@@ -31,9 +32,17 @@ const HTTP_COMPLETION_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
 /// Default base URL to Fedora CoreOS streams metadata.
 const DEFAULT_STREAM_BASE_URL: &str = "https://builds.coreos.fedoraproject.org/streams/";
 
+/// Directory in which we look for osmet files.
+const OSMET_FILES_DIR: &str = "/run/coreos-installer/osmet";
+
 pub trait ImageLocation: Display {
     // Obtain image lengths and signatures and start fetching the images
     fn sources(&self) -> Result<Vec<ImageSource>>;
+
+    // Whether GPG signature verification is required by default
+    fn require_signature(&self) -> bool {
+        true
+    }
 }
 
 // Local image source
@@ -41,6 +50,14 @@ pub trait ImageLocation: Display {
 pub struct FileLocation {
     image_path: String,
     sig_path: String,
+}
+
+// Local osmet image source
+pub struct OsmetLocation {
+    osmet_path: PathBuf,
+    architecture: String,
+    sector_size: u32,
+    description: String,
 }
 
 // Remote image source
@@ -283,6 +300,77 @@ impl ImageLocation for StreamLocation {
         }
         sources.sort_by_key(|k| k.artifact_type.to_string());
         Ok(sources)
+    }
+}
+
+impl OsmetLocation {
+    pub fn new(architecture: &str, sector_size: u32) -> Result<Option<Self>> {
+        let osmet_dir = Path::new(OSMET_FILES_DIR);
+        if !osmet_dir.exists() {
+            return Ok(None);
+        }
+
+        if let Some((osmet_path, description)) =
+            find_matching_osmet_in_dir(osmet_dir, architecture, sector_size)?
+        {
+            Ok(Some(Self {
+                osmet_path,
+                architecture: architecture.into(),
+                sector_size,
+                description,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl Display for OsmetLocation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> ::std::fmt::Result {
+        write!(
+            f,
+            "Installing {} {} ({}-byte sectors)",
+            self.description, self.architecture, self.sector_size
+        )
+    }
+}
+
+impl ImageLocation for OsmetLocation {
+    fn sources(&self) -> Result<Vec<ImageSource>> {
+        let unpacker = OsmetUnpacker::new_from_sysroot(Path::new(&self.osmet_path))?;
+
+        let filename = {
+            let stem = self.osmet_path.file_stem().ok_or_else(|| {
+                // This really should never happen since for us to get here, we must've found a
+                // valid osmet file... But let's still just error out instead of assert in case
+                // somehow this doesn't hold true in the future and a user hits this.
+                format!(
+                    "can't create new .raw filename from osmet path {:?}",
+                    &self.osmet_path
+                )
+            })?;
+            // really we don't need to care about UTF-8 here, but ImageSource right now does
+            let mut filename: String = stem
+                .to_str()
+                .ok_or_else(|| format!("non-UTF-8 osmet file stem: {:?}", stem))?
+                .into();
+            filename.push_str(".raw");
+            filename
+        };
+        let length = unpacker.length();
+        Ok(vec![ImageSource {
+            reader: Box::new(unpacker),
+            length_hint: Some(length),
+            signature: None,
+            filename,
+            artifact_type: "disk".to_string(),
+        }])
+    }
+
+    // For osmet, we don't require GPG verification since we trust osmet files placed in the
+    // OSMET_FILES_DIR.
+    fn require_signature(&self) -> bool {
+        false
     }
 }
 
