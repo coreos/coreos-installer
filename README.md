@@ -23,19 +23,47 @@ coreos-installer.
 
 # On Fedora CoreOS or RHEL CoreOS
 
-coreos-installer is included in Fedora CoreOS and RHEL CoreOS.  Just run
+coreos-installer is included in Fedora CoreOS.  Just run
 `coreos-installer` from the command line.  Fedora CoreOS provides
 [live CD and network boot images](https://getfedora.org/coreos/download/)
 you can run from RAM; you can use these to run coreos-installer to install
 Fedora CoreOS or RHEL CoreOS to disk.
 
-# On other Fedora editions
+RHEL CoreOS also includes this, but note that versions &le; 4.4 contain
+the `legacy` branch of this software.
 
-On other Fedora editions, you can install coreos-installer with DNF in the
-usual way:
+# Run from a container
+
+You can run coreos-installer from a container.  You'll need to bind-mount
+`/dev` and `/run/udev`, as well as a data directory if you want to access
+files in the host.  For example:
+
+```sh
+sudo podman run --pull=always --privileged --rm \
+    -v /dev:/dev -v /run/udev:/run/udev -v .:/data \
+    quay.io/coreos/coreos-installer:release \
+    install /dev/vdb -s testing -i /data/config.ign
+```
+
+# Via a Fedora RPM
+
+`coreos-installer` is packaged in Fedora:
 
 ```sh
 sudo dnf install coreos-installer
+```
+
+Note in fact you can also do this inside a `podman run --privileged` type
+container configured similarly to the above for the "pre-built container"
+path, not necessarily the host's root filesystem.
+See also [toolbox](https://github.com/containers/toolbox).
+
+# Install with Cargo
+
+You can also install just the coreos-installer binary with Rust's Cargo package manager:
+
+```sh
+cargo install coreos-installer
 ```
 
 # Build and install from source tree
@@ -53,27 +81,6 @@ workdir):
 
 ```sh
 make install DESTDIR=/my/dest/dir
-```
-
-# Install with Cargo
-
-You can also install just the coreos-installer binary with Rust's Cargo package manager:
-
-```sh
-cargo install coreos-installer
-```
-
-# Run from a container
-
-You can run coreos-installer from a container.  You'll need to bind-mount
-`/dev` and `/run/udev`, as well as a data directory if you want to access
-files in the host.  For example:
-
-```sh
-sudo podman run --pull=always --privileged --rm \
-    -v /dev:/dev -v /run/udev:/run/udev -v .:/data \
-    quay.io/coreos/coreos-installer:release \
-    install /dev/vdb -s testing -i /data/config.ign
 ```
 
 # Run from a live image using kernel command-line options
