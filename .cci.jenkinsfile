@@ -10,6 +10,6 @@ cosaPod(buildroot: true) {
         shwrap("cd /srv/fcos && cosa buildextend-live")
     }
     stage("Test ISO") {
-        shwrap("cd /srv/fcos && kola testiso --cosa-build builds/latest/x86_64/meta.json -S")
+        shwrap("cd /srv/fcos && kola testiso -S")
     }
 }
