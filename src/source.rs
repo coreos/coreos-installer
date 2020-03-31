@@ -235,11 +235,15 @@ impl Display for StreamLocation {
         if self.stream_base_url.is_some() {
             write!(
                 f,
-                "Downloading image and signature referenced from {}",
-                self.stream_url
+                "Downloading image ({}) and signature referenced from {}",
+                self.format, self.stream_url
             )
         } else {
-            write!(f, "Downloading {} image and signature", self.stream)
+            write!(
+                f,
+                "Downloading {} image ({}) and signature",
+                self.stream, self.format
+            )
         }
     }
 }
