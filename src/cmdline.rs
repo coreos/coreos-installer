@@ -15,7 +15,9 @@
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use error_chain::bail;
 use reqwest::Url;
+use std::path::Path;
 
+use crate::blockdev::*;
 use crate::errors::*;
 use crate::source::*;
 
@@ -346,6 +348,11 @@ pub fn parse_args() -> Result<Config> {
 }
 
 fn parse_install(matches: &ArgMatches) -> Result<Config> {
+    let device = matches
+        .value_of("device")
+        .map(String::from)
+        .expect("device missing");
+
     // Build image location.  Ideally we'd use conflicts_with (and an
     // ArgGroup for streams), but that doesn't play well with default
     // arguments, so we manually prioritize modes.
@@ -363,13 +370,30 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         } else {
             None
         };
+        let format = match get_sector_size_for_path(Path::new(&device))
+            .chain_err(|| format!("getting sector size of {}", &device))?
+            .get()
+        {
+            4096 => "4k.raw.xz",
+            512 => "raw.xz",
+            n => {
+                // could bail on non-512, but let's be optimistic and just warn but try the regular
+                // 512b image
+                eprintln!(
+                    "Found non-standard sector size {} for {}, assuming 512b-compatible",
+                    n, &device
+                );
+                "raw.xz"
+            }
+        };
+
         Box::new(StreamLocation::new(
             matches.value_of("stream").expect("stream missing"),
             matches
                 .value_of("architecture")
                 .expect("architecture missing"),
             "metal",
-            "raw.xz",
+            format,
             base_url.as_ref(),
         )?)
     };
@@ -378,10 +402,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
 
     // build configuration
     Ok(Config::Install(InstallConfig {
-        device: matches
-            .value_of("device")
-            .map(String::from)
-            .expect("device missing"),
+        device,
         location,
         ignition: matches.value_of("ignition-file").map(String::from),
         platform: matches.value_of("platform").map(String::from),

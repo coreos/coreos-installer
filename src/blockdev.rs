@@ -17,9 +17,10 @@ use nix::{errno::Errno, mount};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{remove_dir, File};
+use std::fs::{remove_dir, File, OpenOptions};
 use std::num::NonZeroU32;
 use std::os::raw::c_int;
+use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -207,6 +208,24 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn get_sector_size_for_path(device: &Path) -> Result<NonZeroU32> {
+    let dev = OpenOptions::new()
+        .read(true)
+        .open(device)
+        .chain_err(|| format!("opening {:?}", device))?;
+
+    if !dev
+        .metadata()
+        .chain_err(|| format!("getting metadata for {:?}", device))?
+        .file_type()
+        .is_block_device()
+    {
+        bail!("{:?} is not a block device", device);
+    }
+
+    get_sector_size(&dev)
 }
 
 /// Get the logical sector size of a block device.
