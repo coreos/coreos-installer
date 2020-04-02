@@ -119,6 +119,8 @@ pub fn parse_args() -> Result<Config> {
                         .short("s")
                         .long("stream")
                         .value_name("name")
+                        .conflicts_with("image-file")
+                        .conflicts_with("image-url")
                         .help("Fedora CoreOS stream")
                         .takes_value(true),
                 )
@@ -126,6 +128,8 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("image-url")
                         .short("u")
                         .long("image-url")
+                        .conflicts_with("stream")
+                        .conflicts_with("image-file")
                         .value_name("URL")
                         .help("Manually specify the image URL")
                         .takes_value(true),
@@ -134,6 +138,8 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("image-file")
                         .short("f")
                         .long("image-file")
+                        .conflicts_with("stream")
+                        .conflicts_with("image-url")
                         .value_name("path")
                         .help("Manually specify a local image file")
                         .takes_value(true),
@@ -513,9 +519,6 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         .chain_err(|| format!("getting sector size of {}", &device))?
         .get();
 
-    // Build image location.  Ideally we'd use conflicts_with (and an
-    // ArgGroup for streams), but that doesn't play well with default
-    // arguments, so we manually prioritize modes.
     let location: Box<dyn ImageLocation> = if matches.is_present("image-file") {
         Box::new(FileLocation::new(
             matches.value_of("image-file").expect("image-file missing"),
