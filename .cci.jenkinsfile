@@ -7,9 +7,11 @@ cosaPod(buildroot: true) {
 
     stage("Build metal+live") {
         shwrap("cd /srv/fcos && cosa build metal")
+        shwrap("cd /srv/fcos && cosa buildextend-metal4k")
         shwrap("cd /srv/fcos && cosa buildextend-live")
     }
     stage("Test ISO") {
         shwrap("cd /srv/fcos && kola testiso -S")
+        shwrap("cd /srv/fcos && kola testiso -SP --qemu-native-4k")
     }
 }
