@@ -92,6 +92,10 @@ fi
 # Ensure device nodes have been created
 udevadm settle
 
+# Enable the service for reporting failures to console
+echo "systemctl enable coreos-installer-emergency.service"
+systemctl enable coreos-installer-emergency.service
+
 # Install
 echo "coreos-installer ${args[@]}"
 coreos-installer "${args[@]}"

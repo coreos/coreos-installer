@@ -1,0 +1,22 @@
+# Forked and modified from /lib/systemd/system/emergency.service
+[Unit]
+Description=Report CoreOS Installer Failures to Console
+DefaultDependencies=no
+Conflicts=shutdown.target
+Conflicts=rescue.service
+Before=emergency.target
+Before=emergency.service
+
+[Service]
+Type=forking
+ExecStart=/usr/lib/systemd/systemd-coreos-installer-emergency
+StandardInput=tty-force
+StandardOutput=inherit
+StandardError=inherit
+KillMode=process
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+TimeoutSec=330
+
+[Install]
+WantedBy=emergency.target
