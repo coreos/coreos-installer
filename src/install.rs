@@ -111,8 +111,10 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     {
         bail!("{} is not a block device", &config.device);
     }
-    reread_partition_table(&mut dest)
-        .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
+
+    if is_mounted(&config.device).chain_err(|| "reading mountpoints")? {
+        bail!("checking for exclusive access to {}", &config.device);
+    }
 
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
@@ -126,7 +128,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         if config.preserve_on_error {
             eprintln!("Preserving partition table as requested");
         } else {
-            clear_partition_table(&mut dest)?;
+            clear_partition_table(&config.device, &mut dest)?;
         }
 
         // return a generic error so our exit status is right
@@ -146,7 +148,7 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
 
     // copy the image
     write_image(source, dest, true, Some(sector_size))?;
-    reread_partition_table(dest)?;
+    reread_partition_table(&config.device, dest)?;
     udev_settle()?;
 
     // postprocess
@@ -327,8 +329,9 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
 }
 
 /// Clear the partition table.  For use after a failure.
-fn clear_partition_table(dest: &mut File) -> Result<()> {
+fn clear_partition_table<T: AsRef<str>>(device: T, dest: &mut File) -> Result<()> {
     eprintln!("Clearing partition table");
+    let device = device.as_ref();
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     let zeroes: [u8; 1024 * 1024] = [0; 1024 * 1024];
@@ -338,7 +341,10 @@ fn clear_partition_table(dest: &mut File) -> Result<()> {
         .chain_err(|| "flushing partition table to disk")?;
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
-    reread_partition_table(dest)?;
+    if is_dm_device(device) {
+        kpartx_delete_partitions(device)?;
+    }
+    reread_partition_table(device, dest)?;
     udev_settle()?;
     Ok(())
 }

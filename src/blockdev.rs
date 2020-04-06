@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use error_chain::{bail, ensure};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount};
 use regex::Regex;
@@ -233,7 +233,34 @@ impl Drop for Mount {
     }
 }
 
-pub fn reread_partition_table(file: &mut File) -> Result<()> {
+/// Check if device is DM-device
+pub fn is_dm_device<T: AsRef<str>>(device: T) -> bool {
+    let device = device.as_ref();
+    device.starts_with("/dev/mapper/") || device.starts_with("/dev/dm-")
+}
+
+/// Check whether device mounted or not
+pub fn is_mounted<T: AsRef<str>>(device: T) -> Result<bool> {
+    let device = device.as_ref();
+    // looking at /proc/mounts is the best way to be 100% sure of seeing what is mounted on system,
+    // as the kernel is providing this information
+    let mounts = read_to_string("/proc/mounts").chain_err(|| "reading /proc/mounts")?;
+    if let Some(mp) = mounts.lines().find(|v| v.starts_with(device)) {
+        eprintln!("{} is mounted: {}", device, mp);
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+pub fn reread_partition_table<T: AsRef<str>>(device: T, file: &mut File) -> Result<()> {
+    let device = device.as_ref();
+    if is_dm_device(device) {
+        return kpartx_reread_partitions(device);
+    }
+    ioctl_reread_partitions(file)
+}
+
+fn ioctl_reread_partitions(file: &mut File) -> Result<()> {
     let fd = file.as_raw_fd();
     // Reread sometimes fails inexplicably.  Retry several times before
     // giving up.
@@ -259,6 +286,31 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+/// Read partition table of DM-devices
+fn kpartx_reread_partitions<T: AsRef<str>>(device: T) -> Result<()> {
+    let device = device.as_ref();
+    let status = std::process::Command::new("kpartx")
+        .arg("-u")
+        .arg(device)
+        .stderr(std::process::Stdio::null())
+        .status()
+        .chain_err(|| "running kpartx -u")?;
+    ensure!(status.success(), "kpartx -d {} failed: {}", device, status);
+    Ok(())
+}
+
+/// Clean partition table of DM-devices
+pub fn kpartx_delete_partitions<T: AsRef<str>>(device: T) -> Result<()> {
+    let device = device.as_ref();
+    let status = std::process::Command::new("kpartx")
+        .arg("-d")
+        .arg(device)
+        .status()
+        .chain_err(|| "running kpartx -d")?;
+    ensure!(status.success(), "kpartx -u {} failed: {}", device, status);
     Ok(())
 }
 
