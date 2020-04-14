@@ -14,7 +14,7 @@
 
 use error_chain::{bail, ChainedError};
 use nix::mount;
-use std::fs::{create_dir_all, read_dir, File, OpenOptions};
+use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
@@ -111,7 +111,11 @@ fn write_disk(
     udev_settle()?;
 
     // postprocess
-    if ignition.is_some() || config.firstboot_kargs.is_some() || config.platform.is_some() {
+    if ignition.is_some()
+        || config.firstboot_kargs.is_some()
+        || config.platform.is_some()
+        || config.network_config.is_some()
+    {
         let mount = mount_partition_by_label(&config.device, "boot", mount::MsFlags::empty())?;
         if let Some(ignition) = ignition {
             write_ignition(mount.mountpoint(), ignition)?;
@@ -121,6 +125,9 @@ fn write_disk(
         }
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform)?;
+        }
+        if let Some(network_config) = config.network_config.as_ref() {
+            copy_network_config(mount.mountpoint(), network_config)?;
         }
     }
 
@@ -227,6 +234,37 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
             config
                 .write(new_contents.as_bytes())
                 .chain_err(|| format!("writing {}", path.display()))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Copy networking config if asked to do so
+fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
+    eprintln!("Copying networking configuration from {}", net_config_src);
+
+    // get the path to the destination directory
+    let net_config_dest = mountpoint.join("coreos-installer-network");
+
+    // make the directory if it doesn't exist
+    create_dir_all(&net_config_dest).chain_err(|| {
+        format!(
+            "creating destination networking config directory {}",
+            net_config_dest.display()
+        )
+    })?;
+
+    // copy files from source to destination directories
+    for entry in
+        read_dir(&net_config_src).chain_err(|| format!("reading directory {}", net_config_src))?
+    {
+        let entry = entry.chain_err(|| format!("reading directory {}", net_config_src))?;
+        let srcpath = entry.path();
+        let destpath = net_config_dest.join(entry.file_name());
+        if srcpath.is_file() {
+            eprintln!("Copying {} to installed system", srcpath.display());
+            fscopy(&srcpath, &destpath).chain_err(|| "Copying networking config")?;
         }
     }
 

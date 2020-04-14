@@ -38,6 +38,7 @@ pub struct InstallConfig {
     pub firstboot_kargs: Option<String>,
     pub insecure: bool,
     pub preserve_on_error: bool,
+    pub network_config: Option<String>,
 }
 
 pub struct DownloadConfig {
@@ -135,6 +136,22 @@ pub fn parse_args() -> Result<Config> {
                         .value_name("args")
                         .help("Additional kernel args for the first boot")
                         .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("copy-network")
+                        .short("n")
+                        .long("copy-network")
+                        .help("Copy network config from install environment"),
+                )
+                .arg(
+                    Arg::with_name("network-dir")
+                        .long("network-dir")
+                        .value_name("path")
+                        .default_value("/etc/NetworkManager/system-connections/")
+                        .takes_value(true)
+                        .empty_values(false)
+                        .help("For use with -n.")
+                        .next_line_help(true), // so we can stay under 80 chars
                 )
                 // obscure options without short names
                 .arg(
@@ -400,6 +417,15 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
     // and report it to the user
     eprintln!("{}", location);
 
+    // If the user requested us to copy networking config by passing
+    // -n or --copy-network then copy networking config from the
+    // directory defined by --network-dir.
+    let network_config = if matches.is_present("copy-network") {
+        matches.value_of("network-dir").map(String::from)
+    } else {
+        None
+    };
+
     // build configuration
     Ok(Config::Install(InstallConfig {
         device,
@@ -409,6 +435,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
         insecure: matches.is_present("insecure"),
         preserve_on_error: matches.is_present("preserve-on-error"),
+        network_config,
     }))
 }
 
