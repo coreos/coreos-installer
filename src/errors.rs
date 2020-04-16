@@ -16,6 +16,7 @@ use error_chain::error_chain;
 
 error_chain! {
     foreign_links {
+        HexDecode(hex::FromHexError);
         Io(std::io::Error);
         Reqwest(reqwest::Error);
         Url(url::ParseError);
