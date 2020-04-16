@@ -318,7 +318,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     eprintln!("Copying networking configuration from {}", net_config_src);
 
     // get the path to the destination directory
-    let net_config_dest = mountpoint.join("coreos-installer-network");
+    let net_config_dest = mountpoint.join("coreos-firstboot-network");
 
     // make the directory if it doesn't exist
     create_dir_all(&net_config_dest).chain_err(|| {
