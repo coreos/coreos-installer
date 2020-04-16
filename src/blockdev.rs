@@ -72,8 +72,10 @@ struct BlkDev {
 
 fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
     // have lsblk enumerate partitions on the device
+    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
     let result = Command::new("lsblk")
         .arg("--pairs")
+        .arg("--paths")
         .arg("--output")
         .arg("NAME,LABEL,FSTYPE")
         .arg(device)
@@ -91,27 +93,17 @@ fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
     for line in output.lines() {
         // parse key-value pairs
         let fields = split_lsblk_line(line);
-
-        // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH.
-        // Assemble device path from dirname and NAME.
-        let mut path = Path::new(device)
-            .parent()
-            .chain_err(|| format!("couldn't get parent directory of {}", device))?
-            .to_path_buf();
-        match fields.get("NAME") {
-            None => continue,
-            Some(name) => path.push(name),
+        if let Some(name) = fields.get("NAME") {
+            // Skip the device itself
+            if device == name {
+                continue;
+            }
+            result.push(BlkDev {
+                path: name.to_owned(),
+                label: fields.get("LABEL").map(<_>::to_string),
+                fstype: fields.get("FSTYPE").map(<_>::to_string),
+            });
         }
-        // Skip the device itself
-        if path == Path::new(device) {
-            continue;
-        }
-
-        result.push(BlkDev {
-            path: path.to_str().expect("couldn't round-trip path").to_string(),
-            label: fields.get("LABEL").map(|v| v.to_string()),
-            fstype: fields.get("FSTYPE").map(|v| v.to_string()),
-        });
     }
     Ok(result)
 }
