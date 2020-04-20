@@ -517,31 +517,44 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             None => bail!("cannot perform offline install; metadata missing"),
         }
     } else {
-        let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
-            Some(Url::parse(stream_base_url).chain_err(|| "parsing stream base URL")?)
-        } else {
+        // For now, using --stream automatically will cause a download. In the future, we could
+        // opportunistically use osmet if the version and stream match an osmet file/the live ISO.
+
+        let maybe_osmet = if matches.is_present("stream") {
             None
+        } else {
+            OsmetLocation::new(architecture, sector_size)?
         };
-        let format = match sector_size {
-            4096 => "4k.raw.xz",
-            512 => "raw.xz",
-            n => {
-                // could bail on non-512, but let's be optimistic and just warn but try the regular
-                // 512b image
-                eprintln!(
-                    "Found non-standard sector size {} for {}, assuming 512b-compatible",
-                    n, &device
-                );
-                "raw.xz"
-            }
-        };
-        Box::new(StreamLocation::new(
-            matches.value_of("stream").unwrap_or("stable"),
-            architecture,
-            "metal",
-            format,
-            base_url.as_ref(),
-        )?)
+
+        if let Some(osmet) = maybe_osmet {
+            Box::new(osmet)
+        } else {
+            let format = match sector_size {
+                4096 => "4k.raw.xz",
+                512 => "raw.xz",
+                n => {
+                    // could bail on non-512, but let's be optimistic and just warn but try the regular
+                    // 512b image
+                    eprintln!(
+                        "Found non-standard sector size {} for {}, assuming 512b-compatible",
+                        n, &device
+                    );
+                    "raw.xz"
+                }
+            };
+            let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
+                Some(Url::parse(stream_base_url).chain_err(|| "parsing stream base URL")?)
+            } else {
+                None
+            };
+            Box::new(StreamLocation::new(
+                matches.value_of("stream").unwrap_or("stable"),
+                architecture,
+                "metal",
+                format,
+                base_url.as_ref(),
+            )?)
+        }
     };
     // and report it to the user
     eprintln!("{}", location);
