@@ -4,6 +4,12 @@
 
 set -e
 
+# Verify we are in the legacy installer initramfs.
+# Requires https://github.com/coreos/coreos-assembler/pull/1389
+if ! [ -f /etc/coreos-legacy-installer-initramfs ] ; then
+  exit 0
+fi
+
 UNIT_DIR="${1:-/tmp}"
 
 cmdline=( $(</proc/cmdline) )

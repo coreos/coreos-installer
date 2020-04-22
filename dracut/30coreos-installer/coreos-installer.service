@@ -6,7 +6,7 @@ OnFailureJobMode=isolate
 
 [Service]
 Type=simple
-ExecStart=/usr/libexec/coreos-installer
+ExecStart=/usr/libexec/coreos-installer.legacy
 # Perform reboot after install unless asked not to.
 ExecStop=/bin/sh -c 'test -f /tmp/skip_reboot || sleep 5 && reboot'
 #StandardInput=tty-force
