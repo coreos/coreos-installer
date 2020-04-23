@@ -904,6 +904,11 @@ main() {
     # by a few of the functions below.
     DEST_DEV=$(cat /tmp/selected_dev)
     DEST_DEV=/dev/$DEST_DEV
+    if [ -L "${DEST_DEV}" ]; then
+        REAL_DEV=$(realpath $DEST_DEV)
+        echo "$DEST_DEV --> $REAL_DEV"
+        DEST_DEV=$REAL_DEV
+    fi
 
     #import_gpg_key
     get_img_url
