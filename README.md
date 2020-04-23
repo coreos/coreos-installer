@@ -132,7 +132,7 @@ qemu-img create -f qcow2 fcos.qcow2 8G
 Now, run the following qemu command:
 
 ```
-qemu-system-x86_64 -accel kvm -name fcos -m 2048 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-30.20191014.1-live.x86_64.iso
+qemu-system-x86_64 -accel kvm -name fcos -m 4500 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-30.20191014.1-live.x86_64.iso
 ```
 
 Once you have reached the boot menu, press `<TAB>` (isolinux) or
