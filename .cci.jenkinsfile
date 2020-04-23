@@ -3,10 +3,11 @@
 cosaPod(buildroot: true) {
     checkout scm
 
-    fcosBuild(make: true)
+    // we don't need the qemu image to test coreos-installer; just the OSTree
+    fcosBuild(make: true, skipKola: true, extraArgs: 'ostree')
 
     stage("Build metal+live") {
-        shwrap("cd /srv/fcos && cosa build metal")
+        shwrap("cd /srv/fcos && cosa buildextend-metal")
         shwrap("cd /srv/fcos && cosa buildextend-metal4k")
         // Compress once
         shwrap("cd /srv/fcos && cosa buildextend-live")
