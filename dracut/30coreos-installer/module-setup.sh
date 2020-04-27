@@ -48,7 +48,7 @@ install() {
         inst_multiple -o /lib/s390-tools/stage3.bin
     fi
 
-    inst_simple /usr/libexec/coreos-installer
+    inst_simple /usr/libexec/coreos-installer.legacy
 
     inst_simple "$moddir/coreos-installer-generator" \
         "$systemdutildir/system-generators/coreos-installer-generator"
