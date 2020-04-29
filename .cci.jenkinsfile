@@ -10,13 +10,13 @@ cosaPod(buildroot: true) {
         shwrap("cd /srv/fcos && cosa buildextend-metal")
         shwrap("cd /srv/fcos && cosa buildextend-metal4k")
         // Compress once
-        shwrap("cd /srv/fcos && cosa buildextend-live")
+        shwrap("cd /srv/fcos && cosa buildextend-live --osmet")
         shwrap("cd /srv/fcos && cosa compress --artifact=metal --artifact=metal4k")
     }
     stage("Test ISO") {
         // No need to run the iso-live-login scenario (in theory, and also right
         // now it's buggy)
-        shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,iso-install")
+        shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,iso-install,iso-offline-install")
         shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install --qemu-native-4k")
     }
 }
