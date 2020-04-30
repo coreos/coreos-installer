@@ -3,7 +3,7 @@
 set -e
 
 # Kernel networking params to persist
-PERSIST_KERNEL_NET_PARAMS=("ipv6.disable")
+PERSIST_KERNEL_NET_PARAMS=("ipv6.disable" "net.ifnames" "net.naming-scheme")
 
 # Dracut networking params to persist
 # Everything other than rd.neednet.
