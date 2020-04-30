@@ -29,6 +29,9 @@ pub enum Config {
     IsoEmbed(IsoEmbedConfig),
     IsoShow(IsoShowConfig),
     IsoRemove(IsoRemoveConfig),
+    OsmetFiemap(OsmetFiemapConfig),
+    OsmetPack(OsmetPackConfig),
+    OsmetUnpack(OsmetUnpackConfig),
 }
 
 pub struct InstallConfig {
@@ -71,6 +74,23 @@ pub struct IsoRemoveConfig {
     pub output: Option<String>,
 }
 
+pub struct OsmetFiemapConfig {
+    pub file: String,
+}
+
+pub struct OsmetPackConfig {
+    pub output: String,
+    pub device: String,
+    pub checksum: String,
+    pub description: String,
+}
+
+pub struct OsmetUnpackConfig {
+    pub repo: String,
+    pub osmet: String,
+    pub device: String,
+}
+
 /// Parse command-line arguments.
 pub fn parse_args() -> Result<Config> {
     let uname = nix::sys::utsname::uname();
@@ -94,7 +114,6 @@ pub fn parse_args() -> Result<Config> {
                         .long("stream")
                         .value_name("name")
                         .help("Fedora CoreOS stream")
-                        .default_value("stable")
                         .takes_value(true),
                 )
                 .arg(
@@ -163,6 +182,11 @@ pub fn parse_args() -> Result<Config> {
                         .next_line_help(true), // so we can stay under 80 chars
                 )
                 // obscure options without short names
+                .arg(
+                    Arg::with_name("offline")
+                        .long("offline")
+                        .help("Force offline installation"),
+                )
                 .arg(
                     Arg::with_name("insecure")
                         .long("insecure")
@@ -357,6 +381,90 @@ pub fn parse_args() -> Result<Config> {
                         ),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("osmet")
+                .about("Efficient CoreOS metal disk image packing using OSTree commits")
+                // users shouldn't be interacting with this command normally
+                .setting(AppSettings::Hidden)
+                .subcommand(
+                    SubCommand::with_name("pack")
+                        .about("Create osmet file from CoreOS block device")
+                        .arg(
+                            Arg::with_name("output")
+                                .long("output")
+                                .value_name("FILE")
+                                .required(true) // could output to stdout if missing?
+                                .help("Path to osmet file to write")
+                                .takes_value(true),
+                        )
+                        .arg(
+                            // XXX: rebase on top of
+                            // https://github.com/coreos/coreos-installer/pull/178 and use the same
+                            // type-digest format
+                            Arg::with_name("checksum")
+                                .long("checksum")
+                                .value_name("SHA256")
+                                .required(true)
+                                .help("Expected SHA256 of block device")
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("description")
+                                .long("description")
+                                .value_name("TEXT")
+                                .required(true)
+                                .help("Description of OS")
+                                .takes_value(true),
+                        )
+                        // positional args
+                        .arg(
+                            Arg::with_name("device")
+                                .help("Source device")
+                                .value_name("DEV")
+                                .required(true)
+                                .takes_value(true),
+                        ),
+                )
+                .subcommand(
+                    SubCommand::with_name("unpack")
+                        .about("Generate raw metal image from osmet file and OSTree repo")
+                        .arg(
+                            Arg::with_name("osmet")
+                                .help("osmet file")
+                                .value_name("PATH")
+                                .required(true)
+                                .long("osmet")
+                                .takes_value(true),
+                        )
+                        // positional args
+                        .arg(
+                            Arg::with_name("repo")
+                                .help("OSTree repo")
+                                .value_name("PATH")
+                                .required(true)
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("device")
+                                .help("Destination device")
+                                .value_name("DEV")
+                                .required(true)
+                                .takes_value(true),
+                        ),
+                )
+                .subcommand(
+                    SubCommand::with_name("fiemap")
+                        .about("Print file extent mapping of specific file")
+                        // positional args
+                        .arg(
+                            Arg::with_name("file")
+                                .help("File to map")
+                                .value_name("PATH")
+                                .required(true)
+                                .takes_value(true),
+                        ),
+                ),
+        )
         .get_matches();
 
     match app_matches.subcommand() {
@@ -369,6 +477,12 @@ pub fn parse_args() -> Result<Config> {
             ("remove", Some(matches)) => parse_iso_remove(&matches),
             _ => bail!("unrecognized 'iso' subcommand"),
         },
+        ("osmet", Some(osmet_matches)) => match osmet_matches.subcommand() {
+            ("pack", Some(matches)) => parse_osmet_pack(&matches),
+            ("unpack", Some(matches)) => parse_osmet_unpack(&matches),
+            ("fiemap", Some(matches)) => parse_osmet_fiemap(&matches),
+            _ => bail!("unrecognized 'osmet' subcommand"),
+        },
         _ => bail!("unrecognized subcommand"),
     }
 }
@@ -378,6 +492,13 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         .value_of("device")
         .map(String::from)
         .expect("device missing");
+    let architecture = matches
+        .value_of("architecture")
+        .expect("architecture missing");
+
+    let sector_size = get_sector_size_for_path(Path::new(&device))
+        .chain_err(|| format!("getting sector size of {}", &device))?
+        .get();
 
     // Build image location.  Ideally we'd use conflicts_with (and an
     // ArgGroup for streams), but that doesn't play well with default
@@ -390,16 +511,18 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         let image_url = Url::parse(matches.value_of("image-url").expect("image-url missing"))
             .chain_err(|| "parsing image URL")?;
         Box::new(UrlLocation::new(&image_url))
+    } else if matches.is_present("offline") {
+        match OsmetLocation::new(architecture, sector_size)? {
+            Some(osmet) => Box::new(osmet),
+            None => bail!("cannot perform offline install; metadata missing"),
+        }
     } else {
         let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
             Some(Url::parse(stream_base_url).chain_err(|| "parsing stream base URL")?)
         } else {
             None
         };
-        let format = match get_sector_size_for_path(Path::new(&device))
-            .chain_err(|| format!("getting sector size of {}", &device))?
-            .get()
-        {
+        let format = match sector_size {
             4096 => "4k.raw.xz",
             512 => "raw.xz",
             n => {
@@ -412,12 +535,9 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
                 "raw.xz"
             }
         };
-
         Box::new(StreamLocation::new(
-            matches.value_of("stream").expect("stream missing"),
-            matches
-                .value_of("architecture")
-                .expect("architecture missing"),
+            matches.value_of("stream").unwrap_or("stable"),
+            architecture,
             "metal",
             format,
             base_url.as_ref(),
@@ -533,5 +653,52 @@ fn parse_iso_remove(matches: &ArgMatches) -> Result<Config> {
             .map(String::from)
             .expect("input missing"),
         output: matches.value_of("output").map(String::from),
+    }))
+}
+
+fn parse_osmet_pack(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::OsmetPack(OsmetPackConfig {
+        output: matches
+            .value_of("output")
+            .map(String::from)
+            .expect("output missing"),
+        device: matches
+            .value_of("device")
+            .map(String::from)
+            .expect("device missing"),
+        checksum: matches
+            .value_of("checksum")
+            .map(String::from)
+            .expect("checksum missing"),
+        description: matches
+            .value_of("description")
+            .map(String::from)
+            .expect("description missing"),
+    }))
+}
+
+fn parse_osmet_unpack(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::OsmetUnpack(OsmetUnpackConfig {
+        repo: matches
+            .value_of("repo")
+            .map(String::from)
+            .expect("repo missing"),
+        osmet: matches
+            .value_of("osmet")
+            .map(String::from)
+            .expect("osmet file missing"),
+        device: matches
+            .value_of("device")
+            .map(String::from)
+            .expect("device missing"),
+    }))
+}
+
+fn parse_osmet_fiemap(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::OsmetFiemap(OsmetFiemapConfig {
+        file: matches
+            .value_of("file")
+            .map(String::from)
+            .expect("file missing"),
     }))
 }

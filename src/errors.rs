@@ -21,5 +21,7 @@ error_chain! {
         Reqwest(reqwest::Error);
         Url(url::ParseError);
         Nix(nix::Error);
+        WalkDir(walkdir::Error);
+        Parse(std::num::ParseIntError);
     }
 }

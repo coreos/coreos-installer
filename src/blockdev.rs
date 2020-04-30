@@ -13,12 +13,14 @@
 // limitations under the License.
 
 use error_chain::bail;
+use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{remove_dir, File, OpenOptions};
-use std::num::NonZeroU32;
+use std::fs::{metadata, read_to_string, remove_dir, File, OpenOptions};
+use std::num::{NonZeroU32, NonZeroU64};
+use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::AsRawFd;
@@ -147,6 +149,51 @@ impl Mount {
     pub fn mountpoint(&self) -> &Path {
         self.mountpoint.as_path()
     }
+
+    pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
+        let dev = metadata(&self.device)
+            .chain_err(|| format!("getting metadata for {}", &self.device))?
+            .st_rdev();
+        let maj: u64 = major(dev);
+        let min: u64 = minor(dev);
+
+        let start = read_sysfs_dev_block_value_u64(maj, min, "start")?;
+        let size = read_sysfs_dev_block_value_u64(maj, min, "size")?;
+
+        // We multiply by 512 here: the kernel values are always in 512 blocks, regardless of the
+        // actual sector size of the block device. We keep the values as bytes to make things
+        // easier.
+        let start_offset: u64 = start
+            .checked_mul(512)
+            .ok_or_else(|| "start offset mult overflow")?;
+        let end_offset: u64 = start_offset
+            .checked_add(
+                size.checked_mul(512)
+                    .ok_or_else(|| "end offset mult overflow")?,
+            )
+            .ok_or_else(|| "end offset add overflow")?;
+        Ok((start_offset, end_offset))
+    }
+}
+
+fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64> {
+    let s = read_sysfs_dev_block_value(maj, min, field).chain_err(|| {
+        format!(
+            "reading partition {}:{} {} value from sysfs",
+            maj, min, field
+        )
+    })?;
+    Ok(s.parse().chain_err(|| {
+        format!(
+            "parsing partition {}:{} {} value \"{}\" as u64",
+            maj, min, field, &s
+        )
+    })?)
+}
+
+fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String> {
+    let path = PathBuf::from(format!("/sys/dev/block/{}:{}/{}", maj, min, field));
+    Ok(read_to_string(&path)?.trim_end().into())
 }
 
 impl Drop for Mount {
@@ -202,6 +249,7 @@ pub fn reread_partition_table(file: &mut File) -> Result<()> {
     Ok(())
 }
 
+/// Get the sector size of the block device at a given path.
 pub fn get_sector_size_for_path(device: &Path) -> Result<NonZeroU32> {
     let dev = OpenOptions::new()
         .read(true)
@@ -235,13 +283,25 @@ pub fn get_sector_size(file: &File) -> Result<NonZeroU32> {
     }
 }
 
+/// Get the size of a block device.
+pub fn get_block_device_size(file: &File) -> Result<NonZeroU64> {
+    let fd = file.as_raw_fd();
+    let mut size: libc::size_t = 0;
+    match unsafe { ioctl::blkgetsize64(fd, &mut size) } {
+        // just cast using `as`: there is no platform we care about today where size_t > 64bits
+        Ok(_) => NonZeroU64::new(size as u64).ok_or_else(|| "found block size of zero".into()),
+        Err(e) => Err(Error::with_chain(e, "getting block size")),
+    }
+}
+
 // create unsafe ioctl wrappers
 #[allow(clippy::missing_safety_doc)]
 mod ioctl {
     use super::c_int;
-    use nix::{ioctl_none, ioctl_read_bad, request_code_none};
+    use nix::{ioctl_none, ioctl_read, ioctl_read_bad, request_code_none};
     ioctl_none!(blkrrpart, 0x12, 95);
     ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+    ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
 }
 
 pub fn udev_settle() -> Result<()> {

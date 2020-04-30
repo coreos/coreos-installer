@@ -90,7 +90,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     if !sources.is_empty() {
         bail!("found multiple artifacts");
     }
-    if source.signature.is_none() {
+    if source.signature.is_none() && config.location.require_signature() {
         if config.insecure {
             eprintln!("Signature not found; skipping verification as requested");
         } else {
