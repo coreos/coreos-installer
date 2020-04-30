@@ -63,14 +63,15 @@ if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
     args+=("--ignition" "${ignition_file}")
 fi
 
-# First-boot kernel arguments
+# First-boot kernel arguments. Filter out any args that aren't in our
+# list of networking arguments to forward and store them in $firstboot_args
 firstboot_args=""
-for param in "${PERSIST_KERNEL_NET_PARAMS[@]}" "${PERSIST_DRACUT_NET_PARAMS[@]}"
-do
-    value=$(karg "${param}")
-    if [ -n "${value}" ]; then
-        firstboot_args+="${param}=${value} "
-    fi
+for item in "${cmdline[@]}"; do
+    for param in "${PERSIST_KERNEL_NET_PARAMS[@]}" "${PERSIST_DRACUT_NET_PARAMS[@]}"; do
+        if [[ $item =~ ^$param(=.*)?$ ]]; then
+            firstboot_args+="${item} "
+        fi
+    done
 done
 # Only pass firstboot-kargs if additional networking options have been
 # specified, since the default in ignition-dracut specifies
