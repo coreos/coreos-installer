@@ -5,7 +5,7 @@
 # Verify we are in the legacy installer initramfs.
 # Requires https://github.com/coreos/coreos-assembler/pull/1389
 if ! [ -f /etc/coreos-legacy-installer-initramfs ] ; then
-  exit 0
+  return 0 # not exit 0, because dracut hooks are "sourced"
 fi
 
 local IMAGE_URL=$(getarg coreos.inst.image_url=)
