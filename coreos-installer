@@ -463,10 +463,12 @@ get_img_url() {
         curl -LsIf $IMAGE_URL >/tmp/image_info 2>&1
         RETCODE=$?
         if [ $RETCODE -ne 0 ]
-        then
-            if [[ $RETCODE -eq 22 && $retry -lt 5 ]]
+            if [[ $retry -lt 5 ]]
             then
-                # Network isn't up yet, sleep for a sec and retry
+                # The curl return codes are a huge mix of "programmer errors" and
+                # "things that might happen on the network".  We previously tried
+                # to distinguish the two.  Ignition has nice code for "retry unless we get a precise fatal error like 404"
+                # but eh, let's just retry 5 times.
                 sleep 1
                 let retry=$retry+1
                 continue
