@@ -34,7 +34,7 @@ hex = "^0.4"
 libc = "0.2.69"
 nix = "^0.17"
 openssl = "^0.10.29"
-pipe = "^0.2.0"
+pipe = "^0.3.0"
 progress-streams = "^1.1"
 regex = "^1.3"
 reqwest = { version = "^0.10", features = ["blocking"] }
