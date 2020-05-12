@@ -10,7 +10,7 @@ cosaPod(buildroot: true) {
         shwrap("cd /srv/fcos && cosa buildextend-metal")
         shwrap("cd /srv/fcos && cosa buildextend-metal4k")
         // Compress once
-        shwrap("cd /srv/fcos && cosa buildextend-live --osmet")
+        shwrap("cd /srv/fcos && cosa buildextend-live")
         shwrap("cd /srv/fcos && cosa compress --artifact=metal --artifact=metal4k")
     }
     stage("Test ISO") {
