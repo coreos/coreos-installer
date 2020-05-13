@@ -31,7 +31,7 @@ cpio = "^0.2"
 error-chain = { version = "^0.12", default-features = false }
 flate2 = "^1.0"
 hex = "^0.4"
-libc = "0.2.69"
+libc = "0.2.70"
 nix = "^0.17"
 openssl = "^0.10.29"
 pipe = "^0.3.0"
