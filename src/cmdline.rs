@@ -63,6 +63,7 @@ pub struct IsoEmbedConfig {
     pub output: Option<String>,
     pub ignition: Option<String>,
     pub force: bool,
+    pub disable_initramfs_networking: bool,
 }
 
 pub struct IsoShowConfig {
@@ -327,6 +328,11 @@ pub fn parse_args() -> Result<Config> {
                                 .value_name("path")
                                 .help("Ignition config to embed [default: stdin]")
                                 .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("disable-initramfs-networking")
+                                .long("disable-initramfs-networking")
+                                .help("Turn off networking in the initramfs")
                         )
                         .arg(
                             Arg::with_name("force")
@@ -647,6 +653,7 @@ fn parse_iso_embed(matches: &ArgMatches) -> Result<Config> {
         output: matches.value_of("output").map(String::from),
         ignition: matches.value_of("config").map(String::from),
         force: matches.is_present("force"),
+        disable_initramfs_networking: matches.is_present("disable-initramfs-networking"),
     }))
 }
 

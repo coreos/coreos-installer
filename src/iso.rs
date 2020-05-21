@@ -24,6 +24,7 @@ use crate::cmdline::*;
 use crate::errors::*;
 
 const FILENAME: &str = "config.ign";
+const DISABLE_INITRAMFS_NETWORKING_STAMP: &str = "/etc/coreos-liveiso-disable-initramfs-network";
 
 pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
     let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
@@ -43,7 +44,7 @@ pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
             .chain_err(|| "reading stdin")?;
     };
 
-    let cpio = make_cpio(&ignition)?;
+    let cpio = make_cpio(&ignition, config.disable_initramfs_networking)?;
     if cpio.len() > embed.length {
         bail!(
             "Compressed Ignition config is too large: {} > {}",
@@ -239,7 +240,7 @@ impl<'a> EmbedArea<'a> {
 }
 
 /// Make a gzipped CPIO archive containing the specified Ignition config.
-fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
+fn make_cpio(ignition: &[u8], disable_initramfs_networking: bool) -> Result<Vec<u8>> {
     let mut result = Cursor::new(Vec::new());
     let encoder = GzBuilder::new()
         .mtime(0)
@@ -249,6 +250,10 @@ fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
         NewcBuilder::new(FILENAME).mode(0o100_644),
         Cursor::new(ignition),
     )];
+    if disable_initramfs_networking {
+        input_files.push((NewcBuilder::new(DISABLE_INITRAMFS_NETWORKING_STAMP).mode(0o100_644),
+                            Cursor::new(&[])));
+    }
     write_cpio(input_files.drain(..), encoder).chain_err(|| "writing CPIO archive")?;
     Ok(result.into_inner())
 }
