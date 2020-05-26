@@ -78,11 +78,17 @@ pub struct OsmetFiemapConfig {
     pub file: String,
 }
 
+pub struct OsmetRootBlkDevReal {
+    pub underlying_device: String,
+    pub offset_sectors: u32,
+}
+
 pub struct OsmetPackConfig {
     pub output: String,
     pub device: String,
     pub checksum: String,
     pub description: String,
+    pub rootdev: Option<OsmetRootBlkDevReal>,
 }
 
 pub struct OsmetUnpackConfig {
@@ -416,6 +422,13 @@ pub fn parse_args() -> Result<Config> {
                                 .help("Description of OS")
                                 .takes_value(true),
                         )
+                        .arg(
+                            Arg::with_name("real-rootdev")
+                                .long("real-rootdev")
+                                .value_name("PATH,OFFSET")
+                                .help("Underlying device for e.g. RHCOS LUKS container; /dev/disk/by-label/root should be mountable")
+                                .takes_value(true),
+                        )
                         // positional args
                         .arg(
                             Arg::with_name("device")
@@ -669,6 +682,23 @@ fn parse_iso_remove(matches: &ArgMatches) -> Result<Config> {
     }))
 }
 
+fn parse_real_rootdev<T: AsRef<str>>(s: Option<T>) -> Result<Option<OsmetRootBlkDevReal>> {
+    if let Some(v) = s {
+        let v = v.as_ref();
+        let parts: Vec<_> = v.splitn(2, ',').collect();
+        if parts.len() < 2 {
+            bail!("Expected DEVICE,OFFSET-SECTORS but found {}", v);
+        }
+        let offset = parts[1].parse()?;
+        Ok(Some(OsmetRootBlkDevReal {
+            underlying_device: parts[0].to_string(),
+            offset_sectors: offset,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
 fn parse_osmet_pack(matches: &ArgMatches) -> Result<Config> {
     Ok(Config::OsmetPack(OsmetPackConfig {
         output: matches
@@ -687,6 +717,7 @@ fn parse_osmet_pack(matches: &ArgMatches) -> Result<Config> {
             .value_of("description")
             .map(String::from)
             .expect("description missing"),
+        rootdev: parse_real_rootdev(matches.value_of("real-rootdev"))?,
     }))
 }
 

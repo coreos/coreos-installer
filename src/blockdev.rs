@@ -174,7 +174,10 @@ impl Mount {
     }
 
     pub fn blockdev(&self) -> BlkDev {
-        BlkDev { path: self.device.clone(), ..Default::default() }
+        BlkDev {
+            path: self.device.clone(),
+            ..Default::default()
+        }
     }
 
     pub fn mountpoint(&self) -> &Path {

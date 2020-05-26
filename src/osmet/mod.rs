@@ -90,7 +90,8 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
 
     // generate the primary OSTree object <--> disk block mappings, and also try to match up boot
     // files with OSTree objects
-    let (root_partition, mapped_boot_files) = scan_root_partition(&root, boot_files)?;
+    let (root_partition, mapped_boot_files) =
+        scan_root_partition(&root, config.rootdev.as_ref(), boot_files)?;
 
     let boot_partition = scan_boot_partition(&boot, mapped_boot_files)?;
 
@@ -188,10 +189,26 @@ pub fn find_matching_osmet_in_dir(
 
 fn scan_root_partition(
     root: &Mount,
+    real_dev: Option<&OsmetRootBlkDevReal>,
     mut boot_files: HashMap<u64, PathBuf>,
 ) -> Result<(OsmetPartition, HashMap<PathBuf, Sha256Digest>)> {
     // query the trivial stuff first
-    let (start_offset, end_offset) = root.get_partition_offsets()?;
+    let ((start_offset, end_offset), offset) = if let Some(real_dev) = real_dev {
+        let bdev = BlkDev {
+            path: real_dev.underlying_device.clone(),
+            ..Default::default()
+        };
+        let (start_offset, end_offset) = bdev.get_partition_offsets()?;
+        let offset = real_dev.offset_sectors.checked_mul(512).chain_err(|| {
+            format!(
+                "Overflow calculating bytes for offset {} (sectors)",
+                real_dev.offset_sectors
+            )
+        })?;
+        ((start_offset, end_offset), Some(offset))
+    } else {
+        (root.get_partition_offsets()?, None)
+    };
 
     // we only hash boot files if there's a potential match with an OSTree object, so we keep a
     // cache to avoid recomputing it multiple times
@@ -225,7 +242,13 @@ fn scan_root_partition(
         let object = object_path_to_checksum(entry.path())
             .chain_err(|| format!("invalid object path {:?}", entry.path()))?;
 
-        for extent in extents {
+        for mut extent in extents {
+            if let Some(offset) = offset {
+                extent.physical = extent.physical.checked_add(offset.into()).chain_err(|| {
+                    format!("Overflow for extent {:?} with offset {}", extent, offset)
+                })?;
+            }
+
             mappings.push(Mapping {
                 extent,
                 object: object.clone(),
