@@ -109,7 +109,7 @@ mod ffi {
     // This is a hack to get the size of the fiemap struct *without* the extents array. We could
     // use offset_of(fiemap, fm_extents) once that's available as a `const fn`.
     const FIEMAP_SIZE: u32 =
-        ((size_of::<fiemap>() as u32) - (size_of::<[fiemap_extent; EXTENT_COUNT]>() as u32));
+        (size_of::<fiemap>() as u32) - (size_of::<[fiemap_extent; EXTENT_COUNT]>() as u32);
 
     // https://github.com/torvalds/linux/blob/0a679e13ea30f85a1aef0669ee0c5a9fd7860b34/include/uapi/linux/fs.h#L208
     // We have to use _bad! here because we don't want the macro to use size_of::<fiemap> directly.
