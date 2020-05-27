@@ -65,11 +65,38 @@ pub fn mount_partition_by_label(device: &str, label: &str, flags: mount::MsFlags
     }
 }
 
-#[derive(Debug)]
-struct BlkDev {
-    path: String,
-    label: Option<String>,
-    fstype: Option<String>,
+#[derive(Debug, Default)]
+pub struct BlkDev {
+    pub path: String,
+    pub label: Option<String>,
+    pub fstype: Option<String>,
+}
+
+impl BlkDev {
+    pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
+        let dev = metadata(&self.path)
+            .chain_err(|| format!("getting metadata for {}", &self.path))?
+            .st_rdev();
+        let maj: u64 = major(dev);
+        let min: u64 = minor(dev);
+
+        let start = read_sysfs_dev_block_value_u64(maj, min, "start")?;
+        let size = read_sysfs_dev_block_value_u64(maj, min, "size")?;
+
+        // We multiply by 512 here: the kernel values are always in 512 blocks, regardless of the
+        // actual sector size of the block device. We keep the values as bytes to make things
+        // easier.
+        let start_offset: u64 = start
+            .checked_mul(512)
+            .ok_or_else(|| "start offset mult overflow")?;
+        let end_offset: u64 = start_offset
+            .checked_add(
+                size.checked_mul(512)
+                    .ok_or_else(|| "end offset mult overflow")?,
+            )
+            .ok_or_else(|| "end offset add overflow")?;
+        Ok((start_offset, end_offset))
+    }
 }
 
 fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
@@ -146,33 +173,16 @@ impl Mount {
         })
     }
 
+    pub fn blockdev(&self) -> BlkDev {
+        BlkDev { path: self.device.clone(), ..Default::default() }
+    }
+
     pub fn mountpoint(&self) -> &Path {
         self.mountpoint.as_path()
     }
 
     pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
-        let dev = metadata(&self.device)
-            .chain_err(|| format!("getting metadata for {}", &self.device))?
-            .st_rdev();
-        let maj: u64 = major(dev);
-        let min: u64 = minor(dev);
-
-        let start = read_sysfs_dev_block_value_u64(maj, min, "start")?;
-        let size = read_sysfs_dev_block_value_u64(maj, min, "size")?;
-
-        // We multiply by 512 here: the kernel values are always in 512 blocks, regardless of the
-        // actual sector size of the block device. We keep the values as bytes to make things
-        // easier.
-        let start_offset: u64 = start
-            .checked_mul(512)
-            .ok_or_else(|| "start offset mult overflow")?;
-        let end_offset: u64 = start_offset
-            .checked_add(
-                size.checked_mul(512)
-                    .ok_or_else(|| "end offset mult overflow")?,
-            )
-            .ok_or_else(|| "end offset add overflow")?;
-        Ok((start_offset, end_offset))
+        self.blockdev().get_partition_offsets()
     }
 }
 
