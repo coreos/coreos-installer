@@ -28,8 +28,8 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `cargo test`
   - [ ] `cargo clean`
   - [ ] `git clean -fd`
-  - [ ] `export RELEASE_VER=x.y.z`
-  - [ ] `export UPSTREAM_REMOTE=origin`
+  - [ ] `RELEASE_VER=x.y.z`
+  - [ ] `UPSTREAM_REMOTE=origin`
 
 :warning:: `UPSTREAM_REMOTE` should reference the locally configured remote that points to the upstream git repository.
 
@@ -76,8 +76,6 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `git pull ${UPSTREAM_REMOTE} master`
   - [ ] `git push ${UPSTREAM_REMOTE} :release-${RELEASE_VER}`
   - [ ] `git branch -d release-${RELEASE_VER}`
-  - [ ] `unset RELEASE_VER`
-  - [ ] `unset UPSTREAM_REMOTE`
 
 [cargo-release]: https://github.com/sunng87/cargo-release
 [rustup]: https://rustup.rs/
