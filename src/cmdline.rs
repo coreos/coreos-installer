@@ -19,6 +19,7 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 use crate::blockdev::*;
+use crate::download::*;
 use crate::errors::*;
 use crate::install::IgnitionHash;
 use crate::source::*;
@@ -150,10 +151,20 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("ignition-file")
                         .short("i")
                         .long("ignition-file")
+                        .conflicts_with("ignition-url")
                         // deprecated long name from <= 0.1.2
                         .alias("ignition")
                         .value_name("path")
                         .help("Embed an Ignition config from a file")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("ignition-url")
+                        .short("I")
+                        .long("ignition-url")
+                        .conflicts_with("ignition-file")
+                        .value_name("URL")
+                        .help("Embed an Ignition config from a URL")
                         .takes_value(true),
                 )
                 .arg(
@@ -204,6 +215,11 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("insecure")
                         .long("insecure")
                         .help("Skip signature verification"),
+                )
+                .arg(
+                    Arg::with_name("insecure-ignition")
+                        .long("insecure-ignition")
+                        .help("Allow Ignition URL without HTTPS or hash"),
                 )
                 .arg(
                     Arg::with_name("stream-base-url")
@@ -574,15 +590,31 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         }
     };
 
-    let ignition = matches
-        .value_of("ignition-file")
-        .map(|file| {
-            OpenOptions::new()
-                .read(true)
-                .open(file)
-                .chain_err(|| format!("opening source Ignition config {}", file))
-        })
-        .transpose()?;
+    let ignition = if matches.is_present("ignition-file") {
+        matches
+            .value_of("ignition-file")
+            .map(|file| {
+                OpenOptions::new()
+                    .read(true)
+                    .open(file)
+                    .chain_err(|| format!("opening source Ignition config {}", file))
+            })
+            .transpose()?
+    } else if matches.is_present("ignition-url") {
+        matches.value_of("ignition-url").map(|url| {
+            if url.starts_with("http://") {
+                if !matches.is_present("ignition-hash") && !matches.is_present("insecure-ignition") {
+                    bail!("refusing to fetch Ignition config over HTTP without --ignition-hash or --insecure-ignition");
+                }
+            } else if !url.starts_with("https://") {
+                bail!("unknown protocol for URL '{}'", url);
+            }
+            download_to_tempfile(url)
+                .chain_err(|| format!("downloading source Ignition config {}", url))
+        }).transpose()?
+    } else {
+        None
+    };
 
     // and report it to the user
     eprintln!("{}", location);
