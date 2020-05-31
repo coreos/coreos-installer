@@ -15,6 +15,7 @@
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use error_chain::bail;
 use reqwest::Url;
+use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 use crate::blockdev::*;
@@ -37,7 +38,7 @@ pub enum Config {
 pub struct InstallConfig {
     pub device: String,
     pub location: Box<dyn ImageLocation>,
-    pub ignition: Option<String>,
+    pub ignition: Option<File>,
     pub ignition_hash: Option<IgnitionHash>,
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
@@ -572,6 +573,17 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             )?)
         }
     };
+
+    let ignition = matches
+        .value_of("ignition-file")
+        .map(|file| {
+            OpenOptions::new()
+                .read(true)
+                .open(file)
+                .chain_err(|| format!("opening source Ignition config {}", file))
+        })
+        .transpose()?;
+
     // and report it to the user
     eprintln!("{}", location);
 
@@ -588,7 +600,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
     Ok(Config::Install(InstallConfig {
         device,
         location,
-        ignition: matches.value_of("ignition-file").map(String::from),
+        ignition,
         ignition_hash: matches
             .value_of("ignition-hash")
             .map(IgnitionHash::try_parse)
