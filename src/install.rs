@@ -245,7 +245,26 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     }
 
     eprintln!("Setting platform to {}", platform);
+    edit_bls_entries(mountpoint, |orig_contents: &str| {
+        // Rewrite the config.  Assume that we will only install
+        // from metal images and that their bootloader configs will
+        // always set ignition.platform.id.  Fail if those
+        // assumptions change.  This is deliberately simplistic.
+        let new_contents = orig_contents.replace(
+            "ignition.platform.id=metal",
+            &format!("ignition.platform.id={}", platform),
+        );
+        if orig_contents == new_contents {
+            bail!("Couldn't locate platform ID");
+        }
+        Ok(new_contents)
+    })?;
 
+    Ok(())
+}
+
+/// Apply a transforming function on each BLS entry found.
+fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -> Result<()> {
     // walk /boot/loader/entries/*.conf
     let mut config_path = mountpoint.to_path_buf();
     config_path.push("loader/entries");
@@ -262,22 +281,16 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
                 .write(true)
                 .open(&path)
                 .chain_err(|| format!("opening bootloader config {}", path.display()))?;
-            let mut orig_contents = String::new();
-            config
-                .read_to_string(&mut orig_contents)
-                .chain_err(|| format!("reading {}", path.display()))?;
+            let orig_contents = {
+                let mut s = String::new();
+                config
+                    .read_to_string(&mut s)
+                    .chain_err(|| format!("reading {}", path.display()))?;
+                s
+            };
 
-            // Rewrite the config.  Assume that we will only install
-            // from metal images and that their bootloader configs will
-            // always set ignition.platform.id.  Fail if those
-            // assumptions change.  This is deliberately simplistic.
-            let new_contents = orig_contents.replace(
-                "ignition.platform.id=metal",
-                &format!("ignition.platform.id={}", platform),
-            );
-            if orig_contents == new_contents {
-                bail!("Couldn't locate platform ID in {}", path.display());
-            }
+            let new_contents =
+                f(&orig_contents).chain_err(|| format!("modifying {}", path.display()))?;
 
             // write out the modified data
             config
