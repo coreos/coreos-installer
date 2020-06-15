@@ -15,9 +15,11 @@
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use error_chain::bail;
 use reqwest::Url;
+use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 use crate::blockdev::*;
+use crate::download::*;
 use crate::errors::*;
 use crate::install::IgnitionHash;
 use crate::source::*;
@@ -37,7 +39,7 @@ pub enum Config {
 pub struct InstallConfig {
     pub device: String,
     pub location: Box<dyn ImageLocation>,
-    pub ignition: Option<String>,
+    pub ignition: Option<File>,
     pub ignition_hash: Option<IgnitionHash>,
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
@@ -119,6 +121,8 @@ pub fn parse_args() -> Result<Config> {
                         .short("s")
                         .long("stream")
                         .value_name("name")
+                        .conflicts_with("image-file")
+                        .conflicts_with("image-url")
                         .help("Fedora CoreOS stream")
                         .takes_value(true),
                 )
@@ -126,6 +130,8 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("image-url")
                         .short("u")
                         .long("image-url")
+                        .conflicts_with("stream")
+                        .conflicts_with("image-file")
                         .value_name("URL")
                         .help("Manually specify the image URL")
                         .takes_value(true),
@@ -134,6 +140,8 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("image-file")
                         .short("f")
                         .long("image-file")
+                        .conflicts_with("stream")
+                        .conflicts_with("image-url")
                         .value_name("path")
                         .help("Manually specify a local image file")
                         .takes_value(true),
@@ -143,10 +151,20 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("ignition-file")
                         .short("i")
                         .long("ignition-file")
+                        .conflicts_with("ignition-url")
                         // deprecated long name from <= 0.1.2
                         .alias("ignition")
                         .value_name("path")
                         .help("Embed an Ignition config from a file")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("ignition-url")
+                        .short("I")
+                        .long("ignition-url")
+                        .conflicts_with("ignition-file")
+                        .value_name("URL")
+                        .help("Embed an Ignition config from a URL")
                         .takes_value(true),
                 )
                 .arg(
@@ -197,6 +215,11 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("insecure")
                         .long("insecure")
                         .help("Skip signature verification"),
+                )
+                .arg(
+                    Arg::with_name("insecure-ignition")
+                        .long("insecure-ignition")
+                        .help("Allow Ignition URL without HTTPS or hash"),
                 )
                 .arg(
                     Arg::with_name("stream-base-url")
@@ -513,9 +536,6 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         .chain_err(|| format!("getting sector size of {}", &device))?
         .get();
 
-    // Build image location.  Ideally we'd use conflicts_with (and an
-    // ArgGroup for streams), but that doesn't play well with default
-    // arguments, so we manually prioritize modes.
     let location: Box<dyn ImageLocation> = if matches.is_present("image-file") {
         Box::new(FileLocation::new(
             matches.value_of("image-file").expect("image-file missing"),
@@ -569,6 +589,33 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             )?)
         }
     };
+
+    let ignition = if matches.is_present("ignition-file") {
+        matches
+            .value_of("ignition-file")
+            .map(|file| {
+                OpenOptions::new()
+                    .read(true)
+                    .open(file)
+                    .chain_err(|| format!("opening source Ignition config {}", file))
+            })
+            .transpose()?
+    } else if matches.is_present("ignition-url") {
+        matches.value_of("ignition-url").map(|url| {
+            if url.starts_with("http://") {
+                if !matches.is_present("ignition-hash") && !matches.is_present("insecure-ignition") {
+                    bail!("refusing to fetch Ignition config over HTTP without --ignition-hash or --insecure-ignition");
+                }
+            } else if !url.starts_with("https://") {
+                bail!("unknown protocol for URL '{}'", url);
+            }
+            download_to_tempfile(url)
+                .chain_err(|| format!("downloading source Ignition config {}", url))
+        }).transpose()?
+    } else {
+        None
+    };
+
     // and report it to the user
     eprintln!("{}", location);
 
@@ -585,7 +632,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
     Ok(Config::Install(InstallConfig {
         device,
         location,
-        ignition: matches.value_of("ignition-file").map(String::from),
+        ignition,
         ignition_hash: matches
             .value_of("ignition-hash")
             .map(IgnitionHash::try_parse)

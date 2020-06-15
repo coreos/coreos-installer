@@ -457,7 +457,7 @@ fn fetch_stream(client: blocking::Client, url: &Url) -> Result<Stream> {
 }
 
 /// Customize and build a new HTTP client.
-fn new_http_client() -> Result<blocking::Client> {
+pub fn new_http_client() -> Result<blocking::Client> {
     blocking::ClientBuilder::new()
         .timeout(HTTP_COMPLETION_TIMEOUT)
         .build()

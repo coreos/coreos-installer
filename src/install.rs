@@ -98,19 +98,6 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         }
     }
 
-    // if an Ignition config is provided, open it upfront so we don't waste time downloading the
-    // main image and writing it to disk first
-    let ignition = config
-        .ignition
-        .as_ref()
-        .map(|f| {
-            OpenOptions::new()
-                .read(true)
-                .open(f)
-                .chain_err(|| format!("opening source Ignition config {}", f))
-        })
-        .transpose()?;
-
     // open output; ensure it's a block device and we have exclusive access
     let mut dest = OpenOptions::new()
         .write(true)
@@ -130,7 +117,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
-    if let Err(err) = write_disk(&config, &mut source, &mut dest, ignition) {
+    if let Err(err) = write_disk(&config, &mut source, &mut dest) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
         eprint!("{}", ChainedError::display_chain(&err));
@@ -153,12 +140,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 /// Copy the image source to the target disk and do all post-processing.
 /// If this function fails, the caller should wipe the partition table
 /// to ensure the user doesn't boot from a partially-written disk.
-fn write_disk(
-    config: &InstallConfig,
-    source: &mut ImageSource,
-    dest: &mut File,
-    ignition: Option<File>,
-) -> Result<()> {
+fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File) -> Result<()> {
     // Get sector size of destination, for comparing with image
     let sector_size = get_sector_size(dest)?;
 
@@ -168,13 +150,13 @@ fn write_disk(
     udev_settle()?;
 
     // postprocess
-    if ignition.is_some()
+    if config.ignition.is_some()
         || config.firstboot_kargs.is_some()
         || config.platform.is_some()
         || config.network_config.is_some()
     {
         let mount = mount_partition_by_label(&config.device, "boot", mount::MsFlags::empty())?;
-        if let Some(ignition) = ignition {
+        if let Some(ignition) = config.ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .chain_err(|| "writing Ignition configuration")?;
         }
@@ -197,7 +179,7 @@ fn write_disk(
 fn write_ignition(
     mountpoint: &Path,
     digest_in: &Option<IgnitionHash>,
-    mut config_in: File,
+    mut config_in: &File,
 ) -> Result<()> {
     eprintln!("Writing Ignition config");
 

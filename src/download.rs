@@ -306,6 +306,24 @@ pub fn write_image(
     Ok(())
 }
 
+pub fn download_to_tempfile(url: &str) -> Result<File> {
+    let mut f = tempfile::tempfile()?;
+
+    let client = new_http_client()?;
+    let mut resp = client
+        .get(url)
+        .send()
+        .chain_err(|| format!("sending request for '{}'", url))?
+        .error_for_status()
+        .chain_err(|| format!("fetching '{}'", url))?;
+
+    copy(&mut resp, &mut f)?;
+    f.seek(SeekFrom::Start(0))
+        .chain_err(|| format!("rewinding file for '{}'", url))?;
+
+    Ok(f)
+}
+
 /// Format a size in bytes.
 fn format_bytes(count: u64) -> String {
     Byte::from_bytes(count.into())
