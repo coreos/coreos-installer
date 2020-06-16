@@ -246,21 +246,24 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 
     eprintln!("Setting platform to {}", platform);
     edit_bls_entries(mountpoint, |orig_contents: &str| {
-        // Rewrite the config.  Assume that we will only install
-        // from metal images and that their bootloader configs will
-        // always set ignition.platform.id.  Fail if those
-        // assumptions change.  This is deliberately simplistic.
-        let new_contents = orig_contents.replace(
-            "ignition.platform.id=metal",
-            &format!("ignition.platform.id={}", platform),
-        );
-        if orig_contents == new_contents {
-            bail!("Couldn't locate platform ID");
-        }
-        Ok(new_contents)
+        bls_entry_write_platform(orig_contents, platform)
     })?;
 
     Ok(())
+}
+
+/// Modifies the BLS config, only changing the `ignition.platform.id`. This assumes that we will
+/// only install from metal images and that the bootloader configs will always set
+/// ignition.platform.id.  Fail if those assumptions change.  This is deliberately simplistic.
+fn bls_entry_write_platform(orig_contents: &str, platform: &str) -> Result<String> {
+    let new_contents = orig_contents.replace(
+        "ignition.platform.id=metal",
+        &format!("ignition.platform.id={}", platform),
+    );
+    if orig_contents == new_contents {
+        bail!("Couldn't locate platform ID");
+    }
+    Ok(new_contents)
 }
 
 /// Apply a transforming function on each BLS entry found.
@@ -378,5 +381,29 @@ mod tests {
         let hasher = IgnitionHash::try_parse(&hash_arg).unwrap();
         let mut rd = std::io::Cursor::new(input);
         hasher.validate(&mut rd).unwrap();
+    }
+
+    #[test]
+    fn test_platform_id() {
+        let orig_content = "options ignition.platform.id=metal foo bar";
+        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        assert_eq!(
+            new_content,
+            "options ignition.platform.id=openstack foo bar"
+        );
+
+        let orig_content = "options foo ignition.platform.id=metal bar";
+        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        assert_eq!(
+            new_content,
+            "options foo ignition.platform.id=openstack bar"
+        );
+
+        let orig_content = "options foo bar ignition.platform.id=metal";
+        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        assert_eq!(
+            new_content,
+            "options foo bar ignition.platform.id=openstack"
+        );
     }
 }
