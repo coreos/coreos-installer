@@ -702,7 +702,7 @@ write_zipl_bootloader() {
         options="$(grep options $blsfile | cut -d' ' -f2-) $(cat /tmp/s390x_opts)"
         sed -i -e "s@^options.*@options $options@g" $blsfile
         # And also keep networking parameters for first boot
-        echo "$options $(cat /tmp/networking_opts) ignition.firstboot" > /tmp/zipl_prm
+        echo "$options $(cat /tmp/networking_opts) $(cat /tmp/additional_opts) ignition.firstboot" > /tmp/zipl_prm
         zipl --verbose -p /tmp/zipl_prm -i $(ls ${boot_partition}/ostree/*/*vmlinuz*) -r $(ls ${boot_partition}/ostree/*/*initramfs*) --target "$boot_partition"
         if [[ $? -ne 0 ]]; then
             log "failed updating bootloder"
