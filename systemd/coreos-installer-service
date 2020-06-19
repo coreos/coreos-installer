@@ -10,6 +10,8 @@ PERSIST_KERNEL_NET_PARAMS=("ipv6.disable" "net.ifnames" "net.naming-scheme")
 # List from https://www.mankier.com/7/dracut.cmdline#Description-Network
 PERSIST_DRACUT_NET_PARAMS=("ip" "ifname" "rd.route" "bootdev" "BOOTIF" "rd.bootif" "nameserver" "rd.peerdns" "biosdevname" "vlan" "bond" "team" "bridge" "rd.net.timeout.carrier" "coreos.no_persist_ip")
 
+PERSIST_DRACUT_ADDITIONAL_PARAMS=("coreos.autologin")
+
 args=("install")
 
 cmdline=( $(</proc/cmdline) )
@@ -73,11 +75,28 @@ for item in "${cmdline[@]}"; do
         fi
     done
 done
-# Only pass firstboot-kargs if additional networking options have been
-# specified, since the default in ignition-dracut specifies
-# `rd.neednet=1 ip=dhcp` when no options are persisted
+
+additional_args=""
+for item in "${cmdline[@]}"; do
+    for param in "${PERSIST_DRACUT_ADDITIONAL_PARAMS[@]}"; do
+        if [[ $item =~ ^$param(=.*)?$ ]]; then
+            additional_args+="${item} "
+        fi
+    done
+done
+
+# Pass firstboot-kargs if:
+#    -additional networking options have been specified, since the default
+#     in ignition-dracut specifies `rd.neednet=1 ip=dhcp` when no options are persisted
+#    -any args are specified in the additional parameters which today is used
+#     only for the autologin option
 if [ -n "${firstboot_args}" ]; then
+    firstboot_args+="${additional_args}"
     args+=("--firstboot-args" "rd.neednet=1 ${firstboot_args}")
+else
+   if [ -n "${additional_args}" ]; then
+       args+=("--firstboot-args" "${additional_args}")
+   fi
 fi
 
 # Other args that should just be copied over
