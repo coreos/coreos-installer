@@ -111,8 +111,10 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     {
         bail!("{} is not a block device", &config.device);
     }
-    reread_partition_table(&mut dest)
-        .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
+    if let Err(e) = reread_partition_table(&mut dest) {
+        report_busy_partitions(&config.device)?;
+        Err(e).chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
+    }
 
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
@@ -134,6 +136,27 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     }
 
     eprintln!("Install complete.");
+    Ok(())
+}
+
+fn report_busy_partitions(device: &str) -> Result<()> {
+    let mut parts = get_busy_partitions(device)?;
+    parts.sort_unstable_by_key(|p| p.path.to_string());
+    if parts.is_empty() {
+        return Ok(());
+    }
+    eprintln!("Partitions in use on {}:", device);
+    for part in parts {
+        if let Some(mountpoint) = part.mountpoint.as_ref() {
+            eprintln!("    {} mounted on {}", part.path, mountpoint);
+        }
+        if part.swap {
+            eprintln!("    {} is swap device", part.path);
+        }
+        for holder in part.get_holders()? {
+            eprintln!("    {} in use by {}", part.path, holder);
+        }
+    }
     Ok(())
 }
 
