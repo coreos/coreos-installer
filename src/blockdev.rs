@@ -28,7 +28,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
-use tempfile;
 
 use crate::errors::*;
 
