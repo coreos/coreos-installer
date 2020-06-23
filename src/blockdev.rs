@@ -105,7 +105,7 @@ fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
         .arg("--pairs")
         .arg("--paths")
         .arg("--output")
-        .arg("NAME,LABEL,FSTYPE")
+        .arg("NAME,LABEL,FSTYPE,TYPE")
         .arg(device)
         .output()
         .chain_err(|| "running lsblk")?;
@@ -122,8 +122,9 @@ fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
         // parse key-value pairs
         let fields = split_lsblk_line(line);
         if let Some(name) = fields.get("NAME") {
-            // Skip the device itself
-            if device == name {
+            // Only return partitions.  Skip the whole-disk device, as well
+            // as holders like LVM or RAID devices using one of the partitions.
+            if fields.get("TYPE") != Some(&"part".to_string()) {
                 continue;
             }
             result.push(BlkDev {
