@@ -4,6 +4,8 @@ Before=coreos-installer.target
 After=network-online.target
 Wants=network-online.target
 ConditionKernelCommandLine=coreos.inst.install_dev
+OnFailure=emergency.target
+OnFailureJobMode=replace-irreversibly
 
 [Service]
 Type=oneshot
