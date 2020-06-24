@@ -68,7 +68,7 @@ impl IgnitionHash {
             IgnitionHash::Sha512(val) => (sha2::Sha512::new(), val),
         };
         copy(input, &mut hasher).chain_err(|| "copying input to hasher")?;
-        let computed = hasher.result();
+        let computed = hasher.finalize();
 
         if computed.as_slice() != digest.as_slice() {
             bail!(
