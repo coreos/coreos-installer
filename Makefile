@@ -21,7 +21,7 @@ install-bin: all
 
 .PHONY: install-scripts
 install-scripts: all
-	install -D -t $(DESTDIR)/usr/libexec scripts/coreos-installer-service
+	install -D -t $(DESTDIR)/usr/libexec scripts/coreos-installer-disable-device-auto-activation scripts/coreos-installer-service
 
 .PHONY: install-systemd
 install-systemd: all

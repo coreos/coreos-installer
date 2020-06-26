@@ -1,0 +1,4 @@
+[Unit]
+Description=Prepare for CoreOS Installer Target
+
+Requires=coreos-installer-disable-device-auto-activation.service
