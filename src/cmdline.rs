@@ -43,6 +43,8 @@ pub struct InstallConfig {
     pub ignition_hash: Option<IgnitionHash>,
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
+    pub append_kargs: Option<Vec<String>>,
+    pub delete_kargs: Option<Vec<String>>,
     pub insecure: bool,
     pub preserve_on_error: bool,
     pub network_config: Option<String>,
@@ -192,6 +194,24 @@ pub fn parse_args() -> Result<Config> {
                         // been obsoleted by the nicer `--copy-network` approach. We still need it
                         // for now though. It's used at least by `coreos-installer.service`.
                         .hidden(true),
+                )
+                .arg(
+                    Arg::with_name("append-karg")
+                        .long("append-karg")
+                        .value_name("arg")
+                        .help("Append default kernel arg")
+                        .takes_value(true)
+                        .number_of_values(1)
+                        .multiple(true),
+                )
+                .arg(
+                    Arg::with_name("delete-karg")
+                        .long("delete-karg")
+                        .value_name("arg")
+                        .help("Delete default kernel arg")
+                        .takes_value(true)
+                        .number_of_values(1)
+                        .multiple(true),
                 )
                 .arg(
                     Arg::with_name("copy-network")
@@ -644,6 +664,12 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             .chain_err(|| "parsing Ignition config hash")?,
         platform: matches.value_of("platform").map(String::from),
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
+        append_kargs: matches
+            .values_of("append-karg")
+            .map(|v| v.map(String::from).collect()),
+        delete_kargs: matches
+            .values_of("delete-karg")
+            .map(|v| v.map(String::from).collect()),
         insecure: matches.is_present("insecure"),
         preserve_on_error: matches.is_present("preserve-on-error"),
         network_config,

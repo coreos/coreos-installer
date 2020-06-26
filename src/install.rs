@@ -152,6 +152,8 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
     // postprocess
     if config.ignition.is_some()
         || config.firstboot_kargs.is_some()
+        || config.append_kargs.is_some()
+        || config.delete_kargs.is_some()
         || config.platform.is_some()
         || config.network_config.is_some()
     {
@@ -163,6 +165,18 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
         if let Some(firstboot_kargs) = config.firstboot_kargs.as_ref() {
             write_firstboot_kargs(mount.mountpoint(), firstboot_kargs)
                 .chain_err(|| "writing firstboot kargs")?;
+        }
+        if config.append_kargs.is_some() || config.delete_kargs.is_some() {
+            eprintln!("Modifying kernel arguments");
+
+            edit_bls_entries(mount.mountpoint(), |orig_contents: &str| {
+                bls_entry_delete_and_append_kargs(
+                    orig_contents,
+                    config.delete_kargs.as_ref(),
+                    config.append_kargs.as_ref(),
+                )
+            })
+            .chain_err(|| "deleting and appending kargs")?;
         }
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform).chain_err(|| "writing platform ID")?;
@@ -234,6 +248,56 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
         .chain_err(|| "writing first-boot kernel arguments")?;
 
     Ok(())
+}
+
+// This is split out so that we can unit test it.
+fn bls_entry_delete_and_append_kargs(
+    orig_contents: &str,
+    delete_args: Option<&Vec<String>>,
+    append_args: Option<&Vec<String>>,
+) -> Result<String> {
+    let mut new_contents = String::with_capacity(orig_contents.len());
+    let mut found_options = false;
+    for line in orig_contents.lines() {
+        if !line.starts_with("options ") {
+            new_contents.push_str(line.trim_end());
+        } else if found_options {
+            bail!("Multiple 'options' lines found");
+        } else {
+            // XXX: Need a proper parser here and share it with afterburn. The approach we use here
+            // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
+            // handle occurrences in quoted args) but will work for now (one thing that saves us is
+            // that we're acting on our baked configs, which have straight-forward kargs).
+            new_contents.push_str("options ");
+            let mut line: String = add_whitespaces(&line["options ".len()..]);
+            if let Some(args) = delete_args {
+                for arg in args {
+                    let arg = add_whitespaces(&arg);
+                    line = line.replace(&arg, " ");
+                }
+            }
+            new_contents.push_str(line.trim_start().trim_end());
+            if let Some(args) = append_args {
+                for arg in args {
+                    new_contents.push(' ');
+                    new_contents.push_str(&arg);
+                }
+            }
+            found_options = true;
+        }
+        new_contents.push('\n');
+    }
+    if !found_options {
+        bail!("Couldn't locate 'options' line");
+    }
+    Ok(new_contents)
+}
+
+fn add_whitespaces(s: &str) -> String {
+    let mut r: String = s.into();
+    r.insert(0, ' ');
+    r.push(' ');
+    r
 }
 
 /// Override the platform ID.
@@ -404,6 +468,62 @@ mod tests {
         assert_eq!(
             new_content,
             "options foo bar ignition.platform.id=openstack"
+        );
+    }
+
+    #[test]
+    fn test_options_edit() {
+        let orig_content = "options foo bar foobar";
+
+        let delete_kargs = vec!["foo".into()];
+        let new_content =
+            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+        assert_eq!(new_content, "options bar foobar\n");
+
+        let delete_kargs = vec!["bar".into()];
+        let new_content =
+            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+        assert_eq!(new_content, "options foo foobar\n");
+
+        let delete_kargs = vec!["foobar".into()];
+        let new_content =
+            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+        assert_eq!(new_content, "options foo bar\n");
+
+        let delete_kargs = vec!["bar".into(), "foo".into()];
+        let new_content =
+            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+        assert_eq!(new_content, "options foobar\n");
+
+        let orig_content = "options foo=val bar baz=val";
+
+        let delete_kargs = vec!["foo=val".into()];
+        let new_content =
+            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+        assert_eq!(new_content, "options bar baz=val\n");
+
+        let delete_kargs = vec!["baz=val".into()];
+        let new_content =
+            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+        assert_eq!(new_content, "options foo=val bar\n");
+
+        let orig_content =
+            "options foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
+
+        let delete_kargs = vec![
+            "mitigations=auto,nosmt".into(),
+            "console=ttyS0,115200n8".into(),
+        ];
+        let append_kargs = vec!["console=ttyS1,115200n8".into()];
+        let new_content = bls_entry_delete_and_append_kargs(
+            orig_content,
+            Some(&delete_kargs),
+            Some(&append_kargs),
+        )
+        .unwrap();
+        assert_eq!(
+            new_content,
+            "options foo console=tty0 bar baz console=ttyS1,115200n8\n"
         );
     }
 }
