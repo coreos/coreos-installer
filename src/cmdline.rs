@@ -187,7 +187,11 @@ pub fn parse_args() -> Result<Config> {
                         .long("firstboot-args")
                         .value_name("args")
                         .help("Additional kernel args for the first boot")
-                        .takes_value(true),
+                        .takes_value(true)
+                        // This used to be for configuring networking from the cmdline, but it has
+                        // been obsoleted by the nicer `--copy-network` approach. We still need it
+                        // for now though. It's used at least by `coreos-installer.service`.
+                        .hidden(true),
                 )
                 .arg(
                     Arg::with_name("copy-network")
