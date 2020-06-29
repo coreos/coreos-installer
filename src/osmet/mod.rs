@@ -194,7 +194,7 @@ fn scan_root_partition(
 ) -> Result<(OsmetPartition, HashMap<PathBuf, Sha256Digest>)> {
     // query the trivial stuff first
     let ((start_offset, end_offset), offset) = if let Some(real_dev) = real_dev {
-        let (start_offset, end_offset) = BlkDev::get_offsets(&real_dev.underlying_device)?;
+        let (start_offset, end_offset) = Partition::get_offsets(&real_dev.underlying_device)?;
         let offset = real_dev.offset_sectors.checked_mul(512).chain_err(|| {
             format!(
                 "Overflow calculating bytes for offset {} (sectors)",

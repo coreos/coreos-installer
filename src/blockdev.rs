@@ -42,8 +42,8 @@ pub fn mount_partition_by_label(device: &str, label: &str, flags: mount::MsFlags
     let matching_partitions = partitions
         .iter()
         .filter(|d| d.label.as_ref().unwrap_or(&"".to_string()) == label)
-        .collect::<Vec<&BlkDev>>();
-    let dev = match matching_partitions.len() {
+        .collect::<Vec<&Partition>>();
+    let part = match matching_partitions.len() {
         0 => bail!("couldn't find {} device for {}", label, device),
         1 => matching_partitions[0],
         _ => bail!(
@@ -54,8 +54,8 @@ pub fn mount_partition_by_label(device: &str, label: &str, flags: mount::MsFlags
     };
 
     // mount it
-    match &dev.fstype {
-        Some(fstype) => Mount::try_mount(&dev.path, &fstype, flags),
+    match &part.fstype {
+        Some(fstype) => Mount::try_mount(&part.path, &fstype, flags),
         None => Err(format!(
             "couldn't get filesystem type of {} device for {}",
             label, device
@@ -64,8 +64,8 @@ pub fn mount_partition_by_label(device: &str, label: &str, flags: mount::MsFlags
     }
 }
 
-pub fn get_busy_partitions(device: &str) -> Result<Vec<BlkDev>> {
-    let mut ret: Vec<BlkDev> = Vec::new();
+pub fn get_busy_partitions(device: &str) -> Result<Vec<Partition>> {
+    let mut ret: Vec<Partition> = Vec::new();
     for d in get_partitions(device)? {
         if d.mountpoint.is_some() || d.swap || !d.get_holders()?.is_empty() {
             ret.push(d)
@@ -75,7 +75,7 @@ pub fn get_busy_partitions(device: &str) -> Result<Vec<BlkDev>> {
 }
 
 #[derive(Debug)]
-pub struct BlkDev {
+pub struct Partition {
     pub path: String,
     pub label: Option<String>,
     pub fstype: Option<String>,
@@ -85,7 +85,7 @@ pub struct BlkDev {
     pub swap: bool,
 }
 
-impl BlkDev {
+impl Partition {
     /// Return start and end offsets within the disk.
     pub fn get_offsets(path: &str) -> Result<(u64, u64)> {
         let dev = metadata(path)
@@ -134,7 +134,7 @@ impl BlkDev {
     }
 }
 
-fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
+fn get_partitions(device: &str) -> Result<Vec<Partition>> {
     // have lsblk enumerate partitions on the device
     // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
     let result = Command::new("lsblk")
@@ -153,7 +153,7 @@ fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
     let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
 
     // walk each device in the output
-    let mut result: Vec<BlkDev> = Vec::new();
+    let mut result: Vec<Partition> = Vec::new();
     for line in output.lines() {
         // parse key-value pairs
         let fields = split_lsblk_line(line);
@@ -168,7 +168,7 @@ fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
                 Some(mp) => (Some(mp.to_string()), false),
                 None => (None, false),
             };
-            result.push(BlkDev {
+            result.push(Partition {
                 path: name.to_owned(),
                 label: fields.get("LABEL").map(<_>::to_string),
                 fstype: fields.get("FSTYPE").map(<_>::to_string),
@@ -222,7 +222,7 @@ impl Mount {
     }
 
     pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
-        BlkDev::get_offsets(&self.device)
+        Partition::get_offsets(&self.device)
     }
 }
 
