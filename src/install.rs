@@ -111,10 +111,8 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     {
         bail!("{} is not a block device", &config.device);
     }
-    if let Err(e) = reread_partition_table(&mut dest) {
-        report_busy_partitions(&config.device)?;
-        Err(e).chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
-    }
+    ensure_exclusive_access(&config.device)
+        .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
@@ -139,12 +137,12 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     Ok(())
 }
 
-fn report_busy_partitions(device: &str) -> Result<()> {
+fn ensure_exclusive_access(device: &str) -> Result<()> {
     let mut parts = Disk::new(device).get_busy_partitions()?;
-    parts.sort_unstable_by_key(|p| p.path.to_string());
     if parts.is_empty() {
         return Ok(());
     }
+    parts.sort_unstable_by_key(|p| p.path.to_string());
     eprintln!("Partitions in use on {}:", device);
     for part in parts {
         if let Some(mountpoint) = part.mountpoint.as_ref() {
@@ -157,7 +155,7 @@ fn report_busy_partitions(device: &str) -> Result<()> {
             eprintln!("    {} in use by {}", part.path, holder);
         }
     }
-    Ok(())
+    bail!("found busy partitions");
 }
 
 /// Copy the image source to the target disk and do all post-processing.

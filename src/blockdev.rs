@@ -76,16 +76,6 @@ impl Disk {
         }
     }
 
-    pub fn get_busy_partitions(&self) -> Result<Vec<Partition>> {
-        let mut ret: Vec<Partition> = Vec::new();
-        for d in self.get_partitions()? {
-            if d.mountpoint.is_some() || d.swap || !d.get_holders()?.is_empty() {
-                ret.push(d)
-            }
-        }
-        Ok(ret)
-    }
-
     fn get_partitions(&self) -> Result<Vec<Partition>> {
         // have lsblk enumerate partitions on the device
         // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
@@ -131,6 +121,48 @@ impl Disk {
             }
         }
         Ok(result)
+    }
+
+    /// Return an empty list if we have exclusive access to the device, or
+    /// a list of partitions preventing us from gaining exclusive access.
+    pub fn get_busy_partitions(self) -> Result<Vec<Partition>> {
+        // Try rereading the partition table.  This is the most complete
+        // check, but it only works on partitionable devices.
+        let rereadpt_result = {
+            let mut f = OpenOptions::new()
+                .write(true)
+                .open(&self.path)
+                .chain_err(|| format!("opening {}", &self.path))?;
+            reread_partition_table(&mut f).map(|_| Vec::new())
+        };
+        if rereadpt_result.is_ok() {
+            return rereadpt_result;
+        }
+
+        // Walk partitions, record the ones that are reported in use,
+        // and return the list if any
+        let mut busy: Vec<Partition> = Vec::new();
+        for d in self.get_partitions()? {
+            if d.mountpoint.is_some() || d.swap || !d.get_holders()?.is_empty() {
+                busy.push(d)
+            }
+        }
+        if !busy.is_empty() {
+            return Ok(busy);
+        }
+
+        // Our investigation found nothing.  If the device is expected to be
+        // partitionable but reread failed, we evidently missed something,
+        // so error out for safety
+        if !self.is_dm_device() {
+            return rereadpt_result;
+        }
+
+        Ok(Vec::new())
+    }
+
+    fn is_dm_device(&self) -> bool {
+        self.path.starts_with("/dev/mapper/") || self.path.starts_with("/dev/dm-")
     }
 }
 
