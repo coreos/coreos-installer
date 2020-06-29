@@ -53,14 +53,12 @@ if [ "${device##*/}" = "${device}" ]; then
 fi
 args+=("${device}")
 
-# Fetch the Ignition URL, if any, and cache it locally.
+# Ignition URL
 ignition_url="$(karg coreos.inst.ignition_url)"
 # Ignore "skip" for compatibility
 if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
-    ignition_file="$(mktemp -t coreos-installer-XXXXXX)"
-    trap "rm -f \"${ignition_file}\"" EXIT
-    curl --progress-bar --retry 5 --fail -o "${ignition_file}" "${ignition_url}"
-    args+=("--ignition" "${ignition_file}")
+    # Allow HTTP URLs for compatibility
+    args+=("--ignition-url" "${ignition_url}" "--insecure-ignition")
 fi
 
 # First-boot kernel arguments. Filter out any args that aren't in our
