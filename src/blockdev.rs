@@ -18,7 +18,7 @@ use nix::{errno::Errno, mount};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{metadata, read_dir, read_to_string, remove_dir, File, OpenOptions};
+use std::fs::{metadata, read_dir, read_link, read_to_string, remove_dir, File, OpenOptions};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -173,7 +173,22 @@ impl Partition {
     }
 
     pub fn get_holders(&self) -> Result<Vec<String>> {
-        let holders = Path::new("/sys/block")
+        let holders = self.get_sysfs_dir()?.join("holders");
+        let mut ret: Vec<String> = Vec::new();
+        for ent in read_dir(&holders).chain_err(|| format!("reading {}", &holders.display()))? {
+            let ent = ent.chain_err(|| format!("reading {} entry", &holders.display()))?;
+            ret.push(format!("/dev/{}", ent.file_name().to_string_lossy()));
+        }
+        Ok(ret)
+    }
+
+    // Try to locate the device directory in sysfs.
+    fn get_sysfs_dir(&self) -> Result<PathBuf> {
+        let basedir = Path::new("/sys/block");
+
+        // First assume we have a regular partition.
+        // /sys/block/sda/sda1
+        let devdir = basedir
             .join(
                 Path::new(&self.parent)
                     .file_name()
@@ -183,14 +198,36 @@ impl Partition {
                 Path::new(&self.path)
                     .file_name()
                     .chain_err(|| format!("path {} has no filename", self.path))?,
-            )
-            .join("holders");
-        let mut ret: Vec<String> = Vec::new();
-        for ent in read_dir(&holders).chain_err(|| format!("reading {}", &holders.display()))? {
-            let ent = ent.chain_err(|| format!("reading {}", &holders.display()))?;
-            ret.push(format!("/dev/{}", ent.file_name().to_string_lossy()));
+            );
+        if devdir.exists() {
+            return Ok(devdir);
         }
-        Ok(ret)
+
+        // Now assume a kpartx "partition", where the path is a symlink to
+        // an unpartitioned DM device node.
+        // /sys/block/dm-1
+        match read_link(Path::new(&self.path)) {
+            Ok(target) => {
+                let devdir = basedir.join(
+                    Path::new(&target)
+                        .file_name()
+                        .chain_err(|| format!("target {} has no filename", self.path))?,
+                );
+                if devdir.exists() {
+                    return Ok(devdir);
+                }
+            }
+            // ignore if not symlink
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => (),
+            Err(e) => return Err(e).chain_err(|| format!("reading link {}", self.path)),
+        };
+
+        // Give up
+        bail!(
+            "couldn't find /sys/block directory for partition {} of {}",
+            &self.path,
+            &self.parent
+        );
     }
 }
 
