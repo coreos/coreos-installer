@@ -82,8 +82,9 @@ pub fn osmet_fiemap(config: &OsmetFiemapConfig) -> Result<()> {
 pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
     // First, mount the two main partitions we want to suck out data from: / and /boot. Note
     // MS_RDONLY; this also ensures that the partition isn't already mounted rw elsewhere.
-    let boot = mount_partition_by_label(&config.device, "boot", mount::MsFlags::MS_RDONLY)?;
-    let root = mount_partition_by_label(&config.device, "root", mount::MsFlags::MS_RDONLY)?;
+    let disk = Disk::new(&config.device);
+    let boot = disk.mount_partition_by_label("boot", mount::MsFlags::MS_RDONLY)?;
+    let root = disk.mount_partition_by_label("root", mount::MsFlags::MS_RDONLY)?;
 
     // now, we do a first scan of the boot partition and pick up files over a certain size
     let boot_files = prescan_boot_partition(&boot)?;
