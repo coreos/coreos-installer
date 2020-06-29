@@ -18,7 +18,7 @@ use nix::{errno::Errno, mount};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{metadata, read_to_string, remove_dir, File, OpenOptions};
+use std::fs::{metadata, read_dir, read_to_string, remove_dir, File, OpenOptions};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -28,7 +28,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
-use tempfile;
 
 use crate::errors::*;
 
@@ -65,11 +64,25 @@ pub fn mount_partition_by_label(device: &str, label: &str, flags: mount::MsFlags
     }
 }
 
+pub fn get_busy_partitions(device: &str) -> Result<Vec<BlkDev>> {
+    let mut ret: Vec<BlkDev> = Vec::new();
+    for d in get_partitions(device)? {
+        if d.mountpoint.is_some() || d.swap || !d.get_holders()?.is_empty() {
+            ret.push(d)
+        }
+    }
+    Ok(ret)
+}
+
 #[derive(Debug, Default)]
 pub struct BlkDev {
     pub path: String,
     pub label: Option<String>,
     pub fstype: Option<String>,
+
+    pub parent: String,
+    pub mountpoint: Option<String>,
+    pub swap: bool,
 }
 
 impl BlkDev {
@@ -97,6 +110,27 @@ impl BlkDev {
             .ok_or_else(|| "end offset add overflow")?;
         Ok((start_offset, end_offset))
     }
+
+    pub fn get_holders(&self) -> Result<Vec<String>> {
+        let holders = Path::new("/sys/block")
+            .join(
+                Path::new(&self.parent)
+                    .file_name()
+                    .chain_err(|| format!("parent {} has no filename", self.parent))?,
+            )
+            .join(
+                Path::new(&self.path)
+                    .file_name()
+                    .chain_err(|| format!("path {} has no filename", self.path))?,
+            )
+            .join("holders");
+        let mut ret: Vec<String> = Vec::new();
+        for ent in read_dir(&holders).chain_err(|| format!("reading {}", &holders.display()))? {
+            let ent = ent.chain_err(|| format!("reading {}", &holders.display()))?;
+            ret.push(format!("/dev/{}", ent.file_name().to_string_lossy()));
+        }
+        Ok(ret)
+    }
 }
 
 fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
@@ -106,7 +140,7 @@ fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
         .arg("--pairs")
         .arg("--paths")
         .arg("--output")
-        .arg("NAME,LABEL,FSTYPE")
+        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
         .arg(device)
         .output()
         .chain_err(|| "running lsblk")?;
@@ -123,14 +157,23 @@ fn get_partitions(device: &str) -> Result<Vec<BlkDev>> {
         // parse key-value pairs
         let fields = split_lsblk_line(line);
         if let Some(name) = fields.get("NAME") {
-            // Skip the device itself
-            if device == name {
+            // Only return partitions.  Skip the whole-disk device, as well
+            // as holders like LVM or RAID devices using one of the partitions.
+            if fields.get("TYPE") != Some(&"part".to_string()) {
                 continue;
             }
+            let (mountpoint, swap) = match fields.get("MOUNTPOINT") {
+                Some(mp) if mp == "[SWAP]" => (None, true),
+                Some(mp) => (Some(mp.to_string()), false),
+                None => (None, false),
+            };
             result.push(BlkDev {
                 path: name.to_owned(),
                 label: fields.get("LABEL").map(<_>::to_string),
                 fstype: fields.get("FSTYPE").map(<_>::to_string),
+                parent: device.to_owned(),
+                mountpoint,
+                swap,
             });
         }
     }

@@ -1,0 +1,26 @@
+#!/bin/bash
+# Ensure leftover MD and LVM partitions on the target disk are not
+# automatically activated by udev, thus preventing the installer from
+# gaining exclusive access to the disk.
+
+set -euo pipefail
+
+# Configure mdadm
+if [ ! -e /etc/mdadm.conf.d/coreos-installer.conf ]; then
+    mkdir -p /etc/mdadm.conf.d
+    cat > /etc/mdadm.conf.d/coreos-installer.conf <<EOF
+# Disable MD auto-assembly for coreos-installer
+AUTO -all
+EOF
+fi
+
+# Configure LVM
+if ! grep -q coreos-installer /etc/lvm/lvm.conf; then
+    cat >> /etc/lvm/lvm.conf <<EOF
+
+# Disable LVM auto-activation for coreos-installer
+devices {
+        filter = [ "r|.*|" ]
+}
+EOF
+fi

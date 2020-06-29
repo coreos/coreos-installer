@@ -1,0 +1,9 @@
+[Unit]
+Description=Disable Device Auto-Activation for CoreOS Installer
+DefaultDependencies=no
+Before=systemd-udevd.service
+Before=dm-event.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/coreos-installer-disable-device-auto-activation
