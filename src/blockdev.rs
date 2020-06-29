@@ -74,7 +74,7 @@ pub fn get_busy_partitions(device: &str) -> Result<Vec<BlkDev>> {
     Ok(ret)
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BlkDev {
     pub path: String,
     pub label: Option<String>,
@@ -86,9 +86,10 @@ pub struct BlkDev {
 }
 
 impl BlkDev {
-    pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
-        let dev = metadata(&self.path)
-            .chain_err(|| format!("getting metadata for {}", &self.path))?
+    /// Return start and end offsets within the disk.
+    pub fn get_offsets(path: &str) -> Result<(u64, u64)> {
+        let dev = metadata(path)
+            .chain_err(|| format!("getting metadata for {}", path))?
             .st_rdev();
         let maj: u64 = major(dev);
         let min: u64 = minor(dev);
@@ -216,19 +217,12 @@ impl Mount {
         })
     }
 
-    pub fn blockdev(&self) -> BlkDev {
-        BlkDev {
-            path: self.device.clone(),
-            ..Default::default()
-        }
-    }
-
     pub fn mountpoint(&self) -> &Path {
         self.mountpoint.as_path()
     }
 
     pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
-        self.blockdev().get_partition_offsets()
+        BlkDev::get_offsets(&self.device)
     }
 }
 
