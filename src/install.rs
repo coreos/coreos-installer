@@ -140,7 +140,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 }
 
 fn report_busy_partitions(device: &str) -> Result<()> {
-    let mut parts = get_busy_partitions(device)?;
+    let mut parts = Disk::new(device).get_busy_partitions()?;
     parts.sort_unstable_by_key(|p| p.path.to_string());
     if parts.is_empty() {
         return Ok(());
@@ -180,7 +180,8 @@ fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File)
         || config.platform.is_some()
         || config.network_config.is_some()
     {
-        let mount = mount_partition_by_label(&config.device, "boot", mount::MsFlags::empty())?;
+        let mount =
+            Disk::new(&config.device).mount_partition_by_label("boot", mount::MsFlags::empty())?;
         if let Some(ignition) = config.ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .chain_err(|| "writing Ignition configuration")?;
