@@ -80,9 +80,9 @@ checksum = "12ae9db68ad7fac5fe51304d20f016c911539251075a214f8e663babefa35187"
 
 [[package]]
 name = "byte-unit"
-version = "4.0.2"
+version = "4.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f65572f723e4ae0f80463d9c1560e00fd990a35437d66b5ca7e69cbb1f7b052"
+checksum = "a83e250117a919810172ac4d81016eb6da74f235399ac97df3dd8846275d03b6"
 
 [[package]]
 name = "byteorder"
