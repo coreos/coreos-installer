@@ -28,8 +28,8 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `cargo test`
   - [ ] `cargo clean`
   - [ ] `git clean -fd`
-  - [ ] `export RELEASE_VER=x.y.z`
-  - [ ] `export UPSTREAM_REMOTE=origin`
+  - [ ] `RELEASE_VER=x.y.z`
+  - [ ] `UPSTREAM_REMOTE=origin`
 
 :warning:: `UPSTREAM_REMOTE` should reference the locally configured remote that points to the upstream git repository.
 
@@ -46,10 +46,9 @@ Push access to the upstream repository is required in order to publish the new t
 - [ ] get the PR reviewed, approved and merged
 
 - publish the artifacts (tag and crate):
-  - [ ] `git push ${UPSTREAM_REMOTE} v${RELEASE_VER}`
-  - [ ] make sure the upstream tag matches the local tag: `git fetch --tags --verbose ${UPSTREAM_REMOTE} 2>&1 | grep ${RELEASE_VER}`
   - [ ] `git checkout v${RELEASE_VER}`
-  - [ ]  make sure the tag is what you intend to release; if so this will show an empty output: `git diff release-${RELEASE_VER}~1 v${RELEASE_VER}`
+  - [ ] verify that `grep "^version = \"${RELEASE_VER}\"$" Cargo.toml` produces output
+  - [ ] `git push ${UPSTREAM_REMOTE} v${RELEASE_VER}`
   - [ ] `cargo publish`
 
 - assemble vendor archive:
@@ -76,8 +75,6 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `git pull ${UPSTREAM_REMOTE} master`
   - [ ] `git push ${UPSTREAM_REMOTE} :release-${RELEASE_VER}`
   - [ ] `git branch -d release-${RELEASE_VER}`
-  - [ ] `unset RELEASE_VER`
-  - [ ] `unset UPSTREAM_REMOTE`
 
 [cargo-release]: https://github.com/sunng87/cargo-release
 [rustup]: https://rustup.rs/
