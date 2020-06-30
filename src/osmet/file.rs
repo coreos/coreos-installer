@@ -16,6 +16,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read};
 use std::path::Path;
 
+use bincode::Options;
 use clap::crate_version;
 use error_chain::bail;
 use serde::{Deserialize, Serialize};
@@ -81,13 +82,10 @@ pub(super) fn osmet_file_write(
             .tempfile_in(path.parent().unwrap())?,
     );
 
-    // little endian is the default, but make it explicit
-    let mut config = bincode::config();
-    config.little_endian();
-    config
+    bincoder()
         .serialize_into(&mut f, &header)
         .chain_err(|| "failed to serialize osmet file header")?;
-    config
+    bincoder()
         .serialize_into(&mut f, &osmet)
         .chain_err(|| "failed to serialize osmet")?;
 
@@ -103,11 +101,8 @@ pub(super) fn osmet_file_write(
 }
 
 /// Reads in the header, and does some basic sanity checking.
-fn read_and_check_header(
-    mut f: &mut impl Read,
-    config: &bincode::Config,
-) -> Result<OsmetFileHeader> {
-    let header: OsmetFileHeader = config
+fn read_and_check_header(mut f: &mut impl Read) -> Result<OsmetFileHeader> {
+    let header: OsmetFileHeader = bincoder()
         .deserialize_from(&mut f)
         .chain_err(|| "failed to deserialize osmet file")?;
     if header.magic != OSMET_FILE_HEADER_MAGIC {
@@ -129,11 +124,7 @@ pub(super) fn osmet_file_read_header(path: &Path) -> Result<OsmetFileHeader> {
             .chain_err(|| format!("opening {:?}", path))?,
     );
 
-    // little endian is the default, but make it explicit
-    let mut config = bincode::config();
-    config.little_endian();
-
-    Ok(read_and_check_header(&mut f, &config)?)
+    Ok(read_and_check_header(&mut f)?)
 }
 
 pub(super) fn osmet_file_read(path: &Path) -> Result<(OsmetFileHeader, Osmet, impl Read + Send)> {
@@ -145,12 +136,8 @@ pub(super) fn osmet_file_read(path: &Path) -> Result<(OsmetFileHeader, Osmet, im
             .chain_err(|| format!("opening {:?}", path))?,
     );
 
-    // little endian is the default, but make it explicit
-    let mut config = bincode::config();
-    config.little_endian();
-
-    let header = read_and_check_header(&mut f, &config)?;
-    let osmet: Osmet = config
+    let header = read_and_check_header(&mut f)?;
+    let osmet: Osmet = bincoder()
         .deserialize_from(&mut f)
         .chain_err(|| "failed to deserialize osmet file")?;
 
@@ -209,4 +196,13 @@ fn verify_canonical(mappings: &[Mapping]) -> Result<u64> {
     }
 
     Ok(cursor)
+}
+
+fn bincoder() -> impl bincode::Options {
+    bincode::options()
+        .allow_trailing_bytes()
+        // make the defaults explicit
+        .with_no_limit()
+        .with_little_endian()
+        .with_varint_encoding()
 }
