@@ -15,7 +15,7 @@
 use error_chain::{bail, ensure, ChainedError};
 use nix::mount;
 use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
-use std::io::{copy, Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
 
@@ -23,6 +23,7 @@ use crate::blockdev::*;
 use crate::cmdline::*;
 use crate::download::*;
 use crate::errors::*;
+use crate::io::*;
 use crate::source::*;
 
 /// Integrity verification hash for an Ignition config.

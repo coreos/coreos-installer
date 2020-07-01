@@ -18,10 +18,11 @@ use flate2::read::GzDecoder;
 use flate2::{Compression, GzBuilder};
 use std::convert::TryInto;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{copy, stdin, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{stdin, Cursor, Read, Seek, SeekFrom, Write};
 
 use crate::cmdline::*;
 use crate::errors::*;
+use crate::io::*;
 
 const FILENAME: &str = "config.ign";
 

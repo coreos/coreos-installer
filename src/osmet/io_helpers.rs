@@ -14,7 +14,7 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
@@ -101,7 +101,7 @@ pub fn get_path_digest(path: &Path) -> Result<Sha256Digest> {
     }
 
     let mut hasher = Hasher::new(MessageDigest::sha256()).chain_err(|| "creating SHA256 hasher")?;
-    io::copy(&mut f, &mut hasher)?;
+    copy(&mut f, &mut hasher)?;
     Ok(hasher.try_into()?)
 }
 

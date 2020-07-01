@@ -17,6 +17,15 @@ use std::io::{ErrorKind, Read, Write};
 
 use crate::errors::*;
 
+/// This is like `std::io:copy()`, but uses a buffer larger than 8 KiB
+/// to amortize syscall overhead.
+pub fn copy(reader: &mut impl Read, writer: &mut impl Write) -> Result<u64> {
+    // https://github.com/rust-lang/rust/issues/49921
+    // https://github.com/coreutils/coreutils/blob/6a3d2883/src/ioblksize.h
+    let mut buf = [0u8; 256 * 1024];
+    copy_n(reader, writer, std::u64::MAX, &mut buf)
+}
+
 /// This is like `std::io:copy()`, but limits the number of bytes copied over. The `Read` trait has
 /// `take()`, but that takes ownership of the reader. We also take a buf to avoid re-initializing a
 /// block each time (std::io::copy() gets around this by using MaybeUninit, but that requires using
