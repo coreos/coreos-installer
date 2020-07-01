@@ -14,7 +14,7 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::fs::OpenOptions;
-use std::io::{self, ErrorKind, Read, Write};
+use std::io::{self, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
@@ -39,57 +39,6 @@ impl TryFrom<Hasher> for Sha256Digest {
                 .chain_err(|| "converting to SHA256")?,
         ))
     }
-}
-
-/// This is like `std::io:copy()`, but limits the number of bytes copied over. The `Read` trait has
-/// `take()`, but that takes ownership of the reader. We also take a buf to avoid re-initializing a
-/// block each time (std::io::copy() gets around this by using MaybeUninit, but that requires using
-/// nightly and unsafe functions).
-pub fn copy_n(
-    reader: &mut impl Read,
-    writer: &mut impl Write,
-    mut n: u64,
-    buf: &mut [u8],
-) -> Result<u64> {
-    let mut written = 0;
-    loop {
-        if n == 0 {
-            return Ok(written);
-        }
-        let bufn = if n < (buf.len() as u64) {
-            &mut buf[..n as usize]
-        } else {
-            &mut buf[..]
-        };
-        let len = match reader.read(bufn) {
-            Ok(0) => return Ok(written),
-            Ok(len) => len,
-            Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e.into()),
-        };
-        assert!(len as u64 <= n);
-        writer.write_all(&bufn[..len])?;
-        written += len as u64;
-        n -= len as u64;
-    }
-}
-
-/// This is like `copy_n()` but errors if the number of bytes copied is less than expected.
-pub fn copy_exactly_n(
-    reader: &mut impl Read,
-    writer: &mut impl Write,
-    n: u64,
-    buf: &mut [u8],
-) -> Result<u64> {
-    let bytes_copied = copy_n(reader, writer, n, buf)?;
-    if bytes_copied != n {
-        bail!(
-            "expected to copy {} bytes but instead copied {} bytes",
-            n,
-            bytes_copied
-        );
-    }
-    Ok(n)
 }
 
 // ab/cdef....file --> 0xabcdef...

@@ -37,6 +37,7 @@ use xz2::write::XzEncoder;
 use crate::blockdev::*;
 use crate::cmdline::*;
 use crate::errors::*;
+use crate::io::*;
 
 mod fiemap;
 mod file;

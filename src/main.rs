@@ -17,6 +17,7 @@ mod cmdline;
 mod download;
 mod errors;
 mod install;
+mod io;
 mod iso;
 mod osmet;
 mod source;
