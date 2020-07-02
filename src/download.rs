@@ -249,7 +249,7 @@ pub fn write_image(
 
     // Read the first MiB of input and, if requested, check it against the
     // image's formatted sector size.
-    let mut first_mb: [u8; 1024 * 1024] = [0; 1024 * 1024];
+    let mut first_mb = [0u8; 1024 * 1024];
     decompress_reader
         .read_exact(&mut first_mb)
         .chain_err(|| "decoding first MiB of image")?;
