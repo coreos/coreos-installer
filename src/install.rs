@@ -179,7 +179,14 @@ fn write_disk(
     let sector_size = get_sector_size(dest)?;
 
     // copy the image
-    write_image(source, dest, true, Some(sector_size))?;
+    write_image(
+        source,
+        dest,
+        Path::new(&config.device),
+        image_copy_default,
+        true,
+        Some(sector_size),
+    )?;
     table.reread()?;
 
     // postprocess
