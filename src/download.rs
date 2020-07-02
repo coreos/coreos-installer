@@ -271,7 +271,7 @@ pub fn write_image(
     // Cache the first MiB and write zeroes to dest instead.  This ensures
     // that the disk image can't be used accidentally before its GPG signature
     // is verified.
-    dest.write_all(&first_mb)
+    dest.write_all(&[0u8; 1024 * 1024])
         .chain_err(|| "clearing first MiB of disk")?;
 
     // do the rest of the copy
