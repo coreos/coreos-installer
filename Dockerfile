@@ -6,7 +6,8 @@ COPY src src/
 RUN cargo build --release
 
 FROM registry.fedoraproject.org/fedora:32
-RUN dnf install -y /usr/bin/gpg /usr/bin/lsblk /usr/sbin/udevadm && \
+RUN dnf install -y /usr/bin/gpg /usr/sbin/kpartx /usr/bin/lsblk \
+    /usr/sbin/udevadm && \
     dnf clean all
 COPY --from=builder /build/target/release/coreos-installer /usr/sbin
 ENTRYPOINT ["/usr/sbin/coreos-installer"]

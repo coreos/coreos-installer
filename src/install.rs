@@ -112,15 +112,20 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     {
         bail!("{} is not a block device", &config.device);
     }
-    if let Err(e) = reread_partition_table(&mut dest) {
-        report_busy_partitions(&config.device)?;
-        Err(e).chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
-    }
+    ensure_exclusive_access(&config.device)
+        .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
+
+    // get reference to partition table
+    // For kpartx partitioning, this will conditionally call kpartx -d
+    // when dropped
+    let mut table = Disk::new(&config.device)
+        .get_partition_table()
+        .chain_err(|| format!("getting partition table for {}", &config.device))?;
 
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
-    if let Err(err) = write_disk(&config, &mut source, &mut dest) {
+    if let Err(err) = write_disk(&config, &mut source, &mut dest, &mut *table) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
         eprint!("{}", ChainedError::display_chain(&err));
@@ -129,7 +134,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         if config.preserve_on_error {
             eprintln!("Preserving partition table as requested");
         } else {
-            clear_partition_table(&mut dest)?;
+            clear_partition_table(&mut dest, &mut *table)?;
         }
 
         // return a generic error so our exit status is right
@@ -140,12 +145,12 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     Ok(())
 }
 
-fn report_busy_partitions(device: &str) -> Result<()> {
+fn ensure_exclusive_access(device: &str) -> Result<()> {
     let mut parts = Disk::new(device).get_busy_partitions()?;
-    parts.sort_unstable_by_key(|p| p.path.to_string());
     if parts.is_empty() {
         return Ok(());
     }
+    parts.sort_unstable_by_key(|p| p.path.to_string());
     eprintln!("Partitions in use on {}:", device);
     for part in parts {
         if let Some(mountpoint) = part.mountpoint.as_ref() {
@@ -158,20 +163,24 @@ fn report_busy_partitions(device: &str) -> Result<()> {
             eprintln!("    {} in use by {}", part.path, holder);
         }
     }
-    Ok(())
+    bail!("found busy partitions");
 }
 
 /// Copy the image source to the target disk and do all post-processing.
 /// If this function fails, the caller should wipe the partition table
 /// to ensure the user doesn't boot from a partially-written disk.
-fn write_disk(config: &InstallConfig, source: &mut ImageSource, dest: &mut File) -> Result<()> {
+fn write_disk(
+    config: &InstallConfig,
+    source: &mut ImageSource,
+    dest: &mut File,
+    table: &mut dyn PartTable,
+) -> Result<()> {
     // Get sector size of destination, for comparing with image
     let sector_size = get_sector_size(dest)?;
 
     // copy the image
     write_image(source, dest, true, Some(sector_size))?;
-    reread_partition_table(dest)?;
-    udev_settle()?;
+    table.reread()?;
 
     // postprocess
     if config.ignition.is_some()
@@ -432,7 +441,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
 }
 
 /// Clear the partition table.  For use after a failure.
-fn clear_partition_table(dest: &mut File) -> Result<()> {
+fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<()> {
     eprintln!("Clearing partition table");
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
@@ -443,8 +452,7 @@ fn clear_partition_table(dest: &mut File) -> Result<()> {
         .chain_err(|| "flushing partition table to disk")?;
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
-    reread_partition_table(dest)?;
-    udev_settle()?;
+    table.reread()?;
     Ok(())
 }
 

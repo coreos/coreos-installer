@@ -18,7 +18,7 @@ use nix::{errno::Errno, mount};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{metadata, read_dir, read_to_string, remove_dir, File, OpenOptions};
+use std::fs::{metadata, read_dir, read_link, read_to_string, remove_dir, File, OpenOptions};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -76,16 +76,6 @@ impl Disk {
         }
     }
 
-    pub fn get_busy_partitions(&self) -> Result<Vec<Partition>> {
-        let mut ret: Vec<Partition> = Vec::new();
-        for d in self.get_partitions()? {
-            if d.mountpoint.is_some() || d.swap || !d.get_holders()?.is_empty() {
-                ret.push(d)
-            }
-        }
-        Ok(ret)
-    }
-
     fn get_partitions(&self) -> Result<Vec<Partition>> {
         // have lsblk enumerate partitions on the device
         // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
@@ -132,6 +122,184 @@ impl Disk {
         }
         Ok(result)
     }
+
+    /// Return an empty list if we have exclusive access to the device, or
+    /// a list of partitions preventing us from gaining exclusive access.
+    pub fn get_busy_partitions(self) -> Result<Vec<Partition>> {
+        // Try rereading the partition table.  This is the most complete
+        // check, but it only works on partitionable devices.
+        let rereadpt_result = {
+            let mut f = OpenOptions::new()
+                .write(true)
+                .open(&self.path)
+                .chain_err(|| format!("opening {}", &self.path))?;
+            reread_partition_table(&mut f).map(|_| Vec::new())
+        };
+        if rereadpt_result.is_ok() {
+            return rereadpt_result;
+        }
+
+        // Walk partitions, record the ones that are reported in use,
+        // and return the list if any
+        let mut busy: Vec<Partition> = Vec::new();
+        for d in self.get_partitions()? {
+            if d.mountpoint.is_some() || d.swap || !d.get_holders()?.is_empty() {
+                busy.push(d)
+            }
+        }
+        if !busy.is_empty() {
+            return Ok(busy);
+        }
+
+        // Our investigation found nothing.  If the device is expected to be
+        // partitionable but reread failed, we evidently missed something,
+        // so error out for safety
+        if !self.is_dm_device() {
+            return rereadpt_result;
+        }
+
+        Ok(Vec::new())
+    }
+
+    /// Get a handle to the set of device nodes for individual partitions
+    /// of the device.
+    pub fn get_partition_table(&self) -> Result<Box<dyn PartTable>> {
+        if self.is_dm_device() {
+            Ok(Box::new(PartTableKpartx::new(&self.path)?))
+        } else {
+            Ok(Box::new(PartTableKernel::new(&self.path)?))
+        }
+    }
+
+    fn is_dm_device(&self) -> bool {
+        self.path.starts_with("/dev/mapper/") || self.path.starts_with("/dev/dm-")
+    }
+}
+
+/// A handle to the set of device nodes for individual partitions of a
+/// device.  Must be held as long as the device nodes are needed; they might
+/// be removed upon drop.
+pub trait PartTable {
+    /// Update device nodes for the current state of the partition table
+    fn reread(&mut self) -> Result<()>;
+}
+
+/// Device nodes for partitionable kernel devices, managed by the kernel.
+#[derive(Debug)]
+pub struct PartTableKernel {
+    path: String,
+    file: File,
+}
+
+impl PartTableKernel {
+    fn new(path: &str) -> Result<Self> {
+        let file = OpenOptions::new()
+            .write(true)
+            .open(path)
+            .chain_err(|| format!("opening {}", path))?;
+        Ok(Self {
+            path: path.to_string(),
+            file,
+        })
+    }
+}
+
+impl PartTable for PartTableKernel {
+    fn reread(&mut self) -> Result<()> {
+        reread_partition_table(&mut self.file)?;
+        udev_settle()
+    }
+}
+
+/// Device nodes for non-partitionable kernel devices, managed by running
+/// kpartx to parse the partition table and create device-mapper devices for
+/// each partition.
+#[derive(Debug)]
+pub struct PartTableKpartx {
+    path: String,
+    need_teardown: bool,
+}
+
+impl PartTableKpartx {
+    fn new(path: &str) -> Result<Self> {
+        let mut table = Self {
+            path: path.to_string(),
+            need_teardown: !Self::already_set_up(path)?,
+        };
+        // create/sync partition devices if missing
+        table.reread()?;
+        Ok(table)
+    }
+
+    // We only want to kpartx -d on drop if we're the one initially
+    // creating the partition devices.  There's no good way to detect
+    // this.
+    fn already_set_up(path: &str) -> Result<bool> {
+        let re = Regex::new(r"^p[0-9]+$").expect("compiling RE");
+        let expected = Path::new(path)
+            .file_name()
+            .chain_err(|| format!("getting filename of {}", path))?
+            .to_os_string()
+            .into_string()
+            .map_err(|_| format!("converting filename of {}", path))?;
+        for ent in read_dir("/dev/mapper").chain_err(|| "listing /dev/mapper")? {
+            let ent = ent.chain_err(|| "reading /dev/mapper entry")?;
+            let found = ent.file_name().into_string().map_err(|_| {
+                format!(
+                    "converting filename of {}",
+                    Path::new(&ent.file_name()).display()
+                )
+            })?;
+            if found.starts_with(&expected) && re.is_match(&found[expected.len()..]) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn run_kpartx(&self, flag: &str) -> Result<()> {
+        // Swallow stderr on success.  Avoids spurious warnings:
+        //   GPT:Primary header thinks Alt. header is not at the end of the disk.
+        //   GPT:Alternate GPT header not at the end of the disk.
+        //   GPT: Use GNU Parted to correct GPT errors.
+        //
+        // By default, kpartx waits for udev to settle before returning,
+        // but this blocks indefinitely inside a container.  See e.g.
+        //   https://github.com/moby/moby/issues/22025
+        // Use -n to skip blocking on udev, and then manually settle.
+        let result = Command::new("kpartx")
+            .arg(flag)
+            .arg("-n")
+            .arg(&self.path)
+            .output()
+            .chain_err(|| format!("running kpartx {} {}", flag, self.path))?;
+        if !result.status.success() {
+            // copy out its stderr
+            eprint!("{}", String::from_utf8_lossy(&*result.stderr));
+            bail!("kpartx {} {} failed: {}", flag, self.path, result.status);
+        }
+        udev_settle()?;
+        Ok(())
+    }
+}
+
+impl PartTable for PartTableKpartx {
+    fn reread(&mut self) -> Result<()> {
+        self.run_kpartx("-u")
+    }
+}
+
+impl Drop for PartTableKpartx {
+    /// If we created the partition devices (rather than finding them
+    /// already existing), delete them afterward so we don't leave DM
+    /// devices attached to the specified disk.
+    fn drop(&mut self) {
+        if self.need_teardown {
+            if let Err(e) = self.run_kpartx("-d") {
+                eprintln!("{}", e)
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -173,7 +341,22 @@ impl Partition {
     }
 
     pub fn get_holders(&self) -> Result<Vec<String>> {
-        let holders = Path::new("/sys/block")
+        let holders = self.get_sysfs_dir()?.join("holders");
+        let mut ret: Vec<String> = Vec::new();
+        for ent in read_dir(&holders).chain_err(|| format!("reading {}", &holders.display()))? {
+            let ent = ent.chain_err(|| format!("reading {} entry", &holders.display()))?;
+            ret.push(format!("/dev/{}", ent.file_name().to_string_lossy()));
+        }
+        Ok(ret)
+    }
+
+    // Try to locate the device directory in sysfs.
+    fn get_sysfs_dir(&self) -> Result<PathBuf> {
+        let basedir = Path::new("/sys/block");
+
+        // First assume we have a regular partition.
+        // /sys/block/sda/sda1
+        let devdir = basedir
             .join(
                 Path::new(&self.parent)
                     .file_name()
@@ -183,14 +366,36 @@ impl Partition {
                 Path::new(&self.path)
                     .file_name()
                     .chain_err(|| format!("path {} has no filename", self.path))?,
-            )
-            .join("holders");
-        let mut ret: Vec<String> = Vec::new();
-        for ent in read_dir(&holders).chain_err(|| format!("reading {}", &holders.display()))? {
-            let ent = ent.chain_err(|| format!("reading {}", &holders.display()))?;
-            ret.push(format!("/dev/{}", ent.file_name().to_string_lossy()));
+            );
+        if devdir.exists() {
+            return Ok(devdir);
         }
-        Ok(ret)
+
+        // Now assume a kpartx "partition", where the path is a symlink to
+        // an unpartitioned DM device node.
+        // /sys/block/dm-1
+        match read_link(Path::new(&self.path)) {
+            Ok(target) => {
+                let devdir = basedir.join(
+                    Path::new(&target)
+                        .file_name()
+                        .chain_err(|| format!("target {} has no filename", self.path))?,
+                );
+                if devdir.exists() {
+                    return Ok(devdir);
+                }
+            }
+            // ignore if not symlink
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => (),
+            Err(e) => return Err(e).chain_err(|| format!("reading link {}", self.path)),
+        };
+
+        // Give up
+        bail!(
+            "couldn't find /sys/block directory for partition {} of {}",
+            &self.path,
+            &self.parent
+        );
     }
 }
 
@@ -283,7 +488,7 @@ impl Drop for Mount {
     }
 }
 
-pub fn reread_partition_table(file: &mut File) -> Result<()> {
+fn reread_partition_table(file: &mut File) -> Result<()> {
     let fd = file.as_raw_fd();
     // Reread sometimes fails inexplicably.  Retry several times before
     // giving up.
@@ -367,7 +572,7 @@ mod ioctl {
     ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
 }
 
-pub fn udev_settle() -> Result<()> {
+fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
     if !Path::new("/run/udev/control").exists() {
