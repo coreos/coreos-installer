@@ -24,7 +24,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Seek, SeekFrom, Write};
+use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
 use std::path::{Path, PathBuf};
 
@@ -37,6 +37,7 @@ use xz2::write::XzEncoder;
 use crate::blockdev::*;
 use crate::cmdline::*;
 use crate::errors::*;
+use crate::io::*;
 
 mod fiemap;
 mod file;
@@ -161,7 +162,7 @@ pub fn osmet_unpack(config: &OsmetUnpackConfig) -> Result<()> {
     }
 
     let mut unpacker = OsmetUnpacker::new(Path::new(&config.osmet), Path::new(&config.repo))?;
-    io::copy(&mut unpacker, &mut dev)
+    copy(&mut unpacker, &mut dev)
         .chain_err(|| format!("copying to block device {}", &config.device))?;
 
     Ok(())
@@ -426,7 +427,7 @@ fn write_packed_image(
     }
 
     // and finally write out the remainder of the disk
-    io::copy(dev, w).chain_err(|| "copying remainder of disk")?;
+    copy(dev, w).chain_err(|| "copying remainder of disk")?;
 
     Ok(total_bytes_skipped)
 }

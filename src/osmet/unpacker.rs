@@ -182,7 +182,7 @@ fn write_unpacked_image(
     }
 
     // and copy the rest
-    cursor += io::copy(packed_image, w)?;
+    cursor += copy(packed_image, w)?;
 
     Ok(cursor)
 }

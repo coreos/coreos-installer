@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufReader, BufWriter, Read};
+use std::io::{BufReader, BufWriter, Read};
 use std::path::Path;
 
 use bincode::Options;
@@ -90,7 +90,7 @@ pub(super) fn osmet_file_write(
         .chain_err(|| "failed to serialize osmet")?;
 
     // and followed by the xz-compressed packed image
-    io::copy(&mut xzpacked_image, &mut f)?;
+    copy(&mut xzpacked_image, &mut f)?;
 
     f.into_inner()
         .chain_err(|| "failed to flush write buffer")?

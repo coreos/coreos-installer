@@ -18,7 +18,7 @@ use flate2::read::GzDecoder;
 use nix::unistd::isatty;
 use progress_streams::ProgressReader;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{copy, stderr, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{stderr, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -28,6 +28,7 @@ use xz2::read::XzDecoder;
 use crate::blockdev::detect_formatted_sector_size;
 use crate::cmdline::*;
 use crate::errors::*;
+use crate::io::*;
 use crate::source::*;
 use crate::verify::*;
 
