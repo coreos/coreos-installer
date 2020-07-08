@@ -18,7 +18,7 @@ use nix::{errno::Errno, mount};
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{metadata, read_dir, read_link, read_to_string, remove_dir, File, OpenOptions};
+use std::fs::{metadata, read_dir, read_to_string, remove_dir, File, OpenOptions};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -30,6 +30,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crate::errors::*;
+use crate::io::resolve_link;
 
 #[derive(Debug)]
 pub struct Disk {
@@ -374,21 +375,17 @@ impl Partition {
         // Now assume a kpartx "partition", where the path is a symlink to
         // an unpartitioned DM device node.
         // /sys/block/dm-1
-        match read_link(Path::new(&self.path)) {
-            Ok(target) => {
-                let devdir = basedir.join(
-                    Path::new(&target)
-                        .file_name()
-                        .chain_err(|| format!("target {} has no filename", self.path))?,
-                );
-                if devdir.exists() {
-                    return Ok(devdir);
-                }
+        let (target, is_link) = resolve_link(&self.path)?;
+        if is_link {
+            let devdir = basedir.join(
+                target
+                    .file_name()
+                    .chain_err(|| format!("target {} has no filename", target.display()))?,
+            );
+            if devdir.exists() {
+                return Ok(devdir);
             }
-            // ignore if not symlink
-            Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => (),
-            Err(e) => return Err(e).chain_err(|| format!("reading link {}", self.path)),
-        };
+        }
 
         // Give up
         bail!(

@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use error_chain::bail;
+use std::fs::read_link;
 use std::io::{ErrorKind, Read, Write};
+use std::path::{Path, PathBuf};
 
 use crate::errors::*;
 
@@ -75,4 +77,15 @@ pub fn copy_exactly_n(
         );
     }
     Ok(n)
+}
+
+// If path is a symlink, resolve it and return (target, true)
+// If not, return (path, false)
+pub fn resolve_link<P: AsRef<Path>>(path: P) -> Result<(PathBuf, bool)> {
+    let path = path.as_ref();
+    match read_link(path) {
+        Ok(target) => Ok((target, true)),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => Ok((path.to_path_buf(), false)),
+        Err(e) => Err(e).chain_err(|| format!("reading link {}", path.display())),
+    }
 }
