@@ -24,6 +24,8 @@ use crate::cmdline::*;
 use crate::download::*;
 use crate::errors::*;
 use crate::io::*;
+#[cfg(target_arch = "s390x")]
+use crate::s390x;
 use crate::source::*;
 
 /// Integrity verification hash for an Ignition config.
@@ -96,6 +98,13 @@ pub fn install(config: &InstallConfig) -> Result<()> {
             eprintln!("Signature not found; skipping verification as requested");
         } else {
             bail!("--insecure not specified and signature not found");
+        }
+    }
+
+    #[cfg(target_arch = "s390x")]
+    {
+        if is_dasd(config)? {
+            s390x::prepare_dasd(&config)?;
         }
     }
 
@@ -179,7 +188,20 @@ fn write_disk(
     let sector_size = get_sector_size(dest)?;
 
     // copy the image
-    write_image(source, dest, true, Some(sector_size))?;
+    #[allow(clippy::match_bool, clippy::match_single_binding)]
+    let image_copy = match is_dasd(config)? {
+        #[cfg(target_arch = "s390x")]
+        true => s390x::image_copy_s390x,
+        _ => image_copy_default,
+    };
+    write_image(
+        source,
+        dest,
+        Path::new(&config.device),
+        image_copy,
+        true,
+        Some(sector_size),
+    )?;
     table.reread()?;
 
     // postprocess
@@ -189,6 +211,7 @@ fn write_disk(
         || config.delete_kargs.is_some()
         || config.platform.is_some()
         || config.network_config.is_some()
+        || cfg!(target_arch = "s390x")
     {
         let mount =
             Disk::new(&config.device).mount_partition_by_label("boot", mount::MsFlags::empty())?;
@@ -218,6 +241,8 @@ fn write_disk(
         if let Some(network_config) = config.network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
         }
+        #[cfg(target_arch = "s390x")]
+        s390x::install_bootloader(mount.mountpoint(), &config.device)?;
     }
 
     Ok(())
@@ -454,6 +479,11 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
         .chain_err(|| "syncing partition table to disk")?;
     table.reread()?;
     Ok(())
+}
+
+fn is_dasd(config: &InstallConfig) -> Result<bool> {
+    let (target, _) = resolve_link(&config.device)?;
+    Ok(target.to_string_lossy().starts_with("/dev/dasd"))
 }
 
 #[cfg(test)]

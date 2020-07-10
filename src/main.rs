@@ -20,6 +20,8 @@ mod install;
 mod io;
 mod iso;
 mod osmet;
+#[cfg(target_arch = "s390x")]
+mod s390x;
 mod source;
 mod verify;
 

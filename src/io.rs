@@ -13,13 +13,15 @@
 // limitations under the License.
 
 use error_chain::bail;
+use std::fs::read_link;
 use std::io::{ErrorKind, Read, Write};
+use std::path::{Path, PathBuf};
 
 use crate::errors::*;
 
 /// This is like `std::io:copy()`, but uses a buffer larger than 8 KiB
 /// to amortize syscall overhead.
-pub fn copy(reader: &mut impl Read, writer: &mut impl Write) -> Result<u64> {
+pub fn copy(reader: &mut (impl Read + ?Sized), writer: &mut (impl Write + ?Sized)) -> Result<u64> {
     // https://github.com/rust-lang/rust/issues/49921
     // https://github.com/coreutils/coreutils/blob/6a3d2883/src/ioblksize.h
     let mut buf = [0u8; 256 * 1024];
@@ -31,8 +33,8 @@ pub fn copy(reader: &mut impl Read, writer: &mut impl Write) -> Result<u64> {
 /// block each time (std::io::copy() gets around this by using MaybeUninit, but that requires using
 /// nightly and unsafe functions).
 pub fn copy_n(
-    reader: &mut impl Read,
-    writer: &mut impl Write,
+    reader: &mut (impl Read + ?Sized),
+    writer: &mut (impl Write + ?Sized),
     mut n: u64,
     buf: &mut [u8],
 ) -> Result<u64> {
@@ -61,8 +63,8 @@ pub fn copy_n(
 
 /// This is like `copy_n()` but errors if the number of bytes copied is less than expected.
 pub fn copy_exactly_n(
-    reader: &mut impl Read,
-    writer: &mut impl Write,
+    reader: &mut (impl Read + ?Sized),
+    writer: &mut (impl Write + ?Sized),
     n: u64,
     buf: &mut [u8],
 ) -> Result<u64> {
@@ -75,4 +77,15 @@ pub fn copy_exactly_n(
         );
     }
     Ok(n)
+}
+
+// If path is a symlink, resolve it and return (target, true)
+// If not, return (path, false)
+pub fn resolve_link<P: AsRef<Path>>(path: P) -> Result<(PathBuf, bool)> {
+    let path = path.as_ref();
+    match read_link(path) {
+        Ok(target) => Ok((target, true)),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => Ok((path.to_path_buf(), false)),
+        Err(e) => Err(e).chain_err(|| format!("reading link {}", path.display())),
+    }
 }

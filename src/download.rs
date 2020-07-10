@@ -145,7 +145,14 @@ fn write_image_and_sig(
 
     // download and verify image
     // don't check sector size
-    write_image(source, &mut dest, decompress, None)?;
+    write_image(
+        source,
+        &mut dest,
+        path,
+        image_copy_default,
+        decompress,
+        None,
+    )?;
 
     // write signature, if relevant
     if let (false, Some(signature)) = (decompress, source.signature.as_ref()) {
@@ -164,12 +171,17 @@ fn write_image_and_sig(
 }
 
 /// Copy the image to disk and verify its signature.
-pub fn write_image(
+pub fn write_image<F>(
     source: &mut ImageSource,
     dest: &mut File,
+    dest_path: &Path,
+    image_copy: F,
     decompress: bool,
     expected_sector_size: Option<NonZeroU32>,
-) -> Result<()> {
+) -> Result<()>
+where
+    F: FnOnce(&[u8], &mut dyn Read, &mut File, &Path) -> Result<()>,
+{
     // wrap source for GPG verification
     let mut verify_reader: Box<dyn Read> = {
         if let Some(signature) = source.signature.as_ref() {
@@ -269,6 +281,27 @@ pub fn write_image(
         }
     }
 
+    // call the callback to copy the image
+    image_copy(&first_mb, &mut decompress_reader, dest, dest_path)?;
+
+    // flush
+    dest.flush().chain_err(|| "flushing data to disk")?;
+    dest.sync_all().chain_err(|| "syncing data to disk")?;
+
+    // if we reported progress using CRs, log final newline
+    if stderr_is_tty {
+        eprintln!();
+    }
+
+    Ok(())
+}
+
+pub fn image_copy_default(
+    first_mb: &[u8],
+    source: &mut dyn Read,
+    dest: &mut File,
+    _dest_path: &Path,
+) -> Result<()> {
     // Cache the first MiB and write zeroes to dest instead.  This ensures
     // that the disk image can't be used accidentally before its GPG signature
     // is verified.
@@ -287,22 +320,13 @@ pub fn write_image(
     // sparse-copy the image, falling back to non-sparse copy if hardware
     // acceleration is unavailable.  But BLKZEROOUT doesn't support
     // BLKDEV_ZERO_NOFALLBACK, so we'd risk gigabytes of redundant I/O.
-    copy(&mut decompress_reader, dest).chain_err(|| "decoding and writing image")?;
+    copy(source, dest).chain_err(|| "decoding and writing image")?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
-    dest.write_all(&first_mb)
+    dest.write_all(first_mb)
         .chain_err(|| "writing to first MiB of disk")?;
-
-    // flush
-    dest.flush().chain_err(|| "flushing data to disk")?;
-    dest.sync_all().chain_err(|| "syncing data to disk")?;
-
-    // if we reported progress using CRs, log final newline
-    if stderr_is_tty {
-        eprintln!();
-    }
 
     Ok(())
 }
