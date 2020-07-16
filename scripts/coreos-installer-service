@@ -66,9 +66,8 @@ fi
 
 # Forward whitelisted kernel arguments to the installed system. We have
 # separate sets of whitelists for first-boot kargs and persistent kargs.
-# Only pass --firstboot-kargs if additional networking options have been
-# specified, since the default in coreos-assembler specifies
-# `rd.neednet=1 ip=dhcp` when no options are persisted.
+# If additional networking options have been specified, add `rd.neednet=1`
+# to activate nm-initrd-generator on first boot.
 firstboot_args=""
 for item in "${cmdline[@]}"; do
     for param in "${PERSIST_KERNEL_NET_PARAMS[@]}" "${PERSIST_DRACUT_NET_PARAMS[@]}"; do
