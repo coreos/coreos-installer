@@ -143,7 +143,6 @@ kernel command line telling it what you want it to do. For example:
 
 - `coreos.inst.install_dev=/dev/sda`
 - `coreos.inst.ignition_url=http://example.com/config.ign`
-- `coreos.inst.platform_id=qemu`
 
 Now press `<ENTER>` (isolinux) or `<CTRL-x>` (grub) to kick off the
 install.
