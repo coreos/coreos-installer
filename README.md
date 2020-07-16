@@ -7,8 +7,8 @@
 coreos-installer is a program to assist with installing Fedora CoreOS
 (FCOS) and Red Hat Enterprise Linux CoreOS (RHCOS). It can do the following:
 
-* Download and install the operating system to a target disk, optionally
-  customizing it with an Ignition config or first-boot kernel parameters
+* Install the operating system to a target disk, optionally customizing it
+  with an Ignition config or first-boot kernel parameters
   (`coreos-installer install`)
 * Download and verify an operating system image for various cloud,
   virtualization, or bare metal platforms (`coreos-installer download`)
@@ -94,9 +94,11 @@ line.
 
 * `coreos.inst.install_dev` - The block device on the system to install to,
   such as `/dev/sda`.  Mandatory.
-* `coreos.inst.stream` - The Fedora CoreOS stream to install.  Optional;
-  defaults to `stable` unless `coreos.inst.image_url` is specified.
-* `coreos.inst.image_url` - The URL of the CoreOS image to install,
+* `coreos.inst.stream` - Download and install the current release of
+  Fedora CoreOS from the specified stream.  Optional; defaults to
+  installing from local media if run from CoreOS live ISO or PXE media,
+  and to `stable` on other systems.
+* `coreos.inst.image_url` - Download and install the specified CoreOS image,
   overriding `coreos.inst.stream`.  Optional.
 * `coreos.inst.ignition_url` - The URL of the Ignition config.  Optional.
   If missing, no Ignition config will be embedded, which is probably not
@@ -140,7 +142,6 @@ Once you have reached the boot menu, press `<TAB>` (isolinux) or
 kernel command line telling it what you want it to do. For example:
 
 - `coreos.inst.install_dev=/dev/sda`
-- `coreos.inst.stream=testing`
 - `coreos.inst.ignition_url=http://example.com/config.ign`
 - `coreos.inst.platform_id=qemu`
 
@@ -167,7 +168,7 @@ TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
     KERNEL fedora-coreos-32.20200715.2.0-live-kernel-x86_64
-    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-32.20200715.2.0-live-initramfs.x86_64.img console=tty0 console=ttyS0 coreos.inst.install_dev=/dev/sda coreos.inst.stream=testing coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    APPEND ip=dhcp rd.neednet=1 initrd=fedora-coreos-32.20200715.2.0-live-initramfs.x86_64.img console=tty0 console=ttyS0 coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
