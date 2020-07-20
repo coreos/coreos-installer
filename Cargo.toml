@@ -24,6 +24,10 @@ path = "src/lib.rs"
 name = "coreos-installer"
 path = "src/main.rs"
 
+[[bin]]
+name = "rdcore"
+path = "src/bin/rdcore/main.rs"
+
 [profile.release]
 lto = true
 

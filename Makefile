@@ -13,7 +13,7 @@ all:
 	cargo build ${CARGO_ARGS}
 
 .PHONY: install
-install: install-bin install-scripts install-systemd
+install: install-bin install-scripts install-systemd install-dracut
 
 .PHONY: install-bin
 install-bin: all
@@ -27,3 +27,11 @@ install-scripts: all
 install-systemd: all
 	install -D -m 644 -t $(DESTDIR)/usr/lib/systemd/system systemd/*.{service,target}
 	install -D -t $(DESTDIR)/usr/lib/systemd/system-generators systemd/coreos-installer-generator
+
+.PHONY: install-dracut
+install-dracut: all
+	for x in dracut/*; do \
+		bn=$$(basename $$x); \
+		install -D -t $(DESTDIR)/usr/lib/dracut/modules.d/$${bn} $$x/*; \
+	done
+	install -D -t ${DESTDIR}/usr/lib/dracut/modules.d/50rdcore target/${PROFILE}/rdcore
