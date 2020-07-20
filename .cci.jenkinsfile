@@ -49,7 +49,7 @@ cosaPod(buildroot: true) {
                 // No need to run the iso-live-login scenario (in theory, and also right
                 // now it's buggy)
                 shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,iso-install,iso-offline-install")
-                shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install --qemu-native-4k")
+                shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install,iso-offline-install --qemu-native-4k")
             }
         }
     )
