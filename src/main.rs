@@ -12,22 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod blockdev;
-mod cmdline;
-mod download;
-mod errors;
-mod install;
-mod io;
-mod iso;
-mod osmet;
-#[cfg(target_arch = "s390x")]
-mod s390x;
-mod source;
-mod verify;
+use libcoreinst::{cmdline, download, errors, install, iso, osmet, source};
 
-use crate::cmdline::Config;
-use crate::errors::{Result, ResultExt};
+use cmdline::Config;
 use error_chain::quick_main;
+use errors::{Result, ResultExt};
 
 quick_main!(run);
 

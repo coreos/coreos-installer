@@ -16,6 +16,10 @@ pre-release-commit-message = "cargo: coreos-installer release {{version}}"
 post-release-commit-message = "cargo: development version bump"
 tag-message = "coreos-installer v{{version}}"
 
+[lib]
+name = "libcoreinst"
+path = "src/lib.rs"
+
 [[bin]]
 name = "coreos-installer"
 path = "src/main.rs"
