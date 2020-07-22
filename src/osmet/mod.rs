@@ -102,7 +102,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
     // create a first tempfile to store the packed image
     eprintln!("Packing image");
     let (mut packed_image, size) =
-        write_packed_image_to_file(Path::new(&config.device), &partitions)?;
+        write_packed_image_to_file(Path::new(&config.device), &partitions, config.fast)?;
 
     // verify that re-packing will yield the expected checksum
     eprintln!("Verifying that repacked image matches digest");
@@ -359,6 +359,7 @@ fn scan_boot_partition(
 fn write_packed_image_to_file(
     block_device: &Path,
     partitions: &[OsmetPartition],
+    fast: bool,
 ) -> Result<(File, u64)> {
     let mut xz_tmpf = XzEncoder::new(
         // ideally this would use O_TMPFILE, but since tempfile *needs* to create a named tempfile,
@@ -370,7 +371,7 @@ fn write_packed_image_to_file(
             .chain_err(|| "allocating packed image tempfile")?
             // and here we delete it on disk so we just have an fd to it
             .into_file(),
-        9,
+        if fast { 0 } else { 9 },
     );
 
     let mut dev = OpenOptions::new()
