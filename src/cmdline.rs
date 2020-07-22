@@ -93,6 +93,7 @@ pub struct OsmetPackConfig {
     pub checksum: String,
     pub description: String,
     pub rootdev: Option<OsmetRootBlkDevReal>,
+    pub fast: bool,
 }
 
 pub struct OsmetUnpackConfig {
@@ -476,6 +477,11 @@ pub fn parse_args() -> Result<Config> {
                                 .help("Underlying device for e.g. RHCOS LUKS container; /dev/disk/by-label/root should be mountable")
                                 .takes_value(true),
                         )
+                        .arg(
+                            Arg::with_name("fast")
+                                .long("fast")
+                                .help("Use worse compression, for development builds")
+                        )
                         // positional args
                         .arg(
                             Arg::with_name("device")
@@ -795,6 +801,7 @@ fn parse_osmet_pack(matches: &ArgMatches) -> Result<Config> {
             .map(String::from)
             .expect("description missing"),
         rootdev: parse_real_rootdev(matches.value_of("real-rootdev"))?,
+        fast: matches.is_present("fast"),
     }))
 }
 
