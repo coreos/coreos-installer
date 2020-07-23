@@ -44,9 +44,9 @@ impl Disk {
         }
     }
 
-    pub fn mount_partition_by_label(&self, label: &str, flags: mount::MsFlags) -> Result<Mount> {
+    pub fn mount_partition_by_label(&self, label: &str, allow_holder: bool, flags: mount::MsFlags) -> Result<Mount> {
         // get partition list
-        let partitions = self.get_partitions()?;
+        let partitions = self.get_partitions(allow_holder)?;
         if partitions.is_empty() {
             bail!("couldn't find any partitions on {}", self.path);
         }
@@ -77,7 +77,7 @@ impl Disk {
         }
     }
 
-    fn get_partitions(&self) -> Result<Vec<Partition>> {
+    fn get_partitions(&self, with_holders: bool) -> Result<Vec<Partition>> {
         // have lsblk enumerate partitions on the device
         // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
         let result = Command::new("lsblk")
@@ -101,11 +101,19 @@ impl Disk {
             // parse key-value pairs
             let fields = split_lsblk_line(line);
             if let Some(name) = fields.get("NAME") {
-                // Only return partitions.  Skip the whole-disk device, as well
-                // as holders like LVM or RAID devices using one of the partitions.
-                if fields.get("TYPE") != Some(&"part".to_string()) {
-                    continue;
-                }
+                match fields.get("TYPE") {
+                    // If unknown type, skip.
+                    None => continue,
+                    // If whole-disk device, skip.
+                    Some(t) if t == &"disk".to_string() => continue,
+                    // If partition, allow.
+                    Some(t) if t == &"part".to_string() => (),
+                    // If with_holders is true, allow anything else.
+                    Some(_) if with_holders => (),
+                    // Ignore LVM or RAID devices which are using one of the
+                    // partitions but aren't a partition themselves.
+                    _ => continue,
+                };
                 let (mountpoint, swap) = match fields.get("MOUNTPOINT") {
                     Some(mp) if mp == "[SWAP]" => (None, true),
                     Some(mp) => (Some(mp.to_string()), false),
@@ -143,7 +151,7 @@ impl Disk {
         // Walk partitions, record the ones that are reported in use,
         // and return the list if any
         let mut busy: Vec<Partition> = Vec::new();
-        for d in self.get_partitions()? {
+        for d in self.get_partitions(false)? {
             if d.mountpoint.is_some() || d.swap || !d.get_holders()?.is_empty() {
                 busy.push(d)
             }

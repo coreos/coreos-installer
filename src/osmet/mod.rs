@@ -83,9 +83,11 @@ pub fn osmet_fiemap(config: &OsmetFiemapConfig) -> Result<()> {
 pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
     // First, mount the two main partitions we want to suck out data from: / and /boot. Note
     // MS_RDONLY; this also ensures that the partition isn't already mounted rw elsewhere.
+    // Allow the root partition to be in a child holder device to allow for the RHCOS
+    // crypto_LUKS partition.
     let disk = Disk::new(&config.device);
-    let boot = disk.mount_partition_by_label("boot", mount::MsFlags::MS_RDONLY)?;
-    let root = disk.mount_partition_by_label("root", mount::MsFlags::MS_RDONLY)?;
+    let boot = disk.mount_partition_by_label("boot", false, mount::MsFlags::MS_RDONLY)?;
+    let root = disk.mount_partition_by_label("root", true, mount::MsFlags::MS_RDONLY)?;
 
     // now, we do a first scan of the boot partition and pick up files over a certain size
     let boot_files = prescan_boot_partition(&boot)?;
