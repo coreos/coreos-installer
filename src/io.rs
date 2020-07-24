@@ -94,8 +94,17 @@ pub fn resolve_link<P: AsRef<Path>>(path: P) -> Result<(PathBuf, bool)> {
 /// Ignition-style message digests
 #[derive(Debug)]
 pub enum IgnitionHash {
+    /// SHA-256 digest.
+    Sha256(Vec<u8>),
     /// SHA-512 digest.
     Sha512(Vec<u8>),
+}
+
+/// Digest implementation.  Helpfully, each digest in openssl::sha has a
+/// different type.
+enum IgnitionHasher {
+    Sha256(sha::Sha256),
+    Sha512(sha::Sha512),
 }
 
 impl IgnitionHash {
@@ -111,6 +120,15 @@ impl IgnitionHash {
         let (hash_kind, hex_digest) = (parts[0], parts[1]);
 
         let hash = match hash_kind {
+            "sha256" => {
+                let digest = hex::decode(hex_digest).chain_err(|| "decoding hex digest")?;
+                ensure!(
+                    digest.len().saturating_mul(8) == 256,
+                    "wrong digest length ({})",
+                    digest.len().saturating_mul(8)
+                );
+                IgnitionHash::Sha256(digest)
+            }
             "sha512" => {
                 let digest = hex::decode(hex_digest).chain_err(|| "decoding hex digest")?;
                 ensure!(
@@ -129,20 +147,27 @@ impl IgnitionHash {
     /// Digest and validate input data.
     pub fn validate(&self, input: &mut impl Read) -> Result<()> {
         let (mut hasher, digest) = match self {
-            IgnitionHash::Sha512(val) => (sha::Sha512::new(), val),
+            IgnitionHash::Sha256(val) => (IgnitionHasher::Sha256(sha::Sha256::new()), val),
+            IgnitionHash::Sha512(val) => (IgnitionHasher::Sha512(sha::Sha512::new()), val),
         };
         let mut buf = [0u8; 128 * 1024];
         loop {
             match input.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => hasher.update(&buf[..n]),
+                Ok(n) => match hasher {
+                    IgnitionHasher::Sha256(ref mut h) => h.update(&buf[..n]),
+                    IgnitionHasher::Sha512(ref mut h) => h.update(&buf[..n]),
+                },
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) => return Err(e).chain_err(|| "reading input"),
             };
         }
-        let computed = &hasher.finish()[..];
+        let computed = match hasher {
+            IgnitionHasher::Sha256(h) => h.finish().to_vec(),
+            IgnitionHasher::Sha512(h) => h.finish().to_vec(),
+        };
 
-        if computed != digest.as_slice() {
+        if &computed != digest {
             bail!(
                 "hash mismatch, computed '{}' but expected '{}'",
                 hex::encode(computed),
@@ -172,9 +197,16 @@ mod tests {
     #[test]
     fn test_ignition_hash_validate() {
         let input = vec![b'a', b'b', b'c'];
-        let hash_arg = "sha512-ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f";
-        let hasher = IgnitionHash::try_parse(&hash_arg).unwrap();
-        let mut rd = std::io::Cursor::new(input);
-        hasher.validate(&mut rd).unwrap();
+        let hash_args = [
+            (true, "sha256-ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            (true, "sha512-ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
+            (false, "sha256-aa7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            (false, "sha512-cdaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")
+        ];
+        for (valid, hash_arg) in &hash_args {
+            let hasher = IgnitionHash::try_parse(&hash_arg).unwrap();
+            let mut rd = std::io::Cursor::new(&input);
+            assert!(hasher.validate(&mut rd).is_ok() == *valid);
+        }
     }
 }
