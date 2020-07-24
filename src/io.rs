@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use error_chain::{bail, ensure};
+use openssl::sha;
 use std::fs::read_link;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{self, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::errors::*;
@@ -127,15 +128,21 @@ impl IgnitionHash {
 
     /// Digest and validate input data.
     pub fn validate(&self, input: &mut impl Read) -> Result<()> {
-        use sha2::digest::Digest;
-
         let (mut hasher, digest) = match self {
-            IgnitionHash::Sha512(val) => (sha2::Sha512::new(), val),
+            IgnitionHash::Sha512(val) => (sha::Sha512::new(), val),
         };
-        copy(input, &mut hasher).chain_err(|| "copying input to hasher")?;
-        let computed = hasher.finalize();
+        let mut buf = [0u8; 128 * 1024];
+        loop {
+            match input.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => hasher.update(&buf[..n]),
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e).chain_err(|| "reading input"),
+            };
+        }
+        let computed = &hasher.finish()[..];
 
-        if computed.as_slice() != digest.as_slice() {
+        if computed != digest.as_slice() {
             bail!(
                 "hash mismatch, computed '{}' but expected '{}'",
                 hex::encode(computed),
