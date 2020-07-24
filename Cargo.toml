@@ -6,7 +6,7 @@ edition = "2018"
 exclude = ["/.cci.jenkinsfile", "/.github", "/.gitignore", "/.travis.yml", "/Dockerfile"]
 authors = [ "Benjamin Gilbert <bgilbert@redhat.com>" ]
 description = "Installer for Fedora CoreOS and RHEL CoreOS"
-version = "0.3.1-alpha.0"
+version = "0.4.0-alpha.0"
 
 [package.metadata.release]
 sign-commit = true
