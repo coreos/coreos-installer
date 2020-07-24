@@ -44,7 +44,12 @@ impl Disk {
         }
     }
 
-    pub fn mount_partition_by_label(&self, label: &str, allow_holder: bool, flags: mount::MsFlags) -> Result<Mount> {
+    pub fn mount_partition_by_label(
+        &self,
+        label: &str,
+        allow_holder: bool,
+        flags: mount::MsFlags,
+    ) -> Result<Mount> {
         // get partition list
         let partitions = self.get_partitions(allow_holder)?;
         if partitions.is_empty() {
