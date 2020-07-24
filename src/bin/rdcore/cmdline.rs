@@ -12,12 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use clap::{crate_version, App, AppSettings};
+use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use error_chain::bail;
 
 use libcoreinst::errors::*;
 
 pub enum Config {
+    StreamHash(StreamHashConfig),
+}
+
+pub struct StreamHashConfig {
+    pub hash_file: String,
 }
 
 /// Parse command-line arguments.
@@ -32,11 +37,30 @@ pub fn parse_args() -> Result<Config> {
         .global_setting(AppSettings::DisableHelpSubcommand)
         .global_setting(AppSettings::UnifiedHelpMessage)
         .global_setting(AppSettings::VersionlessSubcommands)
+        .subcommand(
+            SubCommand::with_name("stream-hash")
+                .about("Copy data from stdin to stdout, checking piecewise hashes")
+                .arg(
+                    Arg::with_name("hash-file")
+                        .value_name("hash-file")
+                        .help("Path to the piecewise hash file")
+                        .required(true)
+                        .takes_value(true),
+                ),
+        )
         .get_matches();
 
-    // temporarily; until we actually add our first command
-    #[allow(clippy::match_single_binding)]
     match app_matches.subcommand() {
+        ("stream-hash", Some(matches)) => parse_stream_hash(&matches),
         _ => bail!("unrecognized subcommand"),
     }
+}
+
+fn parse_stream_hash(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::StreamHash(StreamHashConfig {
+        hash_file: matches
+            .value_of("hash-file")
+            .map(String::from)
+            .expect("hash file missing"),
+    }))
 }

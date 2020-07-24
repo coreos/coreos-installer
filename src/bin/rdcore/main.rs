@@ -13,11 +13,14 @@
 // limitations under the License.
 
 mod cmdline;
+mod stream_hash;
 
 use libcoreinst::errors;
 
 use error_chain::quick_main;
 use errors::{Result, ResultExt};
+
+use crate::cmdline::*;
 
 quick_main!(run);
 
@@ -25,5 +28,6 @@ fn run() -> Result<()> {
     let config = cmdline::parse_args().chain_err(|| "parsing arguments")?;
 
     match config {
+        Config::StreamHash(c) => stream_hash::stream_hash(&c),
     }
 }
