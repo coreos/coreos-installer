@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::{bail, ensure, ChainedError};
+use error_chain::{bail, ChainedError};
 use nix::mount;
 use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -27,63 +27,6 @@ use crate::io::*;
 #[cfg(target_arch = "s390x")]
 use crate::s390x;
 use crate::source::*;
-
-/// Integrity verification hash for an Ignition config.
-#[derive(Debug)]
-pub enum IgnitionHash {
-    /// SHA-512 digest.
-    Sha512(Vec<u8>),
-}
-
-impl IgnitionHash {
-    /// Try to parse an hash-digest argument.
-    ///
-    /// This expects an input value following the `ignition.config.verification.hash`
-    /// spec, i.e. `<type>-<value>` format.
-    pub fn try_parse(input: &str) -> Result<Self> {
-        let parts: Vec<_> = input.splitn(2, '-').collect();
-        if parts.len() != 2 {
-            bail!("failed to detect hash-type and digest in '{}'", input);
-        }
-        let (hash_kind, hex_digest) = (parts[0], parts[1]);
-
-        let hash = match hash_kind {
-            "sha512" => {
-                let digest = hex::decode(hex_digest).chain_err(|| "decoding hex digest")?;
-                ensure!(
-                    digest.len().saturating_mul(8) == 512,
-                    "wrong digest length ({})",
-                    digest.len().saturating_mul(8)
-                );
-                IgnitionHash::Sha512(digest)
-            }
-            x => bail!("unknown hash type '{}'", x),
-        };
-
-        Ok(hash)
-    }
-
-    /// Digest and validate input data.
-    pub fn validate(&self, input: &mut impl Read) -> Result<()> {
-        use sha2::digest::Digest;
-
-        let (mut hasher, digest) = match self {
-            IgnitionHash::Sha512(val) => (sha2::Sha512::new(), val),
-        };
-        copy(input, &mut hasher).chain_err(|| "copying input to hasher")?;
-        let computed = hasher.finalize();
-
-        if computed.as_slice() != digest.as_slice() {
-            bail!(
-                "hash mismatch, computed '{}' but expected '{}'",
-                hex::encode(computed),
-                hex::encode(digest),
-            );
-        }
-
-        Ok(())
-    }
-}
 
 pub fn install(config: &InstallConfig) -> Result<()> {
     // set up image source
@@ -213,8 +156,11 @@ fn write_disk(
         || config.network_config.is_some()
         || cfg!(target_arch = "s390x")
     {
-        let mount =
-            Disk::new(&config.device).mount_partition_by_label("boot", false, mount::MsFlags::empty())?;
+        let mount = Disk::new(&config.device).mount_partition_by_label(
+            "boot",
+            false,
+            mount::MsFlags::empty(),
+        )?;
         if let Some(ignition) = config.ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .chain_err(|| "writing Ignition configuration")?;
@@ -489,26 +435,6 @@ fn is_dasd(config: &InstallConfig) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_ignition_hash_cli_parse() {
-        let err_cases = vec!["", "foo-bar", "-bar", "sha512", "sha512-", "sha512-00"];
-        for arg in err_cases {
-            IgnitionHash::try_parse(arg).expect_err(&format!("input: {}", arg));
-        }
-
-        let null_digest = "sha512-cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
-        IgnitionHash::try_parse(null_digest).unwrap();
-    }
-
-    #[test]
-    fn test_ignition_hash_validate() {
-        let input = vec![b'a', b'b', b'c'];
-        let hash_arg = "sha512-ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f";
-        let hasher = IgnitionHash::try_parse(&hash_arg).unwrap();
-        let mut rd = std::io::Cursor::new(input);
-        hasher.validate(&mut rd).unwrap();
-    }
 
     #[test]
     fn test_platform_id() {

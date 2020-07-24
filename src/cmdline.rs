@@ -21,7 +21,7 @@ use std::path::Path;
 use crate::blockdev::*;
 use crate::download::*;
 use crate::errors::*;
-use crate::install::IgnitionHash;
+use crate::io::IgnitionHash;
 use crate::source::*;
 
 pub enum Config {
