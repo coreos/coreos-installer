@@ -1,4 +1,5 @@
 RELEASE ?= 0
+RDCORE ?= 1
 
 ifeq ($(RELEASE),1)
 	PROFILE ?= release
@@ -6,6 +7,9 @@ ifeq ($(RELEASE),1)
 else
 	PROFILE ?= debug
 	CARGO_ARGS =
+endif
+ifeq ($(RDCORE),1)
+	CARGO_ARGS := $(CARGO_ARGS) --features rdcore
 endif
 
 .PHONY: all
@@ -30,8 +34,10 @@ install-systemd: all
 
 .PHONY: install-dracut
 install-dracut: all
-	for x in dracut/*; do \
-		bn=$$(basename $$x); \
-		install -D -t $(DESTDIR)/usr/lib/dracut/modules.d/$${bn} $$x/*; \
-	done
-	install -D -t ${DESTDIR}/usr/lib/dracut/modules.d/50rdcore target/${PROFILE}/rdcore
+	if [ "${RDCORE}" = "1" ]; then \
+		for x in dracut/*; do \
+			bn=$$(basename $$x); \
+			install -D -t $(DESTDIR)/usr/lib/dracut/modules.d/$${bn} $$x/*; \
+		done; \
+		install -D -t ${DESTDIR}/usr/lib/dracut/modules.d/50rdcore target/${PROFILE}/rdcore; \
+	fi
