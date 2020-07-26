@@ -22,6 +22,8 @@ use error_chain::bail;
 use serde::{Deserialize, Serialize};
 use xz2::read::XzDecoder;
 
+use crate::io::BUFFER_SIZE;
+
 use super::*;
 
 /// Magic header value for osmet binary.
@@ -75,7 +77,8 @@ pub(super) fn osmet_file_write(
 
     // would be nice to opportunistically do open(O_TMPFILE) then linkat here, but the tempfile API
     // doesn't provide that API: https://github.com/Stebalien/tempfile/pull/31
-    let mut f = BufWriter::new(
+    let mut f = BufWriter::with_capacity(
+        BUFFER_SIZE,
         tempfile::Builder::new()
             .prefix("coreos-installer-osmet")
             .suffix(".partial")
@@ -117,7 +120,7 @@ fn read_and_check_header(mut f: &mut impl Read) -> Result<OsmetFileHeader> {
 
 pub(super) fn osmet_file_read_header(path: &Path) -> Result<OsmetFileHeader> {
     let mut f = BufReader::with_capacity(
-        8192,
+        BUFFER_SIZE,
         OpenOptions::new()
             .read(true)
             .open(path)
@@ -129,7 +132,7 @@ pub(super) fn osmet_file_read_header(path: &Path) -> Result<OsmetFileHeader> {
 
 pub(super) fn osmet_file_read(path: &Path) -> Result<(OsmetFileHeader, Osmet, impl Read + Send)> {
     let mut f = BufReader::with_capacity(
-        8192,
+        BUFFER_SIZE,
         OpenOptions::new()
             .read(true)
             .open(path)
