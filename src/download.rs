@@ -246,14 +246,11 @@ where
     let mut buf_reader = BufReader::new(&mut progress_reader);
     let mut decompress_reader: Box<dyn Read> = {
         let sniff = buf_reader.fill_buf().chain_err(|| "sniffing input")?;
-        // verify default buffer size >= the largest magic number we might
-        // care about
-        assert!(sniff.len() >= 8);
         if !decompress {
             Box::new(buf_reader)
-        } else if &sniff[0..2] == b"\x1f\x8b" {
+        } else if sniff.len() > 2 && &sniff[0..2] == b"\x1f\x8b" {
             Box::new(GzDecoder::new(buf_reader))
-        } else if &sniff[0..6] == b"\xfd7zXZ\x00" {
+        } else if sniff.len() > 6 && &sniff[0..6] == b"\xfd7zXZ\x00" {
             Box::new(XzDecoder::new(buf_reader))
         } else {
             Box::new(buf_reader)
