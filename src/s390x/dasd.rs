@@ -15,7 +15,7 @@
 use error_chain::bail;
 use gptman::GPT;
 use std::fs::{read_to_string, File};
-use std::io::{self, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
@@ -24,7 +24,7 @@ use std::process::{Command, Stdio};
 use crate::blockdev::{get_sector_size, udev_settle};
 use crate::cmdline::*;
 use crate::errors::*;
-use crate::io::{copy, copy_exactly_n, BUFFER_SIZE};
+use crate::io::{copy_exactly_n, BUFFER_SIZE};
 
 /////////////////////////////////////////////////////////////////////////////
 // IBM DASD Support

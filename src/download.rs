@@ -18,7 +18,7 @@ use flate2::read::GzDecoder;
 use nix::unistd::isatty;
 use progress_streams::ProgressReader;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{stderr, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{copy, stderr, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -346,7 +346,16 @@ pub fn download_to_tempfile(url: &str) -> Result<File> {
         .error_for_status()
         .chain_err(|| format!("fetching '{}'", url))?;
 
-    copy(&mut resp, &mut f)?;
+    let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &mut f);
+    copy(
+        &mut BufReader::with_capacity(BUFFER_SIZE, &mut resp),
+        &mut writer,
+    )
+    .chain_err(|| format!("couldn't copy '{}'", url))?;
+    writer
+        .flush()
+        .chain_err(|| format!("couldn't write '{}' to disk", url))?;
+    drop(writer);
     f.seek(SeekFrom::Start(0))
         .chain_err(|| format!("rewinding file for '{}'", url))?;
 

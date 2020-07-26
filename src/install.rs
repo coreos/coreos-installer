@@ -15,7 +15,7 @@
 use error_chain::{bail, ChainedError};
 use nix::mount;
 use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
 
