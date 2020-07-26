@@ -20,12 +20,16 @@ use std::path::{Path, PathBuf};
 
 use crate::errors::*;
 
+// The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
+// enough to fully amortize system call overhead.
+// https://github.com/rust-lang/rust/issues/49921
+// https://github.com/coreutils/coreutils/blob/6a3d2883/src/ioblksize.h
+pub const BUFFER_SIZE: usize = 256 * 1024;
+
 /// This is like `std::io:copy()`, but uses a buffer larger than 8 KiB
 /// to amortize syscall overhead.
 pub fn copy(reader: &mut (impl Read + ?Sized), writer: &mut (impl Write + ?Sized)) -> Result<u64> {
-    // https://github.com/rust-lang/rust/issues/49921
-    // https://github.com/coreutils/coreutils/blob/6a3d2883/src/ioblksize.h
-    let mut buf = [0u8; 256 * 1024];
+    let mut buf = [0u8; BUFFER_SIZE];
     copy_n(reader, writer, std::u64::MAX, &mut buf)
 }
 

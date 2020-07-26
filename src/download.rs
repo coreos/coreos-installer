@@ -18,7 +18,7 @@ use flate2::read::GzDecoder;
 use nix::unistd::isatty;
 use progress_streams::ProgressReader;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{stderr, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{stderr, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -240,10 +240,10 @@ where
     });
 
     // Wrap in a BufReader so we can peek at the first few bytes for
-    // format sniffing.  Don't trust the content-type since the server
-    // may not be configured correctly, or the file might be local.
-    // Then wrap in a reader for decompression.
-    let mut buf_reader = BufReader::new(&mut progress_reader);
+    // format sniffing, and to amortize read overhead.  Don't trust the
+    // content-type since the server may not be configured correctly, or
+    // the file might be local.  Then wrap in a reader for decompression.
+    let mut buf_reader = BufReader::with_capacity(BUFFER_SIZE, &mut progress_reader);
     let mut decompress_reader: Box<dyn Read> = {
         let sniff = buf_reader.fill_buf().chain_err(|| "sniffing input")?;
         if !decompress {
@@ -296,9 +296,13 @@ where
 pub fn image_copy_default(
     first_mb: &[u8],
     source: &mut dyn Read,
-    dest: &mut File,
+    dest_file: &mut File,
     _dest_path: &Path,
 ) -> Result<()> {
+    // Amortize write overhead.  The decompressor will produce bytes in
+    // whatever chunk size it chooses.
+    let mut dest = BufWriter::with_capacity(BUFFER_SIZE, dest_file);
+
     // Cache the first MiB and write zeroes to dest instead.  This ensures
     // that the disk image can't be used accidentally before its GPG signature
     // is verified.
@@ -317,13 +321,16 @@ pub fn image_copy_default(
     // sparse-copy the image, falling back to non-sparse copy if hardware
     // acceleration is unavailable.  But BLKZEROOUT doesn't support
     // BLKDEV_ZERO_NOFALLBACK, so we'd risk gigabytes of redundant I/O.
-    copy(source, dest).chain_err(|| "decoding and writing image")?;
+    copy(source, &mut dest).chain_err(|| "decoding and writing image")?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     dest.write_all(first_mb)
         .chain_err(|| "writing to first MiB of disk")?;
+
+    // Flush buffer.
+    dest.flush().chain_err(|| "flushing data to disk")?;
 
     Ok(())
 }
