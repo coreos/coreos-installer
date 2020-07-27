@@ -167,7 +167,7 @@ TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
     KERNEL fedora-coreos-32.20200715.2.0-live-kernel-x86_64
-    APPEND initrd=fedora-coreos-32.20200715.2.0-live-initramfs.x86_64.img console=tty0 console=ttyS0 coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    APPEND initrd=fedora-coreos-32.20200715.2.0-live-initramfs.x86_64.img coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
