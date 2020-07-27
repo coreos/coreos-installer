@@ -14,7 +14,7 @@
 
 use error_chain::{bail, ChainedError};
 use nix::mount;
-use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
+use std::fs::{canonicalize, copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
@@ -428,7 +428,8 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
 }
 
 fn is_dasd(config: &InstallConfig) -> Result<bool> {
-    let (target, _) = resolve_link(&config.device)?;
+    let target = canonicalize(&config.device)
+        .chain_err(|| format!("getting absolute path to {}", config.device))?;
     Ok(target.to_string_lossy().starts_with("/dev/dasd"))
 }
 
