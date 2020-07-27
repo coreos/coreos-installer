@@ -41,9 +41,10 @@ cosaPod(buildroot: true) {
             stage("Build metal+live") {
                 shwrap("cd /srv/fcos && cosa buildextend-metal")
                 shwrap("cd /srv/fcos && cosa buildextend-metal4k")
-                // Compress once
                 shwrap("cd /srv/fcos && cosa buildextend-live")
-                shwrap("cd /srv/fcos && cosa compress --artifact=metal --artifact=metal4k")
+                // Test metal with an uncompressed image and metal4k with a
+                // compressed one
+                shwrap("cd /srv/fcos && cosa compress --artifact=metal4k")
             }
             stage("Test ISO") {
                 // No need to run the iso-live-login scenario (in theory, and also right
