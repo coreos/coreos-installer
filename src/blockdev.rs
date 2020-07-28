@@ -85,30 +85,11 @@ impl Disk {
     }
 
     fn get_partitions(&self, with_holders: bool) -> Result<Vec<Partition>> {
-        // have lsblk enumerate partitions on the device
-        // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
-        let result = Command::new("lsblk")
-            .arg("--pairs")
-            .arg("--paths")
-            .arg("--output")
-            .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
-            .arg(&self.path)
-            .output()
-            .chain_err(|| "running lsblk")?;
-        if !result.status.success() {
-            // copy out its stderr
-            eprint!("{}", String::from_utf8_lossy(&*result.stderr));
-            bail!("lsblk of {} failed", &self.path);
-        }
-        let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
-
         // walk each device in the output
         let mut result: Vec<Partition> = Vec::new();
-        for line in output.lines() {
-            // parse key-value pairs
-            let fields = split_lsblk_line(line);
-            if let Some(name) = fields.get("NAME") {
-                match fields.get("TYPE") {
+        for devinfo in lsblk(Path::new(&self.path))? {
+            if let Some(name) = devinfo.get("NAME") {
+                match devinfo.get("TYPE") {
                     // If unknown type, skip.
                     None => continue,
                     // If whole-disk device, skip.
@@ -121,15 +102,15 @@ impl Disk {
                     // partitions but aren't a partition themselves.
                     _ => continue,
                 };
-                let (mountpoint, swap) = match fields.get("MOUNTPOINT") {
+                let (mountpoint, swap) = match devinfo.get("MOUNTPOINT") {
                     Some(mp) if mp == "[SWAP]" => (None, true),
                     Some(mp) => (Some(mp.to_string()), false),
                     None => (None, false),
                 };
                 result.push(Partition {
                     path: name.to_owned(),
-                    label: fields.get("LABEL").map(<_>::to_string),
-                    fstype: fields.get("FSTYPE").map(<_>::to_string),
+                    label: devinfo.get("LABEL").map(<_>::to_string),
+                    fstype: devinfo.get("FSTYPE").map(<_>::to_string),
                     parent: self.path.to_owned(),
                     mountpoint,
                     swap,
@@ -416,17 +397,6 @@ impl Partition {
     }
 }
 
-/// Parse key-value pairs from lsblk --pairs.
-/// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
-fn split_lsblk_line(line: &str) -> HashMap<String, String> {
-    let re = Regex::new(r#"([A-Z-]+)="([^"]+)""#).unwrap();
-    let mut fields: HashMap<String, String> = HashMap::new();
-    for cap in re.captures_iter(line) {
-        fields.insert(cap[1].to_string(), cap[2].to_string());
-    }
-    fields
-}
-
 #[derive(Debug)]
 pub struct Mount {
     device: String,
@@ -479,6 +449,42 @@ fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64
 fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String> {
     let path = PathBuf::from(format!("/sys/dev/block/{}:{}/{}", maj, min, field));
     Ok(read_to_string(&path)?.trim_end().into())
+}
+
+pub fn lsblk(dev: &Path) -> Result<Vec<HashMap<String, String>>> {
+    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
+    let result = Command::new("lsblk")
+        .arg("--pairs")
+        .arg("--paths")
+        .arg("--output")
+        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
+        .arg(dev)
+        .output()
+        .chain_err(|| "running lsblk")?;
+    if !result.status.success() {
+        // copy out its stderr
+        eprint!("{}", String::from_utf8_lossy(&*result.stderr));
+        bail!("lsblk of {} failed", dev.display());
+    }
+    let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
+
+    let mut result: Vec<HashMap<String, String>> = Vec::new();
+    for line in output.lines() {
+        // parse key-value pairs
+        result.push(split_lsblk_line(line));
+    }
+    Ok(result)
+}
+
+/// Parse key-value pairs from lsblk --pairs.
+/// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
+fn split_lsblk_line(line: &str) -> HashMap<String, String> {
+    let re = Regex::new(r#"([A-Z-]+)="([^"]+)""#).unwrap();
+    let mut fields: HashMap<String, String> = HashMap::new();
+    for cap in re.captures_iter(line) {
+        fields.insert(cap[1].to_string(), cap[2].to_string());
+    }
+    fields
 }
 
 impl Drop for Mount {
