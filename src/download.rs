@@ -16,12 +16,12 @@ use byte_unit::Byte;
 use error_chain::bail;
 use flate2::read::GzDecoder;
 use nix::unistd::isatty;
-use progress_streams::ProgressReader;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{copy, stderr, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::num::NonZeroU32;
+use std::io::{self, copy, stderr, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::num::{NonZeroU32, NonZeroU64};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::result;
 use std::time::{Duration, Instant};
 use xz2::read::XzDecoder;
 
@@ -192,52 +192,11 @@ where
     };
 
     // wrap again for progress reporting
-    let stderr_is_tty = isatty(stderr().as_raw_fd()).chain_err(|| "checking if stderr is a TTY")?;
-    let (progress_prologue, progress_epilogue) = if stderr_is_tty {
-        // Draw a status line that updates itself in place.
-        // The prologue leaves a place for the cursor to rest between updates.
-        // The epilogue writes three spaces to cover the switch from e.g.
-        // 1000 KiB to 1 MiB, and then uses CR to return to the start of
-        // the line.
-        ("> ", "   \r")
-    } else {
-        // stderr is being read by another process, e.g. journald, and
-        // fanciness may confuse it.  Just log regular lines.
-        ("", "\n")
-    };
-    let artifact_type = source.artifact_type.clone();
-    let have_length = source.length_hint.is_some();
-    let length_hint = source.length_hint.unwrap_or(0);
-    let mut position: u64 = 0;
-    let mut last_report = Instant::now();
-    let mut progress_reader = ProgressReader::new(&mut verify_reader, |progress: usize| {
-        position += progress as u64;
-        if last_report.elapsed() >= Duration::from_secs(1)
-            || (have_length && position == length_hint)
-        {
-            last_report = Instant::now();
-            if have_length {
-                eprint!(
-                    "{}Read {} {}/{} ({}%){}",
-                    progress_prologue,
-                    &artifact_type,
-                    format_bytes(position),
-                    format_bytes(length_hint),
-                    100 * position / length_hint,
-                    progress_epilogue
-                );
-            } else {
-                eprint!(
-                    "{}Read {} {}{}",
-                    progress_prologue,
-                    &artifact_type,
-                    format_bytes(position),
-                    progress_epilogue
-                );
-            }
-            let _ = std::io::stdout().flush();
-        }
-    });
+    let mut progress_reader = ProgressReader::new(
+        &mut verify_reader,
+        source.length_hint,
+        &source.artifact_type,
+    )?;
 
     // Wrap in a BufReader so we can peek at the first few bytes for
     // format sniffing, and to amortize read overhead.  Don't trust the
@@ -284,11 +243,6 @@ where
     // flush
     dest.flush().chain_err(|| "flushing data to disk")?;
     dest.sync_all().chain_err(|| "syncing data to disk")?;
-
-    // if we reported progress using CRs, log final newline
-    if stderr_is_tty {
-        eprintln!();
-    }
 
     Ok(())
 }
@@ -362,9 +316,96 @@ pub fn download_to_tempfile(url: &str) -> Result<File> {
     Ok(f)
 }
 
-/// Format a size in bytes.
-fn format_bytes(count: u64) -> String {
-    Byte::from_bytes(count.into())
-        .get_appropriate_unit(true)
-        .format(1)
+struct ProgressReader<'a, R: Read> {
+    source: R,
+    length: Option<(NonZeroU64, String)>,
+    artifact_type: &'a str,
+
+    position: u64,
+    last_report: Instant,
+
+    tty: bool,
+    prologue: &'static str,
+    epilogue: &'static str,
+}
+
+impl<'a, R: Read> ProgressReader<'a, R> {
+    fn new(source: R, length: Option<u64>, artifact_type: &'a str) -> Result<Self> {
+        let tty = isatty(stderr().as_raw_fd()).unwrap_or_else(|e| {
+            eprintln!("checking if stderr is a TTY: {}", e);
+            false
+        });
+        // disable percentage reporting for zero-length files to avoid
+        // division by zero
+        let length = length.map(NonZeroU64::new).flatten();
+        Ok(ProgressReader {
+            source,
+            length: length.map(|l| (l, Self::format_bytes(l.get()))),
+            artifact_type,
+
+            position: 0,
+            last_report: Instant::now(),
+
+            tty,
+            // If stderr is a tty, draw a status line that updates itself in
+            // place.  The prologue leaves a place for the cursor to rest
+            // between updates.  The epilogue writes three spaces to cover
+            // the switch from e.g.  1000 KiB to 1 MiB, and then uses CR to
+            // return to the start of the line.
+            //
+            // Otherwise, stderr is being read by another process, e.g.
+            // journald, and fanciness may confuse it.  Just log regular
+            // lines.
+            prologue: if tty { "> " } else { "" },
+            epilogue: if tty { "   \r" } else { "\n" },
+        })
+    }
+
+    /// Format a size in bytes.
+    fn format_bytes(count: u64) -> String {
+        Byte::from_bytes(count.into())
+            .get_appropriate_unit(true)
+            .format(1)
+    }
+}
+
+impl<'a, R: Read> Read for ProgressReader<'a, R> {
+    fn read(&mut self, buf: &mut [u8]) -> result::Result<usize, io::Error> {
+        let count = self.source.read(buf)?;
+        self.position += count as u64;
+        if self.last_report.elapsed() >= Duration::from_secs(1)
+            || self.length.as_ref().map(|(l, _)| l.get()) == Some(self.position)
+        {
+            self.last_report = Instant::now();
+            match self.length {
+                Some((length, ref length_str)) => eprint!(
+                    "{}Read {} {}/{} ({}%){}",
+                    self.prologue,
+                    self.artifact_type,
+                    Self::format_bytes(self.position),
+                    length_str,
+                    100 * self.position / length.get(),
+                    self.epilogue
+                ),
+                None => eprint!(
+                    "{}Read {} {}{}",
+                    self.prologue,
+                    self.artifact_type,
+                    Self::format_bytes(self.position),
+                    self.epilogue
+                ),
+            }
+            let _ = std::io::stdout().flush();
+        }
+        Ok(count)
+    }
+}
+
+impl<'a, R: Read> Drop for ProgressReader<'a, R> {
+    fn drop(&mut self) {
+        // if we reported progress using CRs, log final newline
+        if self.tty {
+            eprintln!();
+        }
+    }
 }
