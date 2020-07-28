@@ -25,6 +25,9 @@ use crate::blockdev::{get_sector_size, udev_settle};
 use crate::cmdline::*;
 use crate::errors::*;
 use crate::io::{copy_exactly_n, BUFFER_SIZE};
+use crate::util::*;
+
+use crate::runcmd;
 
 /////////////////////////////////////////////////////////////////////////////
 // IBM DASD Support
@@ -174,19 +177,10 @@ fn is_formatted(dasd: &str) -> Result<bool> {
 /// # Arguments
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
 fn is_invalid(dasd: &str) -> Result<bool> {
-    let cmd = Command::new("fdasd")
-        // we're looking for a hardcoded string in the output
-        .env("LC_ALL", "C")
-        .arg("-p")
-        .arg(dasd)
-        .output()
-        .chain_err(|| format!("executing fdasd -p {}", dasd))?;
-    if !cmd.status.success() {
-        bail!("fdasd -p {} failed", dasd);
-    }
-    Ok(std::str::from_utf8(&cmd.stdout)
-        .chain_err(|| "decoding fdasd output")?
-        .contains("disk label block is invalid"))
+    let mut cmd = Command::new("fdasd");
+    // we're looking for a hardcoded string in the output
+    cmd.env("LC_ALL", "C").arg("-p").arg(dasd);
+    Ok(cmd_output(&mut cmd)?.contains("disk label block is invalid"))
 }
 
 /// Perform low-level format. This step is necessary before any further disk usage
@@ -199,21 +193,18 @@ fn low_level_format(dasd: &str) -> Result<()> {
         return Ok(());
     }
     eprintln!("Performing low-level format for {}", dasd);
-    let status = Command::new("dasdfmt")
-        .arg("--blocksize")
-        .arg("4096")
-        .arg("--disk_layout")
-        .arg("cdl")
-        .arg("--mode")
-        .arg("full")
-        .arg("-y")
-        .arg("-p")
-        .arg(dasd)
-        .status()
-        .chain_err(|| format!("failed to execute dasdfmt on {}", dasd))?;
-    if !status.success() {
-        bail!("dasdfmt on {} failed", dasd);
-    }
+    runcmd!(
+        "dasdfmt",
+        "--blocksize",
+        "4096",
+        "--disk_layout",
+        "cdl",
+        "--mode",
+        "full",
+        "-y",
+        "-p",
+        dasd
+    )?;
     udev_settle()?;
     Ok(())
 }
@@ -244,15 +235,7 @@ fn make_partitions(dasd: &str, partitions: &[String]) -> Result<()> {
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
 fn default_format(dasd: &str) -> Result<()> {
     eprintln!("Auto-partitioning {}", dasd);
-    let status = Command::new("fdasd")
-        .arg("-a")
-        .arg("-s")
-        .arg(dasd)
-        .status()
-        .chain_err(|| "failed to execute fdasd")?;
-    if !status.success() {
-        bail!("auto-formatting {} failed", dasd);
-    }
+    runcmd!("fdasd", "-a", "-s", dasd).chain_err(|| format!("auto-formatting {} failed", dasd))?;
     udev_settle()?;
     Ok(())
 }

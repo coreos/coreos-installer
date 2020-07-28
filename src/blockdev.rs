@@ -33,6 +33,9 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crate::errors::*;
+use crate::util::*;
+
+use crate::{runcmd, runcmd_output};
 
 #[derive(Debug)]
 pub struct Disk {
@@ -264,17 +267,7 @@ impl PartTableKpartx {
         // but this blocks indefinitely inside a container.  See e.g.
         //   https://github.com/moby/moby/issues/22025
         // Use -n to skip blocking on udev, and then manually settle.
-        let result = Command::new("kpartx")
-            .arg(flag)
-            .arg("-n")
-            .arg(&self.path)
-            .output()
-            .chain_err(|| format!("running kpartx {} {}", flag, self.path))?;
-        if !result.status.success() {
-            // copy out its stderr
-            eprint!("{}", String::from_utf8_lossy(&*result.stderr));
-            bail!("kpartx {} {} failed: {}", flag, self.path, result.status);
-        }
+        runcmd_output!("kpartx", flag, "-n", &self.path)?;
         udev_settle()?;
         Ok(())
     }
@@ -453,21 +446,14 @@ fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String>
 
 pub fn lsblk(dev: &Path) -> Result<Vec<HashMap<String, String>>> {
     // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
-    let result = Command::new("lsblk")
-        .arg("--pairs")
+    let mut cmd = Command::new("lsblk");
+    cmd.arg("--pairs")
         .arg("--paths")
         .arg("--output")
         .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
-        .arg(dev)
-        .output()
-        .chain_err(|| "running lsblk")?;
-    if !result.status.success() {
-        // copy out its stderr
-        eprint!("{}", String::from_utf8_lossy(&*result.stderr));
-        bail!("lsblk of {} failed", dev.display());
-    }
-    let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
+        .arg(dev);
 
+    let output = cmd_output(&mut cmd).chain_err(|| "running lsblk")?;
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for line in output.lines() {
         // parse key-value pairs
@@ -610,13 +596,7 @@ pub fn udev_settle() -> Result<()> {
     // our way out of this.
     sleep(Duration::from_millis(200));
 
-    let status = Command::new("udevadm")
-        .arg("settle")
-        .status()
-        .chain_err(|| "running udevadm settle")?;
-    if !status.success() {
-        bail!("udevadm settle failed");
-    }
+    runcmd!("udevadm", "settle")?;
     Ok(())
 }
 
