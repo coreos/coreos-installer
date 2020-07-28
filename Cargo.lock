@@ -153,7 +153,7 @@ dependencies = [
  "hex",
  "libc",
  "maplit",
- "nix",
+ "nix 0.18.0",
  "openssl",
  "pipe",
  "progress-streams",
@@ -366,7 +366,7 @@ dependencies = [
  "bincode",
  "crc",
  "err-derive",
- "nix",
+ "nix 0.17.0",
  "serde",
  "serde_derive",
 ]
@@ -681,6 +681,18 @@ dependencies = [
  "cfg-if",
  "libc",
  "void",
+]
+
+[[package]]
+name = "nix"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83450fe6a6142ddd95fb064b746083fc4ef1705fe81f64a64e1d4b39f54a1055"
+dependencies = [
+ "bitflags",
+ "cc",
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]

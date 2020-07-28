@@ -43,7 +43,7 @@ error-chain = { version = "^0.12", default-features = false }
 flate2 = "^1.0"
 hex = "^0.4"
 libc = "^0.2"
-nix = "^0.17"
+nix = ">= 0.17, < 0.19"
 openssl = "^0.10"
 pipe = "^0.3"
 progress-streams = "^1.1"
