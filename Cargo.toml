@@ -16,6 +16,10 @@ pre-release-commit-message = "cargo: coreos-installer release {{version}}"
 post-release-commit-message = "cargo: development version bump"
 tag-message = "coreos-installer v{{version}}"
 
+[features]
+# rdcore is only useful inside the initrd of a CoreOS system
+rdcore = []
+
 [lib]
 name = "libcoreinst"
 path = "src/lib.rs"
@@ -27,6 +31,7 @@ path = "src/main.rs"
 [[bin]]
 name = "rdcore"
 path = "src/bin/rdcore/main.rs"
+required-features = ["rdcore"]
 
 [profile.release]
 lto = true

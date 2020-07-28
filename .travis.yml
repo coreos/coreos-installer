@@ -28,6 +28,8 @@ before_script:
 
 script:
   - cargo test
+  - cargo test --features rdcore
   - bash -c 'if [[ "$TRAVIS_RUST_VERSION" == "$CLIPPY_RUST_VERSION" ]]; then
       cargo clippy -- -D warnings;
+      cargo clippy --features rdcore -- -D warnings;
     fi'
