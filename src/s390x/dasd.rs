@@ -15,7 +15,7 @@
 use error_chain::bail;
 use gptman::GPT;
 use std::fs::{read_to_string, File};
-use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
@@ -24,7 +24,7 @@ use std::process::{Command, Stdio};
 use crate::blockdev::{get_sector_size, udev_settle};
 use crate::cmdline::*;
 use crate::errors::*;
-use crate::io::{copy, copy_exactly_n};
+use crate::io::{copy_exactly_n, BUFFER_SIZE};
 
 /////////////////////////////////////////////////////////////////////////////
 // IBM DASD Support
@@ -49,10 +49,10 @@ pub fn prepare_dasd(config: &InstallConfig) -> Result<()> {
 pub fn image_copy_s390x(
     first_mb: &[u8],
     source: &mut dyn Read,
-    dest: &mut File,
+    dest_file: &mut File,
     dest_path: &Path,
 ) -> Result<()> {
-    let (ranges, partitions) = partition_ranges(first_mb, dest)?;
+    let (ranges, partitions) = partition_ranges(first_mb, dest_file)?;
     make_partitions(
         dest_path
             .to_str()
@@ -66,6 +66,9 @@ pub fn image_copy_s390x(
     // there shouldn't be any partition data in the first MiB, so don't
     // worry about copying first_mb
     let mut cursor: u64 = 1024 * 1024;
+    // amortize write overhead; the decompressor will produce bytes in
+    // whatever chunk size it chooses
+    let mut dest = BufWriter::with_capacity(BUFFER_SIZE, dest_file);
     let sink = &mut io::sink();
     for range in ranges.iter() {
         if range.in_offset < cursor {
@@ -82,12 +85,14 @@ pub fn image_copy_s390x(
         }
         dest.seek(SeekFrom::Start(range.out_offset))
             .chain_err(|| "seeking output")?;
-        copy_exactly_n(source, dest, range.length, &mut buf).chain_err(|| "copying partition")?;
+        copy_exactly_n(source, &mut dest, range.length, &mut buf)
+            .chain_err(|| "copying partition")?;
         cursor += range.length;
     }
 
     // close out the stream
     copy(source, sink).chain_err(|| "reading remainder of stream")?;
+    dest.flush().chain_err(|| "flushing data to disk")?;
 
     Ok(())
 }

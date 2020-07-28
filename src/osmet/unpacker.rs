@@ -15,7 +15,7 @@
 use std::convert::{TryFrom, TryInto};
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
-use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::thread;

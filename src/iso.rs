@@ -18,7 +18,7 @@ use flate2::read::GzDecoder;
 use flate2::{Compression, GzBuilder};
 use std::convert::TryInto;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{stdin, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{copy, stdin, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 
 use crate::cmdline::*;
 use crate::errors::*;
@@ -121,8 +121,16 @@ impl CopiedFileHolder {
                 .create_new(true)
                 .open(&unwrapped_output_path)
                 .chain_err(|| format!("opening {}", &unwrapped_output_path))?;
-            copy(&mut input, &mut output)
-                .chain_err(|| format!("copying {} to {}", input_path, unwrapped_output_path))?;
+            let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &mut output);
+            copy(
+                &mut BufReader::with_capacity(BUFFER_SIZE, &mut input),
+                &mut writer,
+            )
+            .chain_err(|| format!("copying {} to {}", input_path, unwrapped_output_path))?;
+            writer
+                .flush()
+                .chain_err(|| format!("writing {}", unwrapped_output_path))?;
+            drop(writer);
             Ok(CopiedFileHolder {
                 file: output,
                 copied_path: Some(unwrapped_output_path.to_string()),

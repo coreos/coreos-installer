@@ -18,7 +18,7 @@ use flate2::read::GzDecoder;
 use nix::unistd::isatty;
 use progress_streams::ProgressReader;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{stderr, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{copy, stderr, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -240,20 +240,17 @@ where
     });
 
     // Wrap in a BufReader so we can peek at the first few bytes for
-    // format sniffing.  Don't trust the content-type since the server
-    // may not be configured correctly, or the file might be local.
-    // Then wrap in a reader for decompression.
-    let mut buf_reader = BufReader::new(&mut progress_reader);
+    // format sniffing, and to amortize read overhead.  Don't trust the
+    // content-type since the server may not be configured correctly, or
+    // the file might be local.  Then wrap in a reader for decompression.
+    let mut buf_reader = BufReader::with_capacity(BUFFER_SIZE, &mut progress_reader);
     let mut decompress_reader: Box<dyn Read> = {
         let sniff = buf_reader.fill_buf().chain_err(|| "sniffing input")?;
-        // verify default buffer size >= the largest magic number we might
-        // care about
-        assert!(sniff.len() >= 8);
         if !decompress {
             Box::new(buf_reader)
-        } else if &sniff[0..2] == b"\x1f\x8b" {
+        } else if sniff.len() > 2 && &sniff[0..2] == b"\x1f\x8b" {
             Box::new(GzDecoder::new(buf_reader))
-        } else if &sniff[0..6] == b"\xfd7zXZ\x00" {
+        } else if sniff.len() > 6 && &sniff[0..6] == b"\xfd7zXZ\x00" {
             Box::new(XzDecoder::new(buf_reader))
         } else {
             Box::new(buf_reader)
@@ -299,9 +296,13 @@ where
 pub fn image_copy_default(
     first_mb: &[u8],
     source: &mut dyn Read,
-    dest: &mut File,
+    dest_file: &mut File,
     _dest_path: &Path,
 ) -> Result<()> {
+    // Amortize write overhead.  The decompressor will produce bytes in
+    // whatever chunk size it chooses.
+    let mut dest = BufWriter::with_capacity(BUFFER_SIZE, dest_file);
+
     // Cache the first MiB and write zeroes to dest instead.  This ensures
     // that the disk image can't be used accidentally before its GPG signature
     // is verified.
@@ -320,13 +321,16 @@ pub fn image_copy_default(
     // sparse-copy the image, falling back to non-sparse copy if hardware
     // acceleration is unavailable.  But BLKZEROOUT doesn't support
     // BLKDEV_ZERO_NOFALLBACK, so we'd risk gigabytes of redundant I/O.
-    copy(source, dest).chain_err(|| "decoding and writing image")?;
+    copy(source, &mut dest).chain_err(|| "decoding and writing image")?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     dest.write_all(first_mb)
         .chain_err(|| "writing to first MiB of disk")?;
+
+    // Flush buffer.
+    dest.flush().chain_err(|| "flushing data to disk")?;
 
     Ok(())
 }
@@ -342,7 +346,16 @@ pub fn download_to_tempfile(url: &str) -> Result<File> {
         .error_for_status()
         .chain_err(|| format!("fetching '{}'", url))?;
 
-    copy(&mut resp, &mut f)?;
+    let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &mut f);
+    copy(
+        &mut BufReader::with_capacity(BUFFER_SIZE, &mut resp),
+        &mut writer,
+    )
+    .chain_err(|| format!("couldn't copy '{}'", url))?;
+    writer
+        .flush()
+        .chain_err(|| format!("couldn't write '{}' to disk", url))?;
+    drop(writer);
     f.seek(SeekFrom::Start(0))
         .chain_err(|| format!("rewinding file for '{}'", url))?;
 
