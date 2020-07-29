@@ -1,6 +1,6 @@
 [Unit]
 Description=Give Login Shell After CoreOS Installer
-After=coreos-installer.service
+After=coreos-installer.target
 ConditionPathExists=!/run/coreos-installer-reboot
 
 [Service]
