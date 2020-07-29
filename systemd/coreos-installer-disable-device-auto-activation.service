@@ -3,6 +3,8 @@ Description=Disable Device Auto-Activation for CoreOS Installer
 DefaultDependencies=no
 Before=systemd-udevd.service
 Before=dm-event.service
+# bash requires a writable /tmp for here-documents
+RequiresMountsFor=/tmp
 
 [Service]
 Type=oneshot
