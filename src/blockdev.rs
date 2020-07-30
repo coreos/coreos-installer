@@ -33,6 +33,9 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use crate::errors::*;
+use crate::util::*;
+
+use crate::{runcmd, runcmd_output};
 
 #[derive(Debug)]
 pub struct Disk {
@@ -85,30 +88,11 @@ impl Disk {
     }
 
     fn get_partitions(&self, with_holders: bool) -> Result<Vec<Partition>> {
-        // have lsblk enumerate partitions on the device
-        // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but -p option
-        let result = Command::new("lsblk")
-            .arg("--pairs")
-            .arg("--paths")
-            .arg("--output")
-            .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
-            .arg(&self.path)
-            .output()
-            .chain_err(|| "running lsblk")?;
-        if !result.status.success() {
-            // copy out its stderr
-            eprint!("{}", String::from_utf8_lossy(&*result.stderr));
-            bail!("lsblk of {} failed", &self.path);
-        }
-        let output = String::from_utf8(result.stdout).chain_err(|| "decoding lsblk output")?;
-
         // walk each device in the output
         let mut result: Vec<Partition> = Vec::new();
-        for line in output.lines() {
-            // parse key-value pairs
-            let fields = split_lsblk_line(line);
-            if let Some(name) = fields.get("NAME") {
-                match fields.get("TYPE") {
+        for devinfo in lsblk(Path::new(&self.path), true /* with_deps */)? {
+            if let Some(name) = devinfo.get("NAME") {
+                match devinfo.get("TYPE") {
                     // If unknown type, skip.
                     None => continue,
                     // If whole-disk device, skip.
@@ -121,15 +105,15 @@ impl Disk {
                     // partitions but aren't a partition themselves.
                     _ => continue,
                 };
-                let (mountpoint, swap) = match fields.get("MOUNTPOINT") {
+                let (mountpoint, swap) = match devinfo.get("MOUNTPOINT") {
                     Some(mp) if mp == "[SWAP]" => (None, true),
                     Some(mp) => (Some(mp.to_string()), false),
                     None => (None, false),
                 };
                 result.push(Partition {
                     path: name.to_owned(),
-                    label: fields.get("LABEL").map(<_>::to_string),
-                    fstype: fields.get("FSTYPE").map(<_>::to_string),
+                    label: devinfo.get("LABEL").map(<_>::to_string),
+                    fstype: devinfo.get("FSTYPE").map(<_>::to_string),
                     parent: self.path.to_owned(),
                     mountpoint,
                     swap,
@@ -283,17 +267,7 @@ impl PartTableKpartx {
         // but this blocks indefinitely inside a container.  See e.g.
         //   https://github.com/moby/moby/issues/22025
         // Use -n to skip blocking on udev, and then manually settle.
-        let result = Command::new("kpartx")
-            .arg(flag)
-            .arg("-n")
-            .arg(&self.path)
-            .output()
-            .chain_err(|| format!("running kpartx {} {}", flag, self.path))?;
-        if !result.status.success() {
-            // copy out its stderr
-            eprint!("{}", String::from_utf8_lossy(&*result.stderr));
-            bail!("kpartx {} {} failed: {}", flag, self.path, result.status);
-        }
+        runcmd_output!("kpartx", flag, "-n", &self.path)?;
         udev_settle()?;
         Ok(())
     }
@@ -416,17 +390,6 @@ impl Partition {
     }
 }
 
-/// Parse key-value pairs from lsblk --pairs.
-/// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
-fn split_lsblk_line(line: &str) -> HashMap<String, String> {
-    let re = Regex::new(r#"([A-Z-]+)="([^"]+)""#).unwrap();
-    let mut fields: HashMap<String, String> = HashMap::new();
-    for cap in re.captures_iter(line) {
-        fields.insert(cap[1].to_string(), cap[2].to_string());
-    }
-    fields
-}
-
 #[derive(Debug)]
 pub struct Mount {
     device: String,
@@ -479,6 +442,39 @@ fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64
 fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String> {
     let path = PathBuf::from(format!("/sys/dev/block/{}:{}/{}", maj, min, field));
     Ok(read_to_string(&path)?.trim_end().into())
+}
+
+pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>> {
+    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
+    let mut cmd = Command::new("lsblk");
+    cmd.arg("--pairs")
+        .arg("--paths")
+        .arg("--output")
+        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
+        .arg(dev);
+
+    if !with_deps {
+        cmd.arg("--nodeps");
+    }
+
+    let output = cmd_output(&mut cmd).chain_err(|| "running lsblk")?;
+    let mut result: Vec<HashMap<String, String>> = Vec::new();
+    for line in output.lines() {
+        // parse key-value pairs
+        result.push(split_lsblk_line(line));
+    }
+    Ok(result)
+}
+
+/// Parse key-value pairs from lsblk --pairs.
+/// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
+fn split_lsblk_line(line: &str) -> HashMap<String, String> {
+    let re = Regex::new(r#"([A-Z-]+)="([^"]+)""#).unwrap();
+    let mut fields: HashMap<String, String> = HashMap::new();
+    for cap in re.captures_iter(line) {
+        fields.insert(cap[1].to_string(), cap[2].to_string());
+    }
+    fields
 }
 
 impl Drop for Mount {
@@ -604,13 +600,7 @@ pub fn udev_settle() -> Result<()> {
     // our way out of this.
     sleep(Duration::from_millis(200));
 
-    let status = Command::new("udevadm")
-        .arg("settle")
-        .status()
-        .chain_err(|| "running udevadm settle")?;
-    if !status.success() {
-        bail!("udevadm settle failed");
-    }
+    runcmd!("udevadm", "settle")?;
     Ok(())
 }
 

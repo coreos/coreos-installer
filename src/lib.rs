@@ -23,4 +23,5 @@ pub mod osmet;
 #[cfg(target_arch = "s390x")]
 pub mod s390x;
 pub mod source;
+pub mod util;
 pub mod verify;
