@@ -399,7 +399,7 @@ pub struct Mount {
 }
 
 impl Mount {
-    fn try_mount(device: &str, fstype: &str, flags: mount::MsFlags) -> Result<Mount> {
+    pub fn try_mount(device: &str, fstype: &str, flags: mount::MsFlags) -> Result<Mount> {
         let tempdir = tempfile::Builder::new()
             .prefix("coreos-installer-")
             .tempdir()
@@ -418,7 +418,7 @@ impl Mount {
         })
     }
 
-    fn from_existing(path: &str) -> Result<Mount> {
+    pub fn from_existing(path: &str) -> Result<Mount> {
         let mounts = read_to_string("/proc/self/mounts").chain_err(|| "reading mount table")?;
         for line in mounts.lines() {
             let mount: Vec<&str> = line.split_whitespace().collect();
@@ -435,6 +435,10 @@ impl Mount {
             }
         }
         bail!("mountpoint {} not found", path);
+    }
+
+    pub fn device(&self) -> &str {
+        self.device.as_str()
     }
 
     pub fn mountpoint(&self) -> &Path {
@@ -510,6 +514,36 @@ fn split_lsblk_line(line: &str) -> HashMap<String, String> {
         fields.insert(cap[1].to_string(), cap[2].to_string());
     }
     fields
+}
+
+pub fn get_blkdev_deps(device: &Path) -> Result<Vec<PathBuf>> {
+    let deps = {
+        let mut p = PathBuf::from("/sys/block");
+        p.push(
+            device
+                .canonicalize()
+                .chain_err(|| format!("canonicalizing {}", device.display()))?
+                .file_name()
+                .chain_err(|| format!("path {} has no filename", device.display()))?,
+        );
+        p.push("slaves");
+        p
+    };
+    let mut ret: Vec<PathBuf> = Vec::new();
+    for ent in read_dir(&deps).chain_err(|| format!("reading {}", &deps.display()))? {
+        let ent = ent.chain_err(|| format!("reading {} entry", &deps.display()))?;
+        ret.push(Path::new("/dev").join(ent.file_name()));
+    }
+    Ok(ret)
+}
+
+pub fn get_blkdev_deps_recursing(device: &Path) -> Result<Vec<PathBuf>> {
+    let mut ret: Vec<PathBuf> = Vec::new();
+    for dep in get_blkdev_deps(device)? {
+        ret.extend(get_blkdev_deps_recursing(&dep)?);
+        ret.push(dep);
+    }
+    Ok(ret)
 }
 
 impl Drop for Mount {

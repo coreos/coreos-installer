@@ -1,0 +1,201 @@
+// Copyright 2020 CoreOS, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use error_chain::bail;
+use nix::mount;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use libcoreinst::blockdev::*;
+use libcoreinst::errors::*;
+use libcoreinst::install::*;
+use libcoreinst::util::*;
+
+use libcoreinst::runcmd_output;
+
+use crate::cmdline::*;
+
+pub fn rootmap(config: &RootMapConfig) -> Result<()> {
+    // get the backing device for the root mount
+    let mount = Mount::from_existing(&config.root_mount)?;
+    let device = PathBuf::from(mount.device());
+
+    // and from that we can collect all the parent backing devices too
+    let mut backing_devices = get_blkdev_deps_recursing(&device)?;
+    backing_devices.push(device);
+
+    // for each of those, convert them to kargs
+    let mut kargs = Vec::new();
+    for backing_device in backing_devices {
+        if let Some(dev_kargs) = device_to_kargs(&mount, backing_device)? {
+            kargs.extend(dev_kargs);
+        }
+    }
+
+    // we push the root kargs last, this has the nice property that the final order of kargs goes
+    // from lowest level to highest; see also
+    // https://github.com/coreos/fedora-coreos-tracker/issues/465
+    kargs.push(format!("root=UUID={}", mount.get_filesystem_uuid()?));
+
+    // we need this because with root= it's systemd that takes care of mounting via
+    // systemd-fstab-generator, and it defaults to read-only otherwise
+    kargs.push("rw".into());
+
+    let boot_mount = if let Some(path) = &config.boot_mount {
+        Some(Mount::from_existing(path)?)
+    } else if let Some(devpath) = &config.boot_device {
+        let devinfo = lsblk_single(Path::new(devpath))?;
+        let fs = devinfo
+            .get("FSTYPE")
+            .chain_err(|| format!("failed to query filesystem for {}", devpath))?;
+        Some(Mount::try_mount(devpath, fs, mount::MsFlags::empty())?)
+    } else {
+        None
+    };
+
+    if let Some(boot_mount) = boot_mount {
+        edit_bls_entries(boot_mount.mountpoint(), |orig_contents: &str| {
+            bls_entry_delete_and_append_kargs(orig_contents, None, Some(&kargs))
+        })
+        .chain_err(|| "appending rootmap kargs")?;
+        eprintln!("Injected kernel arguments into BLS: {}", kargs.join(" "));
+    } else {
+        // without /boot options, we just print the kargs; note we output to stdout here
+        println!("{}", kargs.join(" "));
+    }
+
+    Ok(())
+}
+
+fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>> {
+    let blkinfo = lsblk_single(&device)?;
+    let blktype = blkinfo
+        .get("TYPE")
+        .chain_err(|| format!("missing TYPE for {}", device.display()))?;
+    // a `match {}` construct would be nice here, but for RAID it's a prefix match
+    if blktype.starts_with("raid") {
+        Ok(Some(get_raid_kargs(&device)?))
+    } else if blktype == "crypt" {
+        Ok(Some(get_luks_kargs(root, &device)?))
+    } else if blktype == "part" || blktype == "disk" {
+        Ok(None)
+    } else {
+        bail!("unknown block device type {}", blktype)
+    }
+}
+
+fn get_raid_kargs(device: &Path) -> Result<Vec<String>> {
+    let details = mdadm_detail(device)?;
+    let uuid = details
+        .get("MD_UUID")
+        .chain_err(|| format!("missing MD_UUID for {}", device.display()))?;
+    Ok(vec![format!("rd.md.uuid={}", uuid)])
+}
+
+fn mdadm_detail(device: &Path) -> Result<HashMap<String, String>> {
+    let output = runcmd_output!("mdadm", "--detail", "--export", device)?;
+    let mut result: HashMap<String, String> = HashMap::new();
+    for line in output.lines() {
+        let (key, val) = split_mdadm_line(line)?;
+        result.insert(key, val);
+    }
+    Ok(result)
+}
+
+fn split_mdadm_line(line: &str) -> Result<(String, String)> {
+    let v: Vec<&str> = line.splitn(2, '=').collect();
+    if v.len() != 2 {
+        bail!("invalid mdadm line: {}", line);
+    }
+    Ok((v[0].into(), v[1].into()))
+}
+
+fn get_luks_kargs(root: &Mount, device: &Path) -> Result<Vec<String>> {
+    // The LUKS UUID is a property of the backing block device of *this* block device, so we have
+    // to get its parent. This is a bit awkward because we're already iterating through parents, so
+    // theoretically we could re-use the same state here. But meh... this is easier to understand.
+    let deps = get_blkdev_deps(device)?;
+    match deps.len() {
+        0 => bail!("missing parent device for {}", device.display()),
+        1 => {
+            let uuid = get_luks_uuid(&deps[0])?;
+            let name = get_luks_name(device)?;
+            let mut kargs = vec![format!("rd.luks.name={}={}", uuid, name)];
+            if crypttab_device_has_netdev(root, &name)? {
+                kargs.push("rd.neednet=1".into());
+            }
+            Ok(kargs)
+        }
+        _ => bail!(
+            "found multiple parent devices for crypt device {}",
+            device.display()
+        ),
+    }
+}
+
+// crypttab is the source of truth for whether an encrypted block device requires networking.
+fn crypttab_device_has_netdev(root: &Mount, dmname: &str) -> Result<bool> {
+    let crypttab_path = root.mountpoint().join("etc/crypttab");
+
+    let crypttab = std::fs::read_to_string(&crypttab_path)
+        .chain_err(|| format!("opening {}", crypttab_path.display()))?;
+    for line in crypttab.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let fields: Vec<&str> = line.split_whitespace().collect();
+
+        // from crypttab(5), format is:
+        //   name encrypted-device password options
+        // first two fields are mandatory, remaining are optional
+
+        if fields.len() < 2 {
+            bail!("crypttab line missing name or device: {}", line);
+        }
+
+        if fields[0] != dmname {
+            continue;
+        }
+
+        if fields.len() < 4 {
+            return Ok(false);
+        }
+        return Ok(fields[3].split(',').any(|opt| opt == "_netdev"));
+    }
+
+    bail!("couldn't find {} in {}", dmname, crypttab_path.display());
+}
+
+fn get_luks_name(device: &Path) -> Result<String> {
+    Ok(runcmd_output!(
+        "dmsetup",
+        "info",
+        "--columns",
+        "--noheadings",
+        "-o",
+        "name",
+        device
+    )?
+    .trim()
+    .into())
+}
+
+fn get_luks_uuid(device: &Path) -> Result<String> {
+    Ok(runcmd_output!("cryptsetup", "luksUUID", device)?
+        .trim()
+        .into())
+}

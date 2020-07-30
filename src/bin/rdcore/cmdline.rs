@@ -18,7 +18,14 @@ use error_chain::bail;
 use libcoreinst::errors::*;
 
 pub enum Config {
+    RootMap(RootMapConfig),
     StreamHash(StreamHashConfig),
+}
+
+pub struct RootMapConfig {
+    pub boot_device: Option<String>,
+    pub boot_mount: Option<String>,
+    pub root_mount: String,
 }
 
 pub struct StreamHashConfig {
@@ -38,6 +45,37 @@ pub fn parse_args() -> Result<Config> {
         .global_setting(AppSettings::UnifiedHelpMessage)
         .global_setting(AppSettings::VersionlessSubcommands)
         .subcommand(
+            SubCommand::with_name("rootmap")
+                .about("Generate rootmap kargs and optionally inject into BLS configs")
+                .arg(
+                    Arg::with_name("root-mount")
+                        .help("Path to rootfs mount")
+                        .required(true)
+                        .value_name("ROOT_MOUNT")
+                        .takes_value(true),
+                )
+                // we allow mounting /boot ourselves (--boot-device) or letting our caller do the
+                // mount and point us to it (--boot-mount); lots of backstory on /boot mounting in
+                // the initrd, so leave some flexibility for changing implementation details on the
+                // OS side without having to respin rdcore
+                .arg(
+                    Arg::with_name("boot-device")
+                        .long("boot-device")
+                        .help("Boot device containing BLS entries to modify")
+                        .conflicts_with("boot-mount")
+                        .value_name("DEVPATH")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("boot-mount")
+                        .long("boot-mount")
+                        .help("Boot mount containing BLS entries to modify")
+                        .conflicts_with("boot-device")
+                        .value_name("BOOT_MOUNT")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("stream-hash")
                 .about("Copy data from stdin to stdout, checking piecewise hashes")
                 .arg(
@@ -51,9 +89,21 @@ pub fn parse_args() -> Result<Config> {
         .get_matches();
 
     match app_matches.subcommand() {
+        ("rootmap", Some(matches)) => parse_rootmap(&matches),
         ("stream-hash", Some(matches)) => parse_stream_hash(&matches),
         _ => bail!("unrecognized subcommand"),
     }
+}
+
+fn parse_rootmap(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::RootMap(RootMapConfig {
+        boot_device: matches.value_of("boot-device").map(String::from),
+        boot_mount: matches.value_of("boot-mount").map(String::from),
+        root_mount: matches
+            .value_of("root-mount")
+            .map(String::from)
+            .expect("rootfs mount missing"),
+    }))
 }
 
 fn parse_stream_hash(matches: &ArgMatches) -> Result<Config> {

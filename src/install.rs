@@ -256,7 +256,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
 }
 
 // This is split out so that we can unit test it.
-fn bls_entry_delete_and_append_kargs(
+pub fn bls_entry_delete_and_append_kargs(
     orig_contents: &str,
     delete_args: Option<&Vec<String>>,
     append_args: Option<&Vec<String>>,
@@ -336,7 +336,7 @@ fn bls_entry_write_platform(orig_contents: &str, platform: &str) -> Result<Strin
 }
 
 /// Apply a transforming function on each BLS entry found.
-fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -> Result<()> {
+pub fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -> Result<()> {
     // walk /boot/loader/entries/*.conf
     let mut config_path = mountpoint.to_path_buf();
     config_path.push("loader/entries");

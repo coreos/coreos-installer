@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod cmdline;
+mod rootmap;
 mod stream_hash;
 
 use libcoreinst::errors;
@@ -28,6 +29,7 @@ fn run() -> Result<()> {
     let config = cmdline::parse_args().chain_err(|| "parsing arguments")?;
 
     match config {
+        Config::RootMap(c) => rootmap::rootmap(&c),
         Config::StreamHash(c) => stream_hash::stream_hash(&c),
     }
 }
