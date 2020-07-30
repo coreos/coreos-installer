@@ -444,6 +444,20 @@ impl Mount {
     pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
         Partition::get_offsets(&self.device)
     }
+
+    pub fn get_filesystem_uuid(&self) -> Result<String> {
+        let devinfo = lsblk(Path::new(&self.device), false)?;
+        match devinfo.len() {
+            // this really should never happen; lsblk would've errored
+            0 => bail!("lsblk returned no entries for {}?", &self.device),
+            1 => devinfo[0]
+                .get("UUID")
+                .map(String::from)
+                .chain_err(|| format!("filesystem {} has no UUID", self.device)),
+            // this also should never happen with --nodeps
+            _ => bail!("lsblk returned multiple entries for {}?", &self.device),
+        }
+    }
 }
 
 fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64> {
@@ -472,7 +486,7 @@ pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>
     cmd.arg("--pairs")
         .arg("--paths")
         .arg("--output")
-        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
+        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID")
         .arg(dev);
 
     if !with_deps {
