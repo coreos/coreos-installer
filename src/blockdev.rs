@@ -90,7 +90,7 @@ impl Disk {
     fn get_partitions(&self, with_holders: bool) -> Result<Vec<Partition>> {
         // walk each device in the output
         let mut result: Vec<Partition> = Vec::new();
-        for devinfo in lsblk(Path::new(&self.path), true /* with_deps */)? {
+        for devinfo in lsblk(Path::new(&self.path))? {
             if let Some(name) = devinfo.get("NAME") {
                 match devinfo.get("TYPE") {
                     // If unknown type, skip.
@@ -446,17 +446,11 @@ impl Mount {
     }
 
     pub fn get_filesystem_uuid(&self) -> Result<String> {
-        let devinfo = lsblk(Path::new(&self.device), false)?;
-        match devinfo.len() {
-            // this really should never happen; lsblk would've errored
-            0 => bail!("lsblk returned no entries for {}?", &self.device),
-            1 => devinfo[0]
-                .get("UUID")
-                .map(String::from)
-                .chain_err(|| format!("filesystem {} has no UUID", self.device)),
-            // this also should never happen with --nodeps
-            _ => bail!("lsblk returned multiple entries for {}?", &self.device),
-        }
+        let devinfo = lsblk_single(Path::new(&self.device))?;
+        devinfo
+            .get("UUID")
+            .map(String::from)
+            .chain_err(|| format!("filesystem {} has no UUID", self.device))
     }
 }
 
@@ -480,20 +474,25 @@ fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String>
     Ok(read_to_string(&path)?.trim_end().into())
 }
 
-pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>> {
-    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
-    let mut cmd = Command::new("lsblk");
-    cmd.arg("--pairs")
-        .arg("--paths")
-        .arg("--output")
-        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID")
-        .arg(dev);
-
-    if !with_deps {
-        cmd.arg("--nodeps");
+pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
+    let mut devinfos = lsblk(Path::new(dev))?;
+    if devinfos.is_empty() {
+        // this should never happen because `lsblk` itself would've failed
+        bail!("no lsblk results for {}", dev.display());
     }
+    Ok(devinfos.remove(0))
+}
 
-    let output = cmd_output(&mut cmd).chain_err(|| "running lsblk")?;
+pub fn lsblk(dev: &Path) -> Result<Vec<HashMap<String, String>>> {
+    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
+    let output = runcmd_output!(
+        "lsblk",
+        "--pairs",
+        "--paths",
+        "--output",
+        "NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID",
+        dev
+    )?;
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for line in output.lines() {
         // parse key-value pairs
