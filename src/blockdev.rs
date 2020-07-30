@@ -394,6 +394,8 @@ impl Partition {
 pub struct Mount {
     device: String,
     mountpoint: PathBuf,
+    /// Whether we own this mount.
+    owned: bool,
 }
 
 impl Mount {
@@ -412,7 +414,27 @@ impl Mount {
         Ok(Mount {
             device: device.to_string(),
             mountpoint,
+            owned: true,
         })
+    }
+
+    fn from_existing(path: &str) -> Result<Mount> {
+        let mounts = read_to_string("/proc/self/mounts").chain_err(|| "reading mount table")?;
+        for line in mounts.lines() {
+            let mount: Vec<&str> = line.split_whitespace().collect();
+            // see https://man7.org/linux/man-pages/man5/fstab.5.html
+            if mount.len() != 6 {
+                bail!("invalid line in /proc/self/mounts: {}", line);
+            }
+            if mount[1] == path {
+                return Ok(Mount {
+                    device: mount[0].to_string(),
+                    mountpoint: path.into(),
+                    owned: false,
+                });
+            }
+        }
+        bail!("mountpoint {} not found", path);
     }
 
     pub fn mountpoint(&self) -> &Path {
@@ -479,6 +501,10 @@ fn split_lsblk_line(line: &str) -> HashMap<String, String> {
 
 impl Drop for Mount {
     fn drop(&mut self) {
+        if !self.owned {
+            return;
+        }
+
         // Unmount sometimes fails immediately after closing the last open
         // file on the partition.  Retry several times before giving up.
         for retries in (0..20).rev() {
