@@ -25,7 +25,7 @@ use std::result;
 use std::time::{Duration, Instant};
 use xz2::read::XzDecoder;
 
-use crate::blockdev::detect_formatted_sector_size;
+use crate::blockdev::detect_formatted_sector_size_start;
 use crate::cmdline::*;
 use crate::errors::*;
 use crate::io::*;
@@ -152,6 +152,7 @@ fn write_image_and_sig(
         image_copy_default,
         decompress,
         None,
+        None,
     )?;
 
     // write signature, if relevant
@@ -177,6 +178,7 @@ pub fn write_image<F>(
     dest_path: &Path,
     image_copy: F,
     decompress: bool,
+    byte_limit: Option<(u64, String)>, // limit and explanation
     expected_sector_size: Option<NonZeroU32>,
 ) -> Result<()>
 where
@@ -203,7 +205,7 @@ where
     // content-type since the server may not be configured correctly, or
     // the file might be local.  Then wrap in a reader for decompression.
     let mut buf_reader = BufReader::with_capacity(BUFFER_SIZE, &mut progress_reader);
-    let mut decompress_reader: Box<dyn Read> = {
+    let decompress_reader: Box<dyn Read> = {
         let sniff = buf_reader.fill_buf().chain_err(|| "sniffing input")?;
         if !decompress {
             Box::new(buf_reader)
@@ -216,16 +218,22 @@ where
         }
     };
 
+    // Wrap again for limit checking.
+    let mut limit_reader: Box<dyn Read> = match byte_limit {
+        None => Box::new(decompress_reader),
+        Some((limit, reason)) => Box::new(LimitReader::new(decompress_reader, limit, reason)),
+    };
+
     // Read the first MiB of input and, if requested, check it against the
     // image's formatted sector size.
     let mut first_mb = [0u8; 1024 * 1024];
-    decompress_reader
+    limit_reader
         .read_exact(&mut first_mb)
         .chain_err(|| "decoding first MiB of image")?;
     // Were we asked to check sector size?
     if let Some(expected) = expected_sector_size {
         // Can we derive one from source data?
-        if let Some(actual) = detect_formatted_sector_size(&first_mb) {
+        if let Some(actual) = detect_formatted_sector_size_start(&first_mb) {
             // Do they match?
             if expected != actual {
                 bail!(
@@ -238,7 +246,7 @@ where
     }
 
     // call the callback to copy the image
-    image_copy(&first_mb, &mut decompress_reader, dest, dest_path)?;
+    image_copy(&first_mb, &mut limit_reader, dest, dest_path)?;
 
     // flush
     dest.flush().chain_err(|| "flushing data to disk")?;

@@ -89,6 +89,8 @@ fi
 copy_arg coreos.inst.image_url       --image-url
 copy_arg coreos.inst.platform_id     --platform
 copy_arg coreos.inst.stream          --stream
+copy_arg coreos.inst.save_partlabel  --save-partlabel
+copy_arg coreos.inst.save_partindex  --save-partindex
 
 # Insecure boolean
 if karg_bool coreos.inst.insecure; then

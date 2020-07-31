@@ -15,6 +15,7 @@
 use error_chain::{bail, ensure};
 use openssl::sha;
 use std::io::{self, ErrorKind, Read, Write};
+use std::result;
 
 use crate::errors::*;
 
@@ -163,9 +164,54 @@ impl IgnitionHash {
     }
 }
 
+pub struct LimitReader<R: Read> {
+    source: R,
+    length: u64,
+    remaining: u64,
+    limit_cause: String,
+}
+
+impl<R: Read> LimitReader<R> {
+    pub fn new(source: R, length: u64, limit_cause: String) -> Self {
+        LimitReader {
+            source,
+            length,
+            remaining: length,
+            limit_cause,
+        }
+    }
+}
+
+impl<R: Read> Read for LimitReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> result::Result<usize, io::Error> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let allowed = self.remaining.min(buf.len() as u64);
+        if allowed == 0 {
+            // reached the limit; only error if we're not at EOF
+            return match self.source.read(&mut buf[..1]) {
+                Ok(0) => Ok(0),
+                Ok(_) => Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("{} at offset {}", self.limit_cause, self.length),
+                )),
+                Err(e) => Err(e),
+            };
+        }
+        let count = self.source.read(&mut buf[..allowed as usize])?;
+        self.remaining = self
+            .remaining
+            .checked_sub(count as u64)
+            .expect("read more bytes than allowed");
+        Ok(count)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn test_ignition_hash_cli_parse() {
@@ -270,5 +316,69 @@ mod tests {
             80
         );
         assert_eq!(copy_n(&mut &data[..], &mut sink, 81, &mut buf).unwrap(), 80);
+    }
+
+    #[test]
+    fn limit_reader_test() {
+        // build input data
+        let mut data: Vec<u8> = Vec::new();
+        for i in 0..100 {
+            data.push(i);
+        }
+
+        // limit larger than file
+        let mut file = Cursor::new(data.clone());
+        let mut lim = LimitReader::new(&mut file, 150, "foo".into());
+        let mut buf = [0u8; 60];
+        assert_eq!(lim.read(&mut buf).unwrap(), 60);
+        assert_eq!(buf[..], data[0..60]);
+        assert_eq!(lim.read(&mut buf).unwrap(), 40);
+        assert_eq!(buf[..40], data[60..100]);
+        assert_eq!(lim.read(&mut buf).unwrap(), 0);
+
+        // limit exactly equal to file
+        let mut file = Cursor::new(data.clone());
+        let mut lim = LimitReader::new(&mut file, 100, "foo".into());
+        let mut buf = [0u8; 60];
+        assert_eq!(lim.read(&mut buf).unwrap(), 60);
+        assert_eq!(buf[..], data[0..60]);
+        assert_eq!(lim.read(&mut buf).unwrap(), 40);
+        assert_eq!(buf[..40], data[60..100]);
+        assert_eq!(lim.read(&mut buf).unwrap(), 0);
+
+        // buffer smaller than limit
+        let mut file = Cursor::new(data.clone());
+        let mut lim = LimitReader::new(&mut file, 90, "foo".into());
+        let mut buf = [0u8; 60];
+        assert_eq!(lim.read(&mut buf).unwrap(), 60);
+        assert_eq!(buf[..], data[0..60]);
+        assert_eq!(lim.read(&mut buf).unwrap(), 30);
+        assert_eq!(buf[..30], data[60..90]);
+        assert_eq!(
+            lim.read(&mut buf).unwrap_err().to_string(),
+            "foo at offset 90"
+        );
+
+        // buffer exactly equal to limit
+        let mut file = Cursor::new(data.clone());
+        let mut lim = LimitReader::new(&mut file, 60, "foo".into());
+        let mut buf = [0u8; 60];
+        assert_eq!(lim.read(&mut buf).unwrap(), 60);
+        assert_eq!(buf[..], data[0..60]);
+        assert_eq!(
+            lim.read(&mut buf).unwrap_err().to_string(),
+            "foo at offset 60"
+        );
+
+        // buffer larger than limit
+        let mut file = Cursor::new(data.clone());
+        let mut lim = LimitReader::new(&mut file, 50, "foo".into());
+        let mut buf = [0u8; 60];
+        assert_eq!(lim.read(&mut buf).unwrap(), 50);
+        assert_eq!(buf[..50], data[0..50]);
+        assert_eq!(
+            lim.read(&mut buf).unwrap_err().to_string(),
+            "foo at offset 50"
+        );
     }
 }
