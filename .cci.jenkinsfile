@@ -49,8 +49,17 @@ cosaPod(buildroot: true) {
             stage("Test ISO") {
                 // No need to run the iso-live-login scenario (in theory, and also right
                 // now it's buggy)
-                shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,iso-install,iso-offline-install")
-                shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install,iso-offline-install --qemu-native-4k")
+                try {
+                    parallel metal: {
+                        shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,iso-install,iso-offline-install --output-dir tmp/kola-testiso-metal")
+                    }, metal4k: {
+                        shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install,iso-offline-install --qemu-native-4k --output-dir tmp/kola-testiso-metal4k")
+                    }
+                } finally {
+                    shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal.tar.xz")
+                    shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal4k/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal4k.tar.xz")
+                    archiveArtifacts allowEmptyArchive: true, artifacts: 'kola-testiso*.tar.xz'
+                }
             }
         }
     )

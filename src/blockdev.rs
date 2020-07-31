@@ -90,7 +90,7 @@ impl Disk {
     fn get_partitions(&self, with_holders: bool) -> Result<Vec<Partition>> {
         // walk each device in the output
         let mut result: Vec<Partition> = Vec::new();
-        for devinfo in lsblk(Path::new(&self.path), true /* with_deps */)? {
+        for devinfo in lsblk(Path::new(&self.path))? {
             if let Some(name) = devinfo.get("NAME") {
                 match devinfo.get("TYPE") {
                     // If unknown type, skip.
@@ -394,10 +394,12 @@ impl Partition {
 pub struct Mount {
     device: String,
     mountpoint: PathBuf,
+    /// Whether we own this mount.
+    owned: bool,
 }
 
 impl Mount {
-    fn try_mount(device: &str, fstype: &str, flags: mount::MsFlags) -> Result<Mount> {
+    pub fn try_mount(device: &str, fstype: &str, flags: mount::MsFlags) -> Result<Mount> {
         let tempdir = tempfile::Builder::new()
             .prefix("coreos-installer-")
             .tempdir()
@@ -412,7 +414,31 @@ impl Mount {
         Ok(Mount {
             device: device.to_string(),
             mountpoint,
+            owned: true,
         })
+    }
+
+    pub fn from_existing(path: &str) -> Result<Mount> {
+        let mounts = read_to_string("/proc/self/mounts").chain_err(|| "reading mount table")?;
+        for line in mounts.lines() {
+            let mount: Vec<&str> = line.split_whitespace().collect();
+            // see https://man7.org/linux/man-pages/man5/fstab.5.html
+            if mount.len() != 6 {
+                bail!("invalid line in /proc/self/mounts: {}", line);
+            }
+            if mount[1] == path {
+                return Ok(Mount {
+                    device: mount[0].to_string(),
+                    mountpoint: path.into(),
+                    owned: false,
+                });
+            }
+        }
+        bail!("mountpoint {} not found", path);
+    }
+
+    pub fn device(&self) -> &str {
+        self.device.as_str()
     }
 
     pub fn mountpoint(&self) -> &Path {
@@ -421,6 +447,14 @@ impl Mount {
 
     pub fn get_partition_offsets(&self) -> Result<(u64, u64)> {
         Partition::get_offsets(&self.device)
+    }
+
+    pub fn get_filesystem_uuid(&self) -> Result<String> {
+        let devinfo = lsblk_single(Path::new(&self.device))?;
+        devinfo
+            .get("UUID")
+            .map(String::from)
+            .chain_err(|| format!("filesystem {} has no UUID", self.device))
     }
 }
 
@@ -444,20 +478,25 @@ fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String>
     Ok(read_to_string(&path)?.trim_end().into())
 }
 
-pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>> {
-    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
-    let mut cmd = Command::new("lsblk");
-    cmd.arg("--pairs")
-        .arg("--paths")
-        .arg("--output")
-        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT")
-        .arg(dev);
-
-    if !with_deps {
-        cmd.arg("--nodeps");
+pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
+    let mut devinfos = lsblk(Path::new(dev))?;
+    if devinfos.is_empty() {
+        // this should never happen because `lsblk` itself would've failed
+        bail!("no lsblk results for {}", dev.display());
     }
+    Ok(devinfos.remove(0))
+}
 
-    let output = cmd_output(&mut cmd).chain_err(|| "running lsblk")?;
+pub fn lsblk(dev: &Path) -> Result<Vec<HashMap<String, String>>> {
+    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
+    let output = runcmd_output!(
+        "lsblk",
+        "--pairs",
+        "--paths",
+        "--output",
+        "NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID",
+        dev
+    )?;
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for line in output.lines() {
         // parse key-value pairs
@@ -477,8 +516,42 @@ fn split_lsblk_line(line: &str) -> HashMap<String, String> {
     fields
 }
 
+pub fn get_blkdev_deps(device: &Path) -> Result<Vec<PathBuf>> {
+    let deps = {
+        let mut p = PathBuf::from("/sys/block");
+        p.push(
+            device
+                .canonicalize()
+                .chain_err(|| format!("canonicalizing {}", device.display()))?
+                .file_name()
+                .chain_err(|| format!("path {} has no filename", device.display()))?,
+        );
+        p.push("slaves");
+        p
+    };
+    let mut ret: Vec<PathBuf> = Vec::new();
+    for ent in read_dir(&deps).chain_err(|| format!("reading {}", &deps.display()))? {
+        let ent = ent.chain_err(|| format!("reading {} entry", &deps.display()))?;
+        ret.push(Path::new("/dev").join(ent.file_name()));
+    }
+    Ok(ret)
+}
+
+pub fn get_blkdev_deps_recursing(device: &Path) -> Result<Vec<PathBuf>> {
+    let mut ret: Vec<PathBuf> = Vec::new();
+    for dep in get_blkdev_deps(device)? {
+        ret.extend(get_blkdev_deps_recursing(&dep)?);
+        ret.push(dep);
+    }
+    Ok(ret)
+}
+
 impl Drop for Mount {
     fn drop(&mut self) {
+        if !self.owned {
+            return;
+        }
+
         // Unmount sometimes fails immediately after closing the last open
         // file on the partition.  Retry several times before giving up.
         for retries in (0..20).rev() {
