@@ -515,7 +515,6 @@ impl SavedPartitions {
             .file_type()
             .is_block_device()
         {
-            // we're running in a unit test
             return Ok(());
         }
         let disk_sector_size = get_sector_size(&file)?.get() as u64;
