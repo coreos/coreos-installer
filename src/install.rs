@@ -47,12 +47,19 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     #[cfg(target_arch = "s390x")]
     {
         if is_dasd(config)? {
+            if !config.save_partitions.is_empty() {
+                // The user requested partition saving, but SavedPartitions
+                // doesn't understand DASD VTOCs and won't find any partitions
+                // to save.
+                bail!("saving DASD partitions is not supported");
+            }
             s390x::prepare_dasd(&config)?;
         }
     }
 
     // open output; ensure it's a block device and we have exclusive access
     let mut dest = OpenOptions::new()
+        .read(true)
         .write(true)
         .open(&config.device)
         .chain_err(|| format!("opening {}", &config.device))?;
@@ -67,6 +74,9 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     ensure_exclusive_access(&config.device)
         .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
+    // save partitions that we plan to keep
+    let saved = SavedPartitions::new(&config.device, &config.save_partitions)?;
+
     // get reference to partition table
     // For kpartx partitioning, this will conditionally call kpartx -d
     // when dropped
@@ -77,7 +87,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
-    if let Err(err) = write_disk(&config, &mut source, &mut dest, &mut *table) {
+    if let Err(err) = write_disk(&config, &mut source, &mut dest, &mut *table, &saved) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
         eprint!("{}", ChainedError::display_chain(&err));
@@ -85,8 +95,37 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         // clean up
         if config.preserve_on_error {
             eprintln!("Preserving partition table as requested");
+            if saved.is_saved() {
+                // The user asked to preserve the damaged partition table
+                // for debugging.  We also have saved partitions, and those
+                // may or may not be in the damaged table depending where we
+                // failed.  Preserve the saved partitions by writing them to
+                // a file in /tmp and telling the user about it.  Hey, it's
+                // a debug flag.
+                let stash = tempfile::Builder::new()
+                    .prefix("coreos-installer-partitions.")
+                    .tempfile()
+                    .chain_err(|| "creating partition stash file")?;
+                eprintln!(
+                    "Storing saved partition entries to {}",
+                    stash.path().display()
+                );
+                stash
+                    .as_file()
+                    .set_len(1024 * 1024)
+                    .chain_err(|| "extending partition stash file")?;
+                saved
+                    .write(stash.path())
+                    .chain_err(|| "stashing saved partitions")?;
+                stash
+                    .keep()
+                    .chain_err(|| "retaining saved partition stash")?;
+            }
         } else {
             clear_partition_table(&mut dest, &mut *table)?;
+            saved
+                .write(&config.device)
+                .chain_err(|| "restoring additional partitions")?;
         }
 
         // return a generic error so our exit status is right
@@ -126,6 +165,7 @@ fn write_disk(
     source: &mut ImageSource,
     dest: &mut File,
     table: &mut dyn PartTable,
+    saved: &SavedPartitions,
 ) -> Result<()> {
     // Get sector size of destination, for comparing with image
     let sector_size = get_sector_size(dest)?;
@@ -143,8 +183,16 @@ fn write_disk(
         Path::new(&config.device),
         image_copy,
         true,
+        saved
+            .get_offset()?
+            .map(|(offset, desc)| (offset, format!("collision with {}", desc))),
         Some(sector_size),
     )?;
+
+    // restore saved partitions, if any, and reread table
+    saved
+        .write(&config.device)
+        .chain_err(|| "restoring saved partitions")?;
     table.reread()?;
 
     // postprocess
@@ -416,9 +464,41 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
     eprintln!("Clearing partition table");
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
-    let zeroes: [u8; 1024 * 1024] = [0; 1024 * 1024];
+    let zeroes = [0u8; 1024 * 1024];
     dest.write_all(&zeroes)
-        .chain_err(|| "clearing partition table")?;
+        .chain_err(|| "clearing primary partition table")?;
+
+    // Now the backup GPT, which is in the last LBA.  If there is one, we
+    // should clear it, since it might have stale partition info.
+    // Constraints:
+    //   - Never overwrite partition contents.
+    //   - If we're on a GPT platform, we have the right to overwrite at
+    //     least the last 4 KiB of disk.  On 4Kn drives, that's the backup
+    //     GPT.  On 512-byte drives, there is at least 16 KiB of
+    //     non-partitionable space before the backup GPT, so we're still safe.
+    //     This is true even if we're writing to a legacy MBR disk, because
+    //     by doing so, the user already gave the OS permission to write the
+    //     backup GPT on first boot.
+    //   - We can't assume that the backup GPT corresponds to the disk
+    //     sector size because of possible user error.  We probably can't
+    //     even assume there aren't backup GPTs for both sector sizes.
+    //   - If we're not on a GPT system (s390x DASD), we can't overwrite the
+    //     end of the disk.
+    // We could probably get away with clearing the last 4 KiB if !DASD, but
+    // be a bit more conservative: probe for _any_ GPT signature and, if
+    // found, clear the last 4 KiB.
+    let mut buf = [0u8; 4096];
+    dest.seek(SeekFrom::End(-(buf.len() as i64)))
+        .chain_err(|| "seeking to end of disk")?;
+    dest.read_exact(&mut buf)
+        .chain_err(|| "reading end of disk")?;
+    if detect_formatted_sector_size_end(&buf).is_some() {
+        dest.seek(SeekFrom::End(-(buf.len() as i64)))
+            .chain_err(|| "seeking to end of disk")?;
+        dest.write_all(&zeroes[..buf.len()])
+            .chain_err(|| "clearing backup partition table")?;
+    }
+
     dest.flush()
         .chain_err(|| "flushing partition table to disk")?;
     dest.sync_all()

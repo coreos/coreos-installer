@@ -107,6 +107,13 @@ line.
   CoreOS image is being installed on.  Optional; defaults to `metal`.
   Normally this should be specified only if installing inside a virtual
   machine.
+* `coreos.inst.save_partlabel` - Comma-separated labels of partitions to
+  preserve during the install.  Glob-style wildcards are permitted.  The
+  specified partitions need not exist.  Optional.
+* `coreos.inst.save_partindex` - Comma-separated indexes of partitions to
+  preserve during the install.  Ranges (`m-n`) are permitted, and either `m`
+  or `n` can be omitted.  The specified partitions need not exist.
+  Optional.
 * `coreos.inst.insecure` - Permit the OS image to be unsigned.  Optional.
 * `coreos.inst.skip_reboot` - Don't reboot after installing.  Optional.
 

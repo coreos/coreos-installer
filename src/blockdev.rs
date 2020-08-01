@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use error_chain::bail;
+use gptman::{GPTPartitionEntry, GPT};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount};
 use regex::Regex;
@@ -31,7 +32,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
+use uuid::Uuid;
 
+use crate::cmdline::PartitionFilter;
 use crate::errors::*;
 use crate::util::*;
 
@@ -458,6 +461,200 @@ impl Mount {
     }
 }
 
+#[derive(Debug)]
+pub struct SavedPartitions {
+    sector_size: Option<u64>,
+    partitions: Vec<(u32, GPTPartitionEntry)>,
+}
+
+impl SavedPartitions {
+    pub fn new<P: AsRef<Path>>(disk: P, filters: &[PartitionFilter]) -> Result<Self> {
+        let disk = disk.as_ref();
+        let mut result = Self {
+            sector_size: None,
+            partitions: Vec::new(),
+        };
+
+        // skip reading partition table if we don't have an accept filter
+        if filters.is_empty() {
+            return Ok(result);
+        }
+
+        let mut f = OpenOptions::new()
+            .read(true)
+            .open(disk)
+            .chain_err(|| format!("opening {} for reading", disk.display()))?;
+        let gpt = match GPT::find_from(&mut f) {
+            Ok(gpt) => gpt,
+            // no GPT on this disk, so no partitions to save
+            Err(gptman::Error::InvalidSignature) => return Ok(result),
+            Err(e) => {
+                return Err(e)
+                    .chain_err(|| format!("reading partition table of {}", disk.display()))?
+            }
+        };
+        Self::verify_disk_sector_size_matches_gpt(disk, &f, gpt.sector_size)?;
+        result.sector_size = Some(gpt.sector_size);
+
+        for (i, p) in gpt.iter() {
+            if Self::matches_filters(i, p, filters) {
+                result.partitions.push((i, p.clone()));
+            }
+        }
+        Ok(result)
+    }
+
+    fn verify_disk_sector_size_matches_gpt(
+        disk: &Path,
+        file: &File,
+        sector_size: u64,
+    ) -> Result<()> {
+        if !file
+            .metadata()
+            .chain_err(|| format!("getting metadata for {}", disk.display()))?
+            .file_type()
+            .is_block_device()
+        {
+            // we're running in a unit test
+            return Ok(());
+        }
+        let disk_sector_size = get_sector_size(&file)?.get() as u64;
+        if disk_sector_size != sector_size {
+            bail!(
+                "sector size {} of disk {} doesn't match sector size {} of GPT",
+                disk_sector_size,
+                disk.display(),
+                sector_size
+            );
+        }
+        Ok(())
+    }
+
+    fn matches_filters(i: u32, p: &GPTPartitionEntry, filters: &[PartitionFilter]) -> bool {
+        use PartitionFilter::*;
+        if !p.is_used() {
+            return false;
+        }
+        filters.iter().any(|f| match f {
+            Index(Some(first), _) if first.get() > i => false,
+            Index(_, Some(last)) if last.get() < i => false,
+            Index(_, _) => true,
+            Label(glob) if glob.matches(p.partition_name.as_str()) => true,
+            _ => false,
+        })
+    }
+
+    pub fn write<P: AsRef<Path>>(&self, disk: P) -> Result<()> {
+        if self.partitions.is_empty() {
+            return Ok(());
+        }
+        let sector_size = self
+            .sector_size
+            .expect("have partitions but no sector size");
+
+        // get or create GPT
+        let disk = disk.as_ref();
+        let mut f = OpenOptions::new()
+            .read(true)
+            .open(disk)
+            .chain_err(|| format!("opening {} for reading", disk.display()))?;
+        Self::verify_disk_sector_size_matches_gpt(disk, &f, sector_size)?;
+        let mut gpt = match GPT::find_from(&mut f) {
+            Ok(gpt) => gpt,
+            Err(e) => {
+                // Bad or missing GPT.  Maybe the caller just deleted it.
+                // Create a new partition table and save to that, otherwise
+                // we risk data loss.  If the error is anything fancier than
+                // a missing table, warn about it.
+                match e {
+                    gptman::Error::InvalidSignature => (),
+                    _ => {
+                        eprintln!("Couldn't read partition table: {}.  Recreating.", e);
+                    }
+                }
+                GPT::new_from(&mut f, sector_size, *Uuid::new_v4().as_bytes())
+                    .chain_err(|| format!("creating new partition table for {}", disk.display()))?
+            }
+        };
+        if gpt.sector_size != sector_size {
+            // install will fail on an image that doesn't match the disk,
+            // so this shouldn't happen
+            bail!(
+                "sector size {} of GPT on {} doesn't match sector size {} of saved GPT",
+                gpt.sector_size,
+                disk.display(),
+                sector_size
+            );
+        }
+
+        // Fail if the last on-disk partition overlaps with the beginning of
+        // the first saved partition.  Ignore holes.  This test is distinct
+        // from the download-time LimitReader checking, because the image
+        // may claim to have partitions beyond the end of the image file.
+        // If this occurs, install() will restore the saved partitions after
+        // clearing the table.
+        if let Some((i_end, end)) = gpt.iter().max_by_key(|(_, p)| p.ending_lba) {
+            if let Some((i_start, start)) =
+                self.partitions.iter().min_by_key(|(_, p)| p.starting_lba)
+            {
+                if end.ending_lba >= start.starting_lba {
+                    bail!(
+                        "disk partition {} ('{}') ends after start of saved partition {} ('{}')",
+                        i_end,
+                        end.partition_name.as_str(),
+                        i_start,
+                        start.partition_name.as_str()
+                    )
+                }
+            }
+        }
+
+        // merge saved partitions into partition table
+        // find partition number one larger than the largest used one
+        let mut next = gpt
+            .iter()
+            .fold(1, |prev, (i, e)| if e.is_used() { i + 1 } else { prev });
+        for (i, p) in &self.partitions {
+            // use the next partition number in the sequence if we have to,
+            // or the partition's original number if it's larger
+            next = next.max(*i);
+            eprintln!(
+                "Saving partition {} (\"{}\") to new partition {}",
+                i, p.partition_name, next
+            );
+            gpt[next] = p.clone();
+            next += 1;
+        }
+
+        // write
+        let mut f = OpenOptions::new()
+            .write(true)
+            .open(disk)
+            .chain_err(|| format!("opening {} for writing", disk.display()))?;
+        gpt.write_into(&mut f)
+            .chain_err(|| format!("writing updated GPT to {}", disk.display()))?;
+        Ok(())
+    }
+
+    /// Get the byte offset of the first byte not to be overwritten, if any,
+    /// plus a description of the partition at that offset.
+    pub fn get_offset(&self) -> Result<Option<(u64, String)>> {
+        match self.partitions.iter().min_by_key(|(_, p)| p.starting_lba) {
+            None => Ok(None),
+            Some((i, p)) => Ok(Some((
+                p.starting_lba
+                    .checked_mul(self.sector_size.expect("missing sector size"))
+                    .chain_err(|| "overflow calculating partition start")?,
+                format!("partition {} (\"{}\")", i, p.partition_name.as_str()),
+            ))),
+        }
+    }
+
+    pub fn is_saved(&self) -> bool {
+        !self.partitions.is_empty()
+    }
+}
+
 fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64> {
     let s = read_sysfs_dev_block_value(maj, min, field).chain_err(|| {
         format!(
@@ -679,14 +876,24 @@ pub fn udev_settle() -> Result<()> {
 
 /// Inspect a buffer from the start of a disk image and return its formatted
 /// sector size, if any can be determined.
-pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
+pub fn detect_formatted_sector_size_start(buf: &[u8]) -> Option<NonZeroU32> {
+    detect_formatted_sector_size(buf, 512, 4096)
+}
+
+/// Inspect a buffer 4 KiB from the end of a disk image and return its
+/// formatted sector size, if any can be determined.
+pub fn detect_formatted_sector_size_end(buf: &[u8]) -> Option<NonZeroU32> {
+    detect_formatted_sector_size(buf, 4096 - 512, 0)
+}
+
+fn detect_formatted_sector_size(buf: &[u8], gpt_512: usize, gpt_4096: usize) -> Option<NonZeroU32> {
     let gpt_magic: &[u8; 8] = b"EFI PART";
 
-    if buf.len() >= 520 && buf[512..520] == gpt_magic[..] {
-        // GPT at offset 512
+    if buf.len() >= gpt_512 + 8 && buf[gpt_512..gpt_512 + 8] == gpt_magic[..] {
+        // 512-byte GPT
         NonZeroU32::new(512)
-    } else if buf.len() >= 4104 && buf[4096..4104] == gpt_magic[..] {
-        // GPT at offset 4096
+    } else if buf.len() >= gpt_4096 + 8 && buf[gpt_4096..gpt_4096 + 8] == gpt_magic[..] {
+        // 4096-byte GPT
         NonZeroU32::new(4096)
     } else {
         // Unknown
@@ -699,6 +906,7 @@ mod tests {
     use super::*;
     use maplit::hashmap;
     use std::io::Read;
+    use tempfile::{Builder, NamedTempFile};
     use xz2::read::XzDecoder;
 
     #[test]
@@ -780,13 +988,302 @@ mod tests {
             } else {
                 test.data.to_vec()
             };
-            let result = detect_formatted_sector_size(&data);
-            if result != test.result {
-                panic!(
-                    "\"{}\" returned incorrect result: expected {:?}, found {:?}",
-                    test.name, test.result, result
-                );
+            let result = detect_formatted_sector_size_start(&data);
+            assert_eq!(result, test.result, "{}", test.name);
+            let result = detect_formatted_sector_size_end(&data[data.len().saturating_sub(4096)..]);
+            assert_eq!(result, test.result, "{}", test.name);
+        }
+    }
+
+    #[test]
+    fn test_saved_partitions() {
+        use PartitionFilter::*;
+
+        let make_part = |i: u32, name: &str, start: u64, end: u64| {
+            (
+                i,
+                GPTPartitionEntry {
+                    partition_type_guid: make_guid("type"),
+                    unique_parition_guid: make_guid(&start.to_string()),
+                    starting_lba: start * 2048,
+                    ending_lba: end * 2048 - 1,
+                    attribute_bits: 0,
+                    partition_name: name.into(),
+                },
+            )
+        };
+
+        let base_parts = vec![
+            make_part(1, "one", 1, 1024),
+            make_part(2, "two", 1024, 2048),
+            make_part(3, "three", 2048, 3072),
+            make_part(4, "four", 3072, 4096),
+            make_part(5, "five", 4096, 5120),
+            make_part(7, "seven", 5120, 6144),
+            make_part(8, "eight", 6144, 7168),
+            make_part(9, "nine", 7168, 8192),
+            make_part(10, "", 8192, 8193),
+            make_part(11, "", 8193, 8194),
+        ];
+        let image_parts = vec![
+            make_part(1, "boot", 1, 384),
+            make_part(2, "EFI-SYSTEM", 384, 512),
+            make_part(4, "root", 1024, 2200),
+        ];
+
+        let index = |i| Some(NonZeroU32::new(i).unwrap());
+        let label = |l| Label(glob::Pattern::new(l).unwrap());
+        let tests = vec![
+            // Partition range
+            (
+                vec![Index(index(5), None)],
+                vec![
+                    make_part(5, "five", 4096, 5120),
+                    make_part(7, "seven", 5120, 6144),
+                    make_part(8, "eight", 6144, 7168),
+                    make_part(9, "nine", 7168, 8192),
+                    make_part(10, "", 8192, 8193),
+                    make_part(11, "", 8193, 8194),
+                ],
+                vec![
+                    make_part(1, "boot", 1, 384),
+                    make_part(2, "EFI-SYSTEM", 384, 512),
+                    make_part(4, "root", 1024, 2200),
+                    make_part(5, "five", 4096, 5120),
+                    make_part(7, "seven", 5120, 6144),
+                    make_part(8, "eight", 6144, 7168),
+                    make_part(9, "nine", 7168, 8192),
+                    make_part(10, "", 8192, 8193),
+                    make_part(11, "", 8193, 8194),
+                ],
+            ),
+            // Glob
+            (
+                vec![label("*i*")],
+                vec![
+                    make_part(5, "five", 4096, 5120),
+                    make_part(8, "eight", 6144, 7168),
+                    make_part(9, "nine", 7168, 8192),
+                ],
+                vec![
+                    make_part(1, "boot", 1, 384),
+                    make_part(2, "EFI-SYSTEM", 384, 512),
+                    make_part(4, "root", 1024, 2200),
+                    make_part(5, "five", 4096, 5120),
+                    make_part(8, "eight", 6144, 7168),
+                    make_part(9, "nine", 7168, 8192),
+                ],
+            ),
+            // Missing label, single partition, irrelevant range
+            (
+                vec![
+                    label("six"),
+                    Index(index(7), index(7)),
+                    Index(index(15), None),
+                ],
+                vec![make_part(7, "seven", 5120, 6144)],
+                vec![
+                    make_part(1, "boot", 1, 384),
+                    make_part(2, "EFI-SYSTEM", 384, 512),
+                    make_part(4, "root", 1024, 2200),
+                    make_part(7, "seven", 5120, 6144),
+                ],
+            ),
+            // Empty label match, multiple results
+            (
+                vec![label("")],
+                vec![make_part(10, "", 8192, 8193), make_part(11, "", 8193, 8194)],
+                vec![
+                    make_part(1, "boot", 1, 384),
+                    make_part(2, "EFI-SYSTEM", 384, 512),
+                    make_part(4, "root", 1024, 2200),
+                    make_part(10, "", 8192, 8193),
+                    make_part(11, "", 8193, 8194),
+                ],
+            ),
+            // Partition renumbering
+            (
+                vec![Index(index(4), None)],
+                vec![
+                    make_part(4, "four", 3072, 4096),
+                    make_part(5, "five", 4096, 5120),
+                    make_part(7, "seven", 5120, 6144),
+                    make_part(8, "eight", 6144, 7168),
+                    make_part(9, "nine", 7168, 8192),
+                    make_part(10, "", 8192, 8193),
+                    make_part(11, "", 8193, 8194),
+                ],
+                vec![
+                    make_part(1, "boot", 1, 384),
+                    make_part(2, "EFI-SYSTEM", 384, 512),
+                    make_part(4, "root", 1024, 2200),
+                    make_part(5, "four", 3072, 4096),
+                    make_part(6, "five", 4096, 5120),
+                    make_part(7, "seven", 5120, 6144),
+                    make_part(8, "eight", 6144, 7168),
+                    make_part(9, "nine", 7168, 8192),
+                    make_part(10, "", 8192, 8193),
+                    make_part(11, "", 8193, 8194),
+                ],
+            ),
+            // No saved partitions
+            (
+                vec![Index(index(15), None)],
+                vec![],
+                vec![
+                    make_part(1, "boot", 1, 384),
+                    make_part(2, "EFI-SYSTEM", 384, 512),
+                    make_part(4, "root", 1024, 2200),
+                ],
+            ),
+            // No filters
+            (
+                vec![],
+                vec![],
+                vec![
+                    make_part(1, "boot", 1, 384),
+                    make_part(2, "EFI-SYSTEM", 384, 512),
+                    make_part(4, "root", 1024, 2200),
+                ],
+            ),
+        ];
+
+        let base = make_disk(512, &base_parts);
+        for (testnum, (filter, expected_blank, expected_image)) in tests.iter().enumerate() {
+            // perform writes in the same order as install()
+            // first, try writing to image disk
+            let saved = SavedPartitions::new(base.path(), filter).unwrap();
+            let mut disk = make_disk(512, &image_parts);
+            saved.write(disk.path()).unwrap();
+            let result = GPT::find_from(&mut disk).unwrap();
+            assert_partitions_eq(expected_image, &result, &format!("test {} image", testnum));
+            assert_eq!(
+                saved.get_offset().unwrap(),
+                match expected_blank.is_empty() {
+                    true => None,
+                    false => {
+                        let (i, p) = &expected_blank[0];
+                        Some((
+                            p.starting_lba * 512,
+                            format!("partition {} (\"{}\")", i, p.partition_name.as_str()),
+                        ))
+                    }
+                },
+                "test {}",
+                testnum
+            );
+
+            // then, try writing to blank disk
+            let mut disk = make_unformatted_disk();
+            saved.write(disk.path()).unwrap();
+            if !expected_blank.is_empty() {
+                let result = GPT::find_from(&mut disk).unwrap();
+                assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
             }
+        }
+
+        // test unformatted initial disk
+        let disk = make_unformatted_disk();
+        let saved = SavedPartitions::new(disk.path(), &vec![label("z")]).unwrap();
+        let mut disk = make_disk(512, &image_parts);
+        saved.write(disk.path()).unwrap();
+        let result = GPT::find_from(&mut disk).unwrap();
+        assert_partitions_eq(&image_parts, &result, "unformatted disk");
+
+        // test overlapping partitions
+        let saved = SavedPartitions::new(base.path(), &vec![Index(index(1), index(1))]).unwrap();
+        let disk = make_disk(512, &image_parts);
+        assert_eq!(
+            saved.write(disk.path()).unwrap_err().to_string(),
+            "disk partition 4 ('root') ends after start of saved partition 1 ('one')",
+        );
+
+        // test sector size mismatch
+        let saved = SavedPartitions::new(base.path(), &vec![label("*i*")]).unwrap();
+        let disk = make_disk(4096, &image_parts);
+        assert_eq!(
+            saved.write(disk.path()).unwrap_err().to_string(),
+            format!(
+                "sector size 4096 of GPT on {} doesn't match sector size 512 of saved GPT",
+                disk.path().display()
+            )
+        );
+    }
+
+    fn make_disk(sector_size: u64, partitions: &Vec<(u32, GPTPartitionEntry)>) -> NamedTempFile {
+        let mut disk = make_unformatted_disk();
+        let mut gpt = GPT::new_from(&mut disk, sector_size, make_guid("disk")).unwrap();
+        for (partnum, entry) in partitions {
+            gpt[*partnum] = entry.clone();
+        }
+        gpt.write_into(&mut disk).unwrap();
+        disk
+    }
+
+    fn make_unformatted_disk() -> NamedTempFile {
+        let disk = Builder::new()
+            .prefix("coreos-installer-blockdev-")
+            .tempfile()
+            .unwrap();
+        disk.as_file().set_len(10 * 1024 * 1024 * 1024).unwrap();
+        disk
+    }
+
+    fn make_guid(seed: &str) -> [u8; 16] {
+        let mut guid = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        for (i, b) in seed.as_bytes().iter().enumerate() {
+            guid[i % guid.len()] ^= *b;
+        }
+        guid
+    }
+
+    fn assert_partitions_eq(expected: &Vec<(u32, GPTPartitionEntry)>, found: &GPT, message: &str) {
+        // GPTPartitionEntry doesn't derive PartialEq.  Compare by hand.
+        // first check that indexes are equal
+        assert_eq!(
+            expected.iter().map(|(i, _)| *i).collect::<Vec<u32>>(),
+            found
+                .iter()
+                .filter(|(_, e)| e.is_used())
+                .map(|(i, _)| i)
+                .collect::<Vec<u32>>(),
+            "{}",
+            message
+        );
+        // check contents
+        for (i, entry) in expected {
+            assert_eq!(
+                entry.partition_name.as_str(),
+                found[*i].partition_name.as_str(),
+                "{}, partition {}",
+                message,
+                i
+            );
+            assert_eq!(
+                entry.partition_type_guid, found[*i].partition_type_guid,
+                "{}, partition {}",
+                message, i
+            );
+            assert_eq!(
+                entry.unique_parition_guid, found[*i].unique_parition_guid,
+                "{}, partition {}",
+                message, i
+            );
+            assert_eq!(
+                entry.starting_lba, found[*i].starting_lba,
+                "{}, partition {}",
+                message, i
+            );
+            assert_eq!(
+                entry.ending_lba, found[*i].ending_lba,
+                "{}, partition {}",
+                message, i
+            );
+            assert_eq!(
+                entry.attribute_bits, found[*i].attribute_bits,
+                "{}, partition {}",
+                message, i
+            );
         }
     }
 }

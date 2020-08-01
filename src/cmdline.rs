@@ -16,6 +16,7 @@ use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use error_chain::bail;
 use reqwest::Url;
 use std::fs::{File, OpenOptions};
+use std::num::NonZeroU32;
 use std::path::Path;
 
 use crate::blockdev::*;
@@ -48,6 +49,13 @@ pub struct InstallConfig {
     pub insecure: bool,
     pub preserve_on_error: bool,
     pub network_config: Option<String>,
+    pub save_partitions: Vec<PartitionFilter>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PartitionFilter {
+    Label(glob::Pattern),
+    Index(Option<NonZeroU32>, Option<NonZeroU32>),
 }
 
 pub struct DownloadConfig {
@@ -229,6 +237,32 @@ pub fn parse_args() -> Result<Config> {
                         .empty_values(false)
                         .help("For use with -n.")
                         .next_line_help(true), // so we can stay under 80 chars
+                )
+                .arg(
+                    Arg::with_name("save-partlabel")
+                        .long("save-partlabel")
+                        .value_name("lx")
+                        .help("Save partitions with this label glob")
+                        .takes_value(true)
+                        // allow argument multiple times, but one value each
+                        .number_of_values(1)
+                        .multiple(true)
+                        // allow "a,b" in one argument
+                        .require_delimiter(true)
+                )
+                .arg(
+                    Arg::with_name("save-partindex")
+                        .long("save-partindex")
+                        .value_name("id")
+                        .help("Save partitions with this number or range")
+                        .takes_value(true)
+                        // allow argument multiple times, but one value each
+                        .number_of_values(1)
+                        .multiple(true)
+                        // allow "1-5,7" in one argument
+                        .require_delimiter(true)
+                        // allow ranges like "-2"
+                        .allow_hyphen_values(true)
                 )
                 // obscure options without short names
                 .arg(
@@ -679,7 +713,65 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         insecure: matches.is_present("insecure"),
         preserve_on_error: matches.is_present("preserve-on-error"),
         network_config,
+        save_partitions: parse_partition_filters(
+            &matches
+                .values_of("save-partlabel")
+                .unwrap_or_default()
+                .collect::<Vec<&str>>(),
+            &matches
+                .values_of("save-partindex")
+                .unwrap_or_default()
+                .collect::<Vec<&str>>(),
+        )?,
     }))
+}
+
+fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<PartitionFilter>> {
+    use PartitionFilter::*;
+    let mut filters: Vec<PartitionFilter> = Vec::new();
+
+    // partition label globs
+    for glob in labels {
+        let filter = Label(
+            glob::Pattern::new(glob)
+                .chain_err(|| format!("couldn't parse label glob '{}'", glob))?,
+        );
+        filters.push(filter);
+    }
+
+    // partition index ranges
+    let parse_index = |i: &str| -> Result<Option<NonZeroU32>> {
+        match i {
+            "" => Ok(None), // open end of range
+            _ => Ok(Some(
+                NonZeroU32::new(
+                    i.parse()
+                        .chain_err(|| format!("couldn't parse partition index '{}'", i))?,
+                )
+                .chain_err(|| "partition index cannot be zero")?,
+            )),
+        }
+    };
+    for range in indexes {
+        let parts: Vec<&str> = range.split('-').collect();
+        let filter = match parts.len() {
+            1 => Index(parse_index(parts[0])?, parse_index(parts[0])?),
+            2 => Index(parse_index(parts[0])?, parse_index(parts[1])?),
+            _ => bail!("couldn't parse partition index range '{}'", range),
+        };
+        match filter {
+            Index(None, None) => bail!(
+                "both ends of partition index range '{}' cannot be open",
+                range
+            ),
+            Index(Some(x), Some(y)) if x > y => bail!(
+                "start of partition index range '{}' cannot be greater than end",
+                range
+            ),
+            _ => filters.push(filter),
+        };
+    }
+    Ok(filters)
 }
 
 fn parse_download(matches: &ArgMatches) -> Result<Config> {
@@ -829,4 +921,65 @@ fn parse_osmet_fiemap(matches: &ArgMatches) -> Result<Config> {
             .map(String::from)
             .expect("file missing"),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_partition_filters() {
+        use PartitionFilter::*;
+
+        let g = |v| Label(glob::Pattern::new(v).unwrap());
+        let i = |v| Some(NonZeroU32::new(v).unwrap());
+
+        assert_eq!(
+            parse_partition_filters(&["foo", "z*b?", ""], &["1", "7-7", "2-4", "-3", "4-"])
+                .unwrap(),
+            vec![
+                g("foo"),
+                g("z*b?"),
+                g(""),
+                Index(i(1), i(1)),
+                Index(i(7), i(7)),
+                Index(i(2), i(4)),
+                Index(None, i(3)),
+                Index(i(4), None)
+            ]
+        );
+
+        let bad_globs = vec![("***", "couldn't parse label glob '***'")];
+        for (glob, err) in bad_globs {
+            assert_eq!(
+                &parse_partition_filters(&["f", glob, "z*"], &["7-", "34"])
+                    .unwrap_err()
+                    .to_string(),
+                err
+            );
+        }
+
+        let bad_ranges = vec![
+            ("", "both ends of partition index range '' cannot be open"),
+            ("-", "both ends of partition index range '-' cannot be open"),
+            ("--", "couldn't parse partition index range '--'"),
+            ("0", "partition index cannot be zero"),
+            ("-2-3", "couldn't parse partition index range '-2-3'"),
+            ("23q", "couldn't parse partition index '23q'"),
+            ("23-45.7", "couldn't parse partition index '45.7'"),
+            ("0x7", "couldn't parse partition index '0x7'"),
+            (
+                "9-7",
+                "start of partition index range '9-7' cannot be greater than end",
+            ),
+        ];
+        for (range, err) in bad_ranges {
+            assert_eq!(
+                &parse_partition_filters(&["f", "z*"], &["7-", range, "34"])
+                    .unwrap_err()
+                    .to_string(),
+                err
+            );
+        }
+    }
 }
