@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct Sha256Digest([u8; 32]);
 
 impl TryFrom<Hasher> for Sha256Digest {
