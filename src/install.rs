@@ -75,7 +75,8 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // save partitions that we plan to keep
-    let saved = SavedPartitions::new(&config.device, &config.save_partitions)?;
+    let saved = SavedPartitions::new(&mut dest, &config.save_partitions)
+        .chain_err(|| format!("saving partitions from {}", config.device))?;
 
     // get reference to partition table
     // For kpartx partitioning, this will conditionally call kpartx -d
@@ -87,6 +88,8 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
+    dest.seek(SeekFrom::Start(0))
+        .chain_err(|| format!("seeking {}", config.device))?;
     if let Err(err) = write_disk(&config, &mut source, &mut dest, &mut *table, &saved) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
@@ -107,8 +110,8 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         } else {
             clear_partition_table(&mut dest, &mut *table)?;
             saved
-                .write(&config.device)
-                .chain_err(|| "restoring additional partitions")?;
+                .write(&mut dest)
+                .chain_err(|| format!("restoring saved partitions to {}", config.device))?;
         }
 
         // return a generic error so our exit status is right
@@ -174,8 +177,8 @@ fn write_disk(
 
     // restore saved partitions, if any, and reread table
     saved
-        .write(&config.device)
-        .chain_err(|| "restoring saved partitions")?;
+        .write(dest)
+        .chain_err(|| format!("restoring saved partitions to {}", config.device))?;
     table.reread()?;
 
     // postprocess
@@ -493,7 +496,7 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
 // Preserve saved partitions by writing them to a file in /tmp and reporting
 // the path.
 fn stash_saved_partitions(saved: &SavedPartitions) -> Result<()> {
-    let stash = tempfile::Builder::new()
+    let mut stash = tempfile::Builder::new()
         .prefix("coreos-installer-partitions.")
         .tempfile()
         .chain_err(|| "creating partition stash file")?;
@@ -504,7 +507,7 @@ fn stash_saved_partitions(saved: &SavedPartitions) -> Result<()> {
         .set_len(1024 * 1024)
         .chain_err(|| format!("extending partition stash file {}", path.display()))?;
     saved
-        .write(&path)
+        .write(stash.as_file_mut())
         .chain_err(|| format!("stashing saved partitions to {}", path.display()))?;
     stash
         .keep()

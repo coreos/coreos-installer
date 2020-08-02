@@ -468,8 +468,7 @@ pub struct SavedPartitions {
 }
 
 impl SavedPartitions {
-    pub fn new<P: AsRef<Path>>(disk: P, filters: &[PartitionFilter]) -> Result<Self> {
-        let disk = disk.as_ref();
+    pub fn new(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
         let mut result = Self {
             sector_size: None,
             partitions: Vec::new(),
@@ -480,20 +479,13 @@ impl SavedPartitions {
             return Ok(result);
         }
 
-        let mut f = OpenOptions::new()
-            .read(true)
-            .open(disk)
-            .chain_err(|| format!("opening {} for reading", disk.display()))?;
-        let gpt = match GPT::find_from(&mut f) {
+        let gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
             // no GPT on this disk, so no partitions to save
             Err(gptman::Error::InvalidSignature) => return Ok(result),
-            Err(e) => {
-                return Err(e)
-                    .chain_err(|| format!("reading partition table of {}", disk.display()))?
-            }
+            Err(e) => return Err(e).chain_err(|| "reading partition table")?,
         };
-        Self::verify_disk_sector_size_matches_gpt(disk, &f, gpt.sector_size)?;
+        Self::verify_disk_sector_size_matches_gpt(disk, gpt.sector_size)?;
         result.sector_size = Some(gpt.sector_size);
 
         for (i, p) in gpt.iter() {
@@ -504,25 +496,20 @@ impl SavedPartitions {
         Ok(result)
     }
 
-    fn verify_disk_sector_size_matches_gpt(
-        disk: &Path,
-        file: &File,
-        sector_size: u64,
-    ) -> Result<()> {
-        if !file
+    fn verify_disk_sector_size_matches_gpt(disk: &File, sector_size: u64) -> Result<()> {
+        if !disk
             .metadata()
-            .chain_err(|| format!("getting metadata for {}", disk.display()))?
+            .chain_err(|| "getting disk metadata")?
             .file_type()
             .is_block_device()
         {
             return Ok(());
         }
-        let disk_sector_size = get_sector_size(&file)?.get() as u64;
+        let disk_sector_size = get_sector_size(&disk)?.get() as u64;
         if disk_sector_size != sector_size {
             bail!(
-                "sector size {} of disk {} doesn't match sector size {} of GPT",
+                "disk sector size {} doesn't match sector size {} of GPT",
                 disk_sector_size,
-                disk.display(),
                 sector_size
             );
         }
@@ -543,7 +530,7 @@ impl SavedPartitions {
         })
     }
 
-    pub fn write<P: AsRef<Path>>(&self, disk: P) -> Result<()> {
+    pub fn write(&self, disk: &mut File) -> Result<()> {
         if self.partitions.is_empty() {
             return Ok(());
         }
@@ -552,13 +539,8 @@ impl SavedPartitions {
             .expect("have partitions but no sector size");
 
         // get or create GPT
-        let disk = disk.as_ref();
-        let mut f = OpenOptions::new()
-            .read(true)
-            .open(disk)
-            .chain_err(|| format!("opening {} for reading", disk.display()))?;
-        Self::verify_disk_sector_size_matches_gpt(disk, &f, sector_size)?;
-        let mut gpt = match GPT::find_from(&mut f) {
+        Self::verify_disk_sector_size_matches_gpt(disk, sector_size)?;
+        let mut gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
             Err(e) => {
                 // Bad or missing GPT.  Maybe the caller just deleted it.
@@ -571,17 +553,16 @@ impl SavedPartitions {
                         eprintln!("Couldn't read partition table: {}.  Recreating.", e);
                     }
                 }
-                GPT::new_from(&mut f, sector_size, *Uuid::new_v4().as_bytes())
-                    .chain_err(|| format!("creating new partition table for {}", disk.display()))?
+                GPT::new_from(disk, sector_size, *Uuid::new_v4().as_bytes())
+                    .chain_err(|| "creating new partition table")?
             }
         };
         if gpt.sector_size != sector_size {
             // install will fail on an image that doesn't match the disk,
             // so this shouldn't happen
             bail!(
-                "sector size {} of GPT on {} doesn't match sector size {} of saved GPT",
+                "sector size {} of disk GPT doesn't match sector size {} of saved GPT",
                 gpt.sector_size,
-                disk.display(),
                 sector_size
             );
         }
@@ -626,12 +607,7 @@ impl SavedPartitions {
         }
 
         // write
-        let mut f = OpenOptions::new()
-            .write(true)
-            .open(disk)
-            .chain_err(|| format!("opening {} for writing", disk.display()))?;
-        gpt.write_into(&mut f)
-            .chain_err(|| format!("writing updated GPT to {}", disk.display()))?;
+        gpt.write_into(disk).chain_err(|| "writing updated GPT")?;
         Ok(())
     }
 
@@ -905,7 +881,7 @@ mod tests {
     use super::*;
     use maplit::hashmap;
     use std::io::Read;
-    use tempfile::{Builder, NamedTempFile};
+    use tempfile::tempfile;
     use xz2::read::XzDecoder;
 
     #[test]
@@ -1147,13 +1123,13 @@ mod tests {
             ),
         ];
 
-        let base = make_disk(512, &base_parts);
+        let mut base = make_disk(512, &base_parts);
         for (testnum, (filter, expected_blank, expected_image)) in tests.iter().enumerate() {
             // perform writes in the same order as install()
             // first, try writing to image disk
-            let saved = SavedPartitions::new(base.path(), filter).unwrap();
+            let saved = SavedPartitions::new(&mut base, filter).unwrap();
             let mut disk = make_disk(512, &image_parts);
-            saved.write(disk.path()).unwrap();
+            saved.write(&mut disk).unwrap();
             let result = GPT::find_from(&mut disk).unwrap();
             assert_partitions_eq(expected_image, &result, &format!("test {} image", testnum));
             assert_eq!(
@@ -1174,7 +1150,7 @@ mod tests {
 
             // then, try writing to blank disk
             let mut disk = make_unformatted_disk();
-            saved.write(disk.path()).unwrap();
+            saved.write(&mut disk).unwrap();
             if !expected_blank.is_empty() {
                 let result = GPT::find_from(&mut disk).unwrap();
                 assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
@@ -1182,34 +1158,31 @@ mod tests {
         }
 
         // test unformatted initial disk
-        let disk = make_unformatted_disk();
-        let saved = SavedPartitions::new(disk.path(), &vec![label("z")]).unwrap();
+        let mut disk = make_unformatted_disk();
+        let saved = SavedPartitions::new(&mut disk, &vec![label("z")]).unwrap();
         let mut disk = make_disk(512, &image_parts);
-        saved.write(disk.path()).unwrap();
+        saved.write(&mut disk).unwrap();
         let result = GPT::find_from(&mut disk).unwrap();
         assert_partitions_eq(&image_parts, &result, "unformatted disk");
 
         // test overlapping partitions
-        let saved = SavedPartitions::new(base.path(), &vec![Index(index(1), index(1))]).unwrap();
-        let disk = make_disk(512, &image_parts);
+        let saved = SavedPartitions::new(&mut base, &vec![Index(index(1), index(1))]).unwrap();
+        let mut disk = make_disk(512, &image_parts);
         assert_eq!(
-            saved.write(disk.path()).unwrap_err().to_string(),
+            saved.write(&mut disk).unwrap_err().to_string(),
             "disk partition 4 ('root') ends after start of saved partition 1 ('one')",
         );
 
         // test sector size mismatch
-        let saved = SavedPartitions::new(base.path(), &vec![label("*i*")]).unwrap();
-        let disk = make_disk(4096, &image_parts);
+        let saved = SavedPartitions::new(&mut base, &vec![label("*i*")]).unwrap();
+        let mut disk = make_disk(4096, &image_parts);
         assert_eq!(
-            saved.write(disk.path()).unwrap_err().to_string(),
-            format!(
-                "sector size 4096 of GPT on {} doesn't match sector size 512 of saved GPT",
-                disk.path().display()
-            )
+            saved.write(&mut disk).unwrap_err().to_string(),
+            "sector size 4096 of disk GPT doesn't match sector size 512 of saved GPT"
         );
     }
 
-    fn make_disk(sector_size: u64, partitions: &Vec<(u32, GPTPartitionEntry)>) -> NamedTempFile {
+    fn make_disk(sector_size: u64, partitions: &Vec<(u32, GPTPartitionEntry)>) -> File {
         let mut disk = make_unformatted_disk();
         let mut gpt = GPT::new_from(&mut disk, sector_size, make_guid("disk")).unwrap();
         for (partnum, entry) in partitions {
@@ -1219,12 +1192,9 @@ mod tests {
         disk
     }
 
-    fn make_unformatted_disk() -> NamedTempFile {
-        let disk = Builder::new()
-            .prefix("coreos-installer-blockdev-")
-            .tempfile()
-            .unwrap();
-        disk.as_file().set_len(10 * 1024 * 1024 * 1024).unwrap();
+    fn make_unformatted_disk() -> File {
+        let disk = tempfile().unwrap();
+        disk.set_len(10 * 1024 * 1024 * 1024).unwrap();
         disk
     }
 
