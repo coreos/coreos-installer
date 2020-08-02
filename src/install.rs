@@ -102,24 +102,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                 // failed.  Preserve the saved partitions by writing them to
                 // a file in /tmp and telling the user about it.  Hey, it's
                 // a debug flag.
-                let stash = tempfile::Builder::new()
-                    .prefix("coreos-installer-partitions.")
-                    .tempfile()
-                    .chain_err(|| "creating partition stash file")?;
-                eprintln!(
-                    "Storing saved partition entries to {}",
-                    stash.path().display()
-                );
-                stash
-                    .as_file()
-                    .set_len(1024 * 1024)
-                    .chain_err(|| "extending partition stash file")?;
-                saved
-                    .write(stash.path())
-                    .chain_err(|| "stashing saved partitions")?;
-                stash
-                    .keep()
-                    .chain_err(|| "retaining saved partition stash")?;
+                stash_saved_partitions(&saved)?;
             }
         } else {
             clear_partition_table(&mut dest, &mut *table)?;
@@ -504,6 +487,28 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
     table.reread()?;
+    Ok(())
+}
+
+// Preserve saved partitions by writing them to a file in /tmp and reporting
+// the path.
+fn stash_saved_partitions(saved: &SavedPartitions) -> Result<()> {
+    let stash = tempfile::Builder::new()
+        .prefix("coreos-installer-partitions.")
+        .tempfile()
+        .chain_err(|| "creating partition stash file")?;
+    let path = stash.path().to_owned();
+    eprintln!("Storing saved partition entries to {}", path.display());
+    stash
+        .as_file()
+        .set_len(1024 * 1024)
+        .chain_err(|| format!("extending partition stash file {}", path.display()))?;
+    saved
+        .write(&path)
+        .chain_err(|| format!("stashing saved partitions to {}", path.display()))?;
+    stash
+        .keep()
+        .chain_err(|| format!("retaining saved partition stash in {}", path.display()))?;
     Ok(())
 }
 
