@@ -222,6 +222,9 @@ fn write_disk(
         s390x::install_bootloader(mount.mountpoint(), &config.device)?;
     }
 
+    // detect any latent write errors
+    dest.sync_all().chain_err(|| "syncing data to disk")?;
+
     Ok(())
 }
 
