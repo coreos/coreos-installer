@@ -1264,13 +1264,27 @@ mod tests {
         );
     }
 
+    // TODO: The partitions array assumes 512-byte sectors and we don't
+    // scale the start/end values for 4096.  This doesn't matter right now
+    // because the only use of 4096-byte sectors is in an error test.
     fn make_disk(sector_size: u64, partitions: &Vec<(u32, GPTPartitionEntry)>) -> File {
         let mut disk = make_unformatted_disk();
+        // Make the disk just large enough for its partitions, then resize
+        // it back up afterward.  This tests that we properly handle copying
+        // saved partitions from the larger base disk into the smaller
+        // install image.
+        let len = if partitions.is_empty() {
+            1024 * 1024
+        } else {
+            partitions[partitions.len() - 1].1.ending_lba * sector_size + 1024 * 1024
+        };
+        disk.set_len(len).unwrap();
         let mut gpt = GPT::new_from(&mut disk, sector_size, make_guid("disk")).unwrap();
         for (partnum, entry) in partitions {
             gpt[*partnum] = entry.clone();
         }
         gpt.write_into(&mut disk).unwrap();
+        disk.set_len(10 * 1024 * 1024 * 1024).unwrap();
         disk
     }
 
