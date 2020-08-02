@@ -1329,52 +1329,17 @@ mod tests {
     }
 
     fn assert_partitions_eq(expected: &Vec<(u32, GPTPartitionEntry)>, found: &GPT, message: &str) {
-        // GPTPartitionEntry doesn't derive PartialEq.  Compare by hand.
-        // first check that indexes are equal
         assert_eq!(
-            expected.iter().map(|(i, _)| *i).collect::<Vec<u32>>(),
+            expected
+                .iter()
+                .map(|(i, p)| (*i, p))
+                .collect::<Vec<(u32, &GPTPartitionEntry)>>(),
             found
                 .iter()
-                .filter(|(_, e)| e.is_used())
-                .map(|(i, _)| i)
-                .collect::<Vec<u32>>(),
+                .filter(|(_, p)| p.is_used())
+                .collect::<Vec<(u32, &GPTPartitionEntry)>>(),
             "{}",
             message
         );
-        // check contents
-        for (i, entry) in expected {
-            assert_eq!(
-                entry.partition_name.as_str(),
-                found[*i].partition_name.as_str(),
-                "{}, partition {}",
-                message,
-                i
-            );
-            assert_eq!(
-                entry.partition_type_guid, found[*i].partition_type_guid,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.unique_partition_guid, found[*i].unique_partition_guid,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.starting_lba, found[*i].starting_lba,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.ending_lba, found[*i].ending_lba,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.attribute_bits, found[*i].attribute_bits,
-                "{}, partition {}",
-                message, i
-            );
-        }
     }
 }
