@@ -462,6 +462,34 @@ impl Mount {
     }
 }
 
+impl Drop for Mount {
+    fn drop(&mut self) {
+        if !self.owned {
+            return;
+        }
+
+        // Unmount sometimes fails immediately after closing the last open
+        // file on the partition.  Retry several times before giving up.
+        for retries in (0..20).rev() {
+            match mount::umount(&self.mountpoint) {
+                Ok(_) => break,
+                Err(err) => {
+                    if retries == 0 {
+                        eprintln!("umounting {}: {}", self.device, err);
+                        return;
+                    } else {
+                        sleep(Duration::from_millis(100));
+                    }
+                }
+            }
+        }
+        if let Err(err) = remove_dir(&self.mountpoint) {
+            eprintln!("removing {}: {}", self.mountpoint.display(), err);
+            return;
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SavedPartitions {
     sector_size: Option<u64>,
@@ -755,34 +783,6 @@ pub fn get_blkdev_deps_recursing(device: &Path) -> Result<Vec<PathBuf>> {
     Ok(ret)
 }
 
-impl Drop for Mount {
-    fn drop(&mut self) {
-        if !self.owned {
-            return;
-        }
-
-        // Unmount sometimes fails immediately after closing the last open
-        // file on the partition.  Retry several times before giving up.
-        for retries in (0..20).rev() {
-            match mount::umount(&self.mountpoint) {
-                Ok(_) => break,
-                Err(err) => {
-                    if retries == 0 {
-                        eprintln!("umounting {}: {}", self.device, err);
-                        return;
-                    } else {
-                        sleep(Duration::from_millis(100));
-                    }
-                }
-            }
-        }
-        if let Err(err) = remove_dir(&self.mountpoint) {
-            eprintln!("removing {}: {}", self.mountpoint.display(), err);
-            return;
-        }
-    }
-}
-
 fn reread_partition_table(file: &mut File) -> Result<()> {
     let fd = file.as_raw_fd();
     // Reread sometimes fails inexplicably.  Retry several times before
@@ -866,16 +866,6 @@ fn disk_has_mbr(disk: &mut (impl Read + Seek)) -> Result<bool> {
     Ok(sig == [0x55, 0xaa])
 }
 
-// create unsafe ioctl wrappers
-#[allow(clippy::missing_safety_doc)]
-mod ioctl {
-    use super::c_int;
-    use nix::{ioctl_none, ioctl_read, ioctl_read_bad, request_code_none};
-    ioctl_none!(blkrrpart, 0x12, 95);
-    ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
-    ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
-}
-
 pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
@@ -920,6 +910,16 @@ fn detect_formatted_sector_size(buf: &[u8], gpt_512: usize, gpt_4096: usize) -> 
         // Unknown
         None
     }
+}
+
+// create unsafe ioctl wrappers
+#[allow(clippy::missing_safety_doc)]
+mod ioctl {
+    use super::c_int;
+    use nix::{ioctl_none, ioctl_read, ioctl_read_bad, request_code_none};
+    ioctl_none!(blkrrpart, 0x12, 95);
+    ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+    ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
 }
 
 #[cfg(test)]
