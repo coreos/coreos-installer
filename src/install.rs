@@ -105,7 +105,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                 // failed.  Preserve the saved partitions by writing them to
                 // a file in /tmp and telling the user about it.  Hey, it's
                 // a debug flag.
-                stash_saved_partitions(&saved)?;
+                stash_saved_partitions(&mut dest, &saved)?;
             }
         } else {
             clear_partition_table(&mut dest, &mut *table)?;
@@ -495,16 +495,17 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
 
 // Preserve saved partitions by writing them to a file in /tmp and reporting
 // the path.
-fn stash_saved_partitions(saved: &SavedPartitions) -> Result<()> {
+fn stash_saved_partitions(disk: &mut File, saved: &SavedPartitions) -> Result<()> {
     let mut stash = tempfile::Builder::new()
         .prefix("coreos-installer-partitions.")
         .tempfile()
         .chain_err(|| "creating partition stash file")?;
     let path = stash.path().to_owned();
     eprintln!("Storing saved partition entries to {}", path.display());
+    let len = disk.seek(SeekFrom::End(0)).chain_err(|| "seeking disk")?;
     stash
         .as_file()
-        .set_len(1024 * 1024)
+        .set_len(len)
         .chain_err(|| format!("extending partition stash file {}", path.display()))?;
     saved
         .write(stash.as_file_mut())
