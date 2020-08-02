@@ -248,8 +248,7 @@ where
     // call the callback to copy the image
     image_copy(&first_mb, &mut limit_reader, dest, dest_path)?;
 
-    // flush
-    dest.flush().chain_err(|| "flushing data to disk")?;
+    // finish I/O before closing the progress bar
     dest.sync_all().chain_err(|| "syncing data to disk")?;
 
     Ok(())

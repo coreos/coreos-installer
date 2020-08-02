@@ -133,9 +133,6 @@ impl<R: Read> GpgReader<R> {
         signature_file
             .write_all(signature)
             .chain_err(|| "writing signature file")?;
-        signature_file
-            .flush()
-            .chain_err(|| "flushing signature file")?;
 
         // start verification
         let verify = Command::new("gpg")

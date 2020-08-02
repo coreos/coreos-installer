@@ -485,8 +485,6 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
             .chain_err(|| "clearing backup partition table")?;
     }
 
-    dest.flush()
-        .chain_err(|| "flushing partition table to disk")?;
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
     table.reread()?;
