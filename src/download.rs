@@ -595,7 +595,7 @@ mod tests {
         if let Some(start_mb) = start_mb {
             gpt[1] = GPTPartitionEntry {
                 partition_type_guid: [1u8; 16],
-                unique_parition_guid: [1u8; 16],
+                unique_partition_guid: [1u8; 16],
                 starting_lba: start_mb * 2048,
                 ending_lba: (start_mb + 1) * 2048,
                 attribute_bits: 0,

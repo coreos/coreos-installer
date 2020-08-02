@@ -1054,7 +1054,7 @@ mod tests {
                 i,
                 GPTPartitionEntry {
                     partition_type_guid: make_guid("type"),
-                    unique_parition_guid: make_guid(&start.to_string()),
+                    unique_partition_guid: make_guid(&start.to_string()),
                     starting_lba: start * 2048,
                     ending_lba: end * 2048 - 1,
                     attribute_bits: 0,
@@ -1351,7 +1351,7 @@ mod tests {
                 message, i
             );
             assert_eq!(
-                entry.unique_parition_guid, found[*i].unique_parition_guid,
+                entry.unique_partition_guid, found[*i].unique_partition_guid,
                 "{}, partition {}",
                 message, i
             );
