@@ -557,6 +557,7 @@ impl SavedPartitions {
         })
     }
 
+    // Updating the kernel partition table is the caller's responsibility.
     pub fn write(&self, disk: &mut File) -> Result<()> {
         if self.partitions.is_empty() {
             return Ok(());

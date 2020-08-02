@@ -108,10 +108,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                 stash_saved_partitions(&mut dest, &saved)?;
             }
         } else {
-            clear_partition_table(&mut dest, &mut *table)?;
-            saved
-                .write(&mut dest)
-                .chain_err(|| format!("restoring saved partitions to {}", config.device))?;
+            reset_partition_table(&mut dest, &mut *table, &saved)?;
         }
 
         // return a generic error so our exit status is right
@@ -445,16 +442,23 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     Ok(())
 }
 
-/// Clear the partition table.  For use after a failure.
-fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<()> {
+/// Clear the partition table and restore saved partitions.  For use after
+/// a failure.
+fn reset_partition_table(
+    dest: &mut File,
+    table: &mut dyn PartTable,
+    saved: &SavedPartitions,
+) -> Result<()> {
     eprintln!("Clearing partition table");
+
+    // Clear the first MiB of disk.
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     let zeroes = [0u8; 1024 * 1024];
     dest.write_all(&zeroes)
         .chain_err(|| "clearing primary partition table")?;
 
-    // Now the backup GPT, which is in the last LBA.  If there is one, we
+    // Clear the backup GPT, which is in the last LBA.  If there is one, we
     // should clear it, since it might have stale partition info.
     // Constraints:
     //   - Never overwrite partition contents.
@@ -485,9 +489,16 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
             .chain_err(|| "clearing backup partition table")?;
     }
 
+    // Restore saved partitions.
+    saved
+        .write(dest)
+        .chain_err(|| "restoring saved partitions")?;
+
+    // Finish writeback and reread the partition table.
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
     table.reread()?;
+
     Ok(())
 }
 
