@@ -23,7 +23,7 @@ use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
 };
-use std::io::{Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -636,6 +636,15 @@ impl SavedPartitions {
 
         // write
         gpt.write_into(disk).chain_err(|| "writing updated GPT")?;
+
+        // If the MBR signature is missing, write a protective MBR, otherwise
+        // leave alone.  The kernel will ignore a GPT without some sort of
+        // MBR.
+        if !disk_has_mbr(disk)? {
+            GPT::write_protective_mbr_into(disk, sector_size)
+                .chain_err(|| "writing protective MBR")?;
+        }
+
         Ok(())
     }
 
@@ -848,6 +857,15 @@ pub fn get_block_device_size(file: &File) -> Result<NonZeroU64> {
     }
 }
 
+fn disk_has_mbr(disk: &mut (impl Read + Seek)) -> Result<bool> {
+    let mut sig = [0u8; 2];
+    disk.seek(SeekFrom::Start(510))
+        .chain_err(|| "seeking to MBR signature")?;
+    disk.read_exact(&mut sig)
+        .chain_err(|| "reading MBR signature")?;
+    Ok(sig == [0x55, 0xaa])
+}
+
 // create unsafe ioctl wrappers
 #[allow(clippy::missing_safety_doc)]
 mod ioctl {
@@ -908,7 +926,7 @@ fn detect_formatted_sector_size(buf: &[u8], gpt_512: usize, gpt_4096: usize) -> 
 mod tests {
     use super::*;
     use maplit::hashmap;
-    use std::io::{copy, Read};
+    use std::io::{copy, Read, Write};
     use tempfile::tempfile;
     use xz2::read::XzDecoder;
 
@@ -1157,7 +1175,13 @@ mod tests {
             // first, try writing to image disk
             let saved = SavedPartitions::new(&mut base, filter).unwrap();
             let mut disk = make_disk(512, &image_parts);
+            assert!(!disk_has_mbr(&mut disk).unwrap(), "test {}", testnum);
             saved.write(&mut disk).unwrap();
+            assert!(
+                expected_blank.is_empty() ^ disk_has_mbr(&mut disk).unwrap(),
+                "test {}",
+                testnum
+            );
             let result = GPT::find_from(&mut disk).unwrap();
             assert_partitions_eq(expected_image, &result, &format!("test {} image", testnum));
             assert_eq!(
@@ -1179,6 +1203,11 @@ mod tests {
             // then, try writing to blank disk
             let mut disk = make_unformatted_disk();
             saved.write(&mut disk).unwrap();
+            assert!(
+                expected_blank.is_empty() ^ disk_has_mbr(&mut disk).unwrap(),
+                "test {}",
+                testnum
+            );
             if !expected_blank.is_empty() {
                 let result = GPT::find_from(&mut disk).unwrap();
                 assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
@@ -1192,6 +1221,20 @@ mod tests {
         saved.write(&mut disk).unwrap();
         let result = GPT::find_from(&mut disk).unwrap();
         assert_partitions_eq(&image_parts, &result, "unformatted disk");
+
+        // test not overwriting existing MBR
+        let saved = SavedPartitions::new(&mut base, &vec![label("five")]).unwrap();
+        let mut disk = make_disk(512, &image_parts);
+        let mut pattern = [17u8; 512];
+        pattern[510] = 0x55;
+        pattern[511] = 0xaa;
+        disk.seek(SeekFrom::Start(0)).unwrap();
+        disk.write_all(&pattern).unwrap();
+        saved.write(&mut disk).unwrap();
+        let mut buf = [0u8; 512];
+        disk.seek(SeekFrom::Start(0)).unwrap();
+        disk.read_exact(&mut buf).unwrap();
+        assert_eq!(&buf[..], &pattern[..]);
 
         // test overlapping partitions
         let saved = SavedPartitions::new(&mut base, &vec![Index(index(1), index(1))]).unwrap();
