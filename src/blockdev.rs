@@ -897,24 +897,14 @@ pub fn udev_settle() -> Result<()> {
 
 /// Inspect a buffer from the start of a disk image and return its formatted
 /// sector size, if any can be determined.
-pub fn detect_formatted_sector_size_start(buf: &[u8]) -> Option<NonZeroU32> {
-    detect_formatted_sector_size(buf, 512, 4096)
-}
-
-/// Inspect a buffer 4 KiB from the end of a disk image and return its
-/// formatted sector size, if any can be determined.
-pub fn detect_formatted_sector_size_end(buf: &[u8]) -> Option<NonZeroU32> {
-    detect_formatted_sector_size(buf, 4096 - 512, 0)
-}
-
-fn detect_formatted_sector_size(buf: &[u8], gpt_512: usize, gpt_4096: usize) -> Option<NonZeroU32> {
+pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
     let gpt_magic: &[u8; 8] = b"EFI PART";
 
-    if buf.len() >= gpt_512 + 8 && buf[gpt_512..gpt_512 + 8] == gpt_magic[..] {
-        // 512-byte GPT
+    if buf.len() >= 520 && buf[512..520] == gpt_magic[..] {
+        // GPT at offset 512
         NonZeroU32::new(512)
-    } else if buf.len() >= gpt_4096 + 8 && buf[gpt_4096..gpt_4096 + 8] == gpt_magic[..] {
-        // 4096-byte GPT
+    } else if buf.len() >= 4104 && buf[4096..4104] == gpt_magic[..] {
+        // GPT at offset 4096
         NonZeroU32::new(4096)
     } else {
         // Unknown
@@ -1019,10 +1009,12 @@ mod tests {
             } else {
                 test.data.to_vec()
             };
-            let result = detect_formatted_sector_size_start(&data);
-            assert_eq!(result, test.result, "{}", test.name);
-            let result = detect_formatted_sector_size_end(&data[data.len().saturating_sub(4096)..]);
-            assert_eq!(result, test.result, "{}", test.name);
+            assert_eq!(
+                detect_formatted_sector_size(&data),
+                test.result,
+                "{}",
+                test.name
+            );
         }
     }
 

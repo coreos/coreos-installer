@@ -108,7 +108,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                 stash_saved_partitions(&mut dest, &saved)?;
             }
         } else {
-            reset_partition_table(&mut dest, &mut *table, &saved)?;
+            reset_partition_table(config, &mut dest, &mut *table, &saved)?;
         }
 
         // return a generic error so our exit status is right
@@ -448,54 +448,28 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
 /// Clear the partition table and restore saved partitions.  For use after
 /// a failure.
 fn reset_partition_table(
+    config: &InstallConfig,
     dest: &mut File,
     table: &mut dyn PartTable,
     saved: &SavedPartitions,
 ) -> Result<()> {
-    eprintln!("Clearing partition table");
+    eprintln!("Resetting partition table");
 
-    // Clear the first MiB of disk.
-    dest.seek(SeekFrom::Start(0))
-        .chain_err(|| "seeking to start of disk")?;
-    let zeroes = [0u8; 1024 * 1024];
-    dest.write_all(&zeroes)
-        .chain_err(|| "clearing primary partition table")?;
-
-    // Clear the backup GPT, which is in the last LBA.  If there is one, we
-    // should clear it, since it might have stale partition info.
-    // Constraints:
-    //   - Never overwrite partition contents.
-    //   - If we're on a GPT platform, we have the right to overwrite at
-    //     least the last 4 KiB of disk.  On 4Kn drives, that's the backup
-    //     GPT.  On 512-byte drives, there is at least 16 KiB of
-    //     non-partitionable space before the backup GPT, so we're still safe.
-    //     This is true even if we're writing to a legacy MBR disk, because
-    //     by doing so, the user already gave the OS permission to write the
-    //     backup GPT on first boot.
-    //   - We can't assume that the backup GPT corresponds to the disk
-    //     sector size because of possible user error.  We probably can't
-    //     even assume there aren't backup GPTs for both sector sizes.
-    //   - If we're not on a GPT system (s390x DASD), we can't overwrite the
-    //     end of the disk.
-    // We could probably get away with clearing the last 4 KiB if !DASD, but
-    // be a bit more conservative: probe for _any_ GPT signature and, if
-    // found, clear the last 4 KiB.
-    let mut buf = [0u8; 4096];
-    dest.seek(SeekFrom::End(-(buf.len() as i64)))
-        .chain_err(|| "seeking to end of disk")?;
-    dest.read_exact(&mut buf)
-        .chain_err(|| "reading end of disk")?;
-    if detect_formatted_sector_size_end(&buf).is_some() {
-        dest.seek(SeekFrom::End(-(buf.len() as i64)))
-            .chain_err(|| "seeking to end of disk")?;
-        dest.write_all(&zeroes[..buf.len()])
-            .chain_err(|| "clearing backup partition table")?;
+    if is_dasd(config)? {
+        // Don't write out a GPT, since the backup GPT may overwrite
+        // something we're not allowed to touch.  Just clear the first MiB
+        // of disk.
+        dest.seek(SeekFrom::Start(0))
+            .chain_err(|| "seeking to start of disk")?;
+        let zeroes = [0u8; 1024 * 1024];
+        dest.write_all(&zeroes)
+            .chain_err(|| "clearing primary partition table")?;
+    } else {
+        // Write a new GPT including any saved partitions.
+        saved
+            .overwrite(dest)
+            .chain_err(|| "restoring saved partitions")?;
     }
-
-    // Restore saved partitions.
-    saved
-        .overwrite(dest)
-        .chain_err(|| "restoring saved partitions")?;
 
     // Finish writeback and reread the partition table.
     dest.sync_all()
