@@ -416,3 +416,44 @@ impl<'a, R: Read> Drop for ProgressReader<'a, R> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use error_chain::ChainedError;
+
+    #[test]
+    fn test_write_image_limit() {
+        let (mut dest, dest_path) = tempfile::Builder::new()
+            .prefix("coreos-installer-")
+            .tempfile()
+            .unwrap()
+            .into_parts();
+        let precious = "hello world";
+        let offset = 12345678;
+        let explanation = "precious data";
+        dest.seek(SeekFrom::Start(offset)).unwrap();
+        dest.write_all(precious.as_bytes()).unwrap();
+        dest.seek(SeekFrom::Start(0)).unwrap();
+
+        let mut source = FileLocation::new("/dev/zero").sources().unwrap().remove(0);
+        let err = write_image(
+            &mut source,
+            &mut dest,
+            &dest_path,
+            image_copy_default,
+            false,
+            Some((offset, explanation.into())),
+            None,
+        )
+        .unwrap_err()
+        .display_chain()
+        .to_string();
+        assert!(err.contains(explanation), "{}", err);
+
+        dest.seek(SeekFrom::Start(offset)).unwrap();
+        let mut buf = vec![0u8; precious.len()];
+        dest.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, precious.as_bytes());
+    }
+}
