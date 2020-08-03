@@ -249,13 +249,9 @@ where
 pub fn image_copy_default(
     first_mb: &[u8],
     source: &mut dyn Read,
-    dest_file: &mut File,
+    dest: &mut File,
     _dest_path: &Path,
 ) -> Result<()> {
-    // Amortize write overhead.  The decompressor will produce bytes in
-    // whatever chunk size it chooses.
-    let mut dest = BufWriter::with_capacity(BUFFER_SIZE, dest_file);
-
     // Cache the first MiB and write zeroes to dest instead.  This ensures
     // that the disk image can't be used accidentally before its GPG signature
     // is verified.
@@ -274,16 +270,19 @@ pub fn image_copy_default(
     // sparse-copy the image, falling back to non-sparse copy if hardware
     // acceleration is unavailable.  But BLKZEROOUT doesn't support
     // BLKDEV_ZERO_NOFALLBACK, so we'd risk gigabytes of redundant I/O.
-    copy(source, &mut dest).chain_err(|| "decoding and writing image")?;
+    //
+    // Amortize write overhead.  The decompressor will produce bytes in
+    // whatever chunk size it chooses.
+    let mut buf_dest = BufWriter::with_capacity(BUFFER_SIZE, dest);
+    copy(source, &mut buf_dest).chain_err(|| "decoding and writing image")?;
+    // we can't chain_err() because of lifetime issues
+    let dest = buf_dest.into_inner().map_err(|_| "flushing data to disk")?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     dest.write_all(first_mb)
         .chain_err(|| "writing to first MiB of disk")?;
-
-    // Flush buffer.
-    dest.flush().chain_err(|| "flushing data to disk")?;
 
     Ok(())
 }
