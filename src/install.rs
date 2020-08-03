@@ -174,7 +174,7 @@ fn write_disk(
 
     // restore saved partitions, if any, and reread table
     saved
-        .write(dest)
+        .merge(dest)
         .chain_err(|| format!("restoring saved partitions to {}", config.device))?;
     table.reread()?;
 
@@ -494,7 +494,7 @@ fn reset_partition_table(
 
     // Restore saved partitions.
     saved
-        .write(dest)
+        .overwrite(dest)
         .chain_err(|| "restoring saved partitions")?;
 
     // Finish writeback and reread the partition table.
@@ -520,7 +520,7 @@ fn stash_saved_partitions(disk: &mut File, saved: &SavedPartitions) -> Result<()
         .set_len(len)
         .chain_err(|| format!("extending partition stash file {}", path.display()))?;
     saved
-        .write(stash.as_file_mut())
+        .overwrite(stash.as_file_mut())
         .chain_err(|| format!("stashing saved partitions to {}", path.display()))?;
     stash
         .keep()
