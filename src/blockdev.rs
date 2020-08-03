@@ -23,6 +23,7 @@ use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
 };
+use std::io::{Seek, SeekFrom};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -479,6 +480,7 @@ impl SavedPartitions {
             return Ok(result);
         }
 
+        // read GPT
         let gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
             // no GPT on this disk, so no partitions to save
@@ -488,11 +490,36 @@ impl SavedPartitions {
         Self::verify_disk_sector_size_matches_gpt(disk, gpt.sector_size)?;
         result.sector_size = Some(gpt.sector_size);
 
+        // save partitions accepted by filters
         for (i, p) in gpt.iter() {
             if Self::matches_filters(i, p, filters) {
                 result.partitions.push((i, p.clone()));
             }
         }
+
+        // Test restoring the saved partitions to a temporary file.  If the
+        // resulting partition table contains invalid data (e.g. duplicate
+        // partition GUIDs) we need to know now, before the caller
+        // overwrites the partition table.  Otherwise we could fail to
+        // restore, clear the table, and fail to restore _again_ to the
+        // empty table.
+        if !result.partitions.is_empty() {
+            let len = disk
+                .seek(SeekFrom::End(0))
+                .chain_err(|| "getting disk size")?;
+            let mut temp = tempfile::tempfile().chain_err(|| "creating dry run image")?;
+            temp.set_len(len)
+                .chain_err(|| format!("setting test image size to {}", len))?;
+            let mut gpt = GPT::new_from(&mut temp, gpt.sector_size, *Uuid::new_v4().as_bytes())
+                .chain_err(|| "creating dry run partition table")?;
+            for (i, p) in &result.partitions {
+                gpt[*i] = p.clone();
+            }
+            gpt.write_into(&mut temp).chain_err(|| {
+                "failed dry run restoring saved partitions; input partition table may be invalid"
+            })?;
+        }
+
         Ok(result)
     }
 
@@ -880,7 +907,7 @@ fn detect_formatted_sector_size(buf: &[u8], gpt_512: usize, gpt_4096: usize) -> 
 mod tests {
     use super::*;
     use maplit::hashmap;
-    use std::io::Read;
+    use std::io::{copy, Read};
     use tempfile::tempfile;
     use xz2::read::XzDecoder;
 
@@ -1179,6 +1206,17 @@ mod tests {
         assert_eq!(
             saved.write(&mut disk).unwrap_err().to_string(),
             "sector size 4096 of disk GPT doesn't match sector size 512 of saved GPT"
+        );
+
+        // test copying invalid partitions
+        let mut disk = make_unformatted_disk();
+        let data = include_bytes!("../fixtures/gpt-512-duplicate-partition-guids.xz");
+        copy(&mut XzDecoder::new(&data[..]), &mut disk).unwrap();
+        assert_eq!(
+            SavedPartitions::new(&mut disk, &vec![label("*")])
+                .unwrap_err()
+                .to_string(),
+            "failed dry run restoring saved partitions; input partition table may be invalid"
         );
     }
 
