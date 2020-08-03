@@ -1173,9 +1173,15 @@ mod tests {
 
         let mut base = make_disk(512, &base_parts);
         for (testnum, (filter, expected_blank, expected_image)) in tests.iter().enumerate() {
-            // perform writes in the same order as install()
-            // first, try merging with image disk
+            // try overwriting on blank disk
             let saved = SavedPartitions::new(&mut base, filter).unwrap();
+            let mut disk = make_unformatted_disk();
+            saved.overwrite(&mut disk).unwrap();
+            assert!(disk_has_mbr(&mut disk), "test {}", testnum);
+            let result = GPT::find_from(&mut disk).unwrap();
+            assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
+
+            // try merging with image disk
             let mut disk = make_disk(512, &image_parts);
             saved.merge(&mut disk).unwrap();
             assert!(!disk_has_mbr(&mut disk), "test {}", testnum);
@@ -1196,13 +1202,6 @@ mod tests {
                 "test {}",
                 testnum
             );
-
-            // then, try overwriting on blank disk
-            let mut disk = make_unformatted_disk();
-            saved.overwrite(&mut disk).unwrap();
-            assert!(disk_has_mbr(&mut disk), "test {}", testnum);
-            let result = GPT::find_from(&mut disk).unwrap();
-            assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
         }
 
         // test merging with unformatted initial disk

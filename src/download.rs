@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::result;
 use std::time::{Duration, Instant};
 
-use crate::blockdev::detect_formatted_sector_size;
+use crate::blockdev::{detect_formatted_sector_size, SavedPartitions};
 use crate::cmdline::*;
 use crate::errors::*;
 use crate::io::*;
@@ -151,6 +151,7 @@ fn write_image_and_sig(
         decompress,
         None,
         None,
+        None,
     )?;
 
     // write signature, if relevant
@@ -170,17 +171,19 @@ fn write_image_and_sig(
 }
 
 /// Copy the image to disk and verify its signature.
+#[allow(clippy::too_many_arguments)]
 pub fn write_image<F>(
     source: &mut ImageSource,
     dest: &mut File,
     dest_path: &Path,
     image_copy: F,
     decompress: bool,
+    saved: Option<&SavedPartitions>,
     byte_limit: Option<(u64, String)>, // limit and explanation
     expected_sector_size: Option<NonZeroU32>,
 ) -> Result<()>
 where
-    F: FnOnce(&[u8], &mut dyn Read, &mut File, &Path) -> Result<()>,
+    F: FnOnce(&[u8], &mut dyn Read, &mut File, &Path, Option<&SavedPartitions>) -> Result<()>,
 {
     // wrap source for GPG verification
     let mut verify_reader: Box<dyn Read> = {
@@ -238,7 +241,7 @@ where
     }
 
     // call the callback to copy the image
-    image_copy(&first_mb, &mut limit_reader, dest, dest_path)?;
+    image_copy(&first_mb, &mut limit_reader, dest, dest_path, saved)?;
 
     // finish I/O before closing the progress bar
     dest.sync_all().chain_err(|| "syncing data to disk")?;
@@ -251,12 +254,25 @@ pub fn image_copy_default(
     source: &mut dyn Read,
     dest: &mut File,
     _dest_path: &Path,
+    saved: Option<&SavedPartitions>,
 ) -> Result<()> {
-    // Cache the first MiB and write zeroes to dest instead.  This ensures
-    // that the disk image can't be used accidentally before its GPG signature
-    // is verified.
-    dest.write_all(&[0u8; 1024 * 1024])
-        .chain_err(|| "clearing first MiB of disk")?;
+    // Don't write the first MiB yet.  This ensures that the disk image
+    // can't be used accidentally before its GPG signature is verified.  If
+    // this is a real disk, write the saved partitions (so they don't get
+    // lost if we crash), and otherwise write zeroes.
+    match saved {
+        Some(saved) => {
+            saved
+                .overwrite(dest)
+                .chain_err(|| "overwriting disk partition table")?;
+            dest.seek(SeekFrom::Start(1024 * 1024))
+                .chain_err(|| "seeking disk")?;
+        }
+        None => dest
+            .write_all(&[0u8; 1024 * 1024])
+            .chain_err(|| "clearing first MiB of disk")?,
+    };
+    dest.sync_all().chain_err(|| "syncing data to disk")?;
 
     // do the rest of the copy
     // This physically writes any runs of zeroes, rather than sparsifying,
@@ -434,6 +450,7 @@ mod tests {
             &dest_path,
             image_copy_default,
             false,
+            None,
             Some((offset, explanation.into())),
             None,
         )
