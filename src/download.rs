@@ -151,7 +151,6 @@ fn write_image_and_sig(
         decompress,
         None,
         None,
-        None,
     )?;
 
     // write signature, if relevant
@@ -171,7 +170,6 @@ fn write_image_and_sig(
 }
 
 /// Copy the image to disk and verify its signature.
-#[allow(clippy::too_many_arguments)]
 pub fn write_image<F>(
     source: &mut ImageSource,
     dest: &mut File,
@@ -179,7 +177,6 @@ pub fn write_image<F>(
     image_copy: F,
     decompress: bool,
     saved: Option<&SavedPartitions>,
-    byte_limit: Option<(u64, String)>, // limit and explanation
     expected_sector_size: Option<NonZeroU32>,
 ) -> Result<()>
 where
@@ -214,9 +211,10 @@ where
     };
 
     // Wrap again for limit checking.
+    let byte_limit = saved.map(|saved| saved.get_offset()).transpose()?.flatten();
     let mut limit_reader: Box<dyn Read> = match byte_limit {
         None => Box::new(decompress_reader),
-        Some((limit, reason)) => Box::new(LimitReader::new(decompress_reader, limit, reason)),
+        Some((limit, conflict)) => Box::new(LimitReader::new(decompress_reader, limit, conflict)),
     };
 
     // Read the first MiB of input and, if requested, check it against the
@@ -452,33 +450,50 @@ mod tests {
 
     #[test]
     fn test_write_image_limit() {
+        // source must be partitioned if we're saving partitions
+        let (mut source, source_path) = tempfile::Builder::new()
+            .prefix("coreos-installer-")
+            .tempfile()
+            .unwrap()
+            .into_parts();
+        source.set_len(6 * 1024 * 1024).unwrap();
+        partition(&mut source, None);
+
         let (mut dest, dest_path) = tempfile::Builder::new()
             .prefix("coreos-installer-")
             .tempfile()
             .unwrap()
             .into_parts();
+        dest.set_len(8 * 1024 * 1024).unwrap();
+        partition(&mut dest, Some(4));
+        let saved = SavedPartitions::new(
+            &mut dest,
+            &vec![PartitionFilter::Label(glob::Pattern::new("*").unwrap())],
+        )
+        .unwrap();
+        assert!(saved.is_saved());
+        let offset = 4 * 1024 * 1024;
         let precious = "hello world";
-        let offset = 12345678;
-        let explanation = "precious data";
         dest.seek(SeekFrom::Start(offset)).unwrap();
         dest.write_all(precious.as_bytes()).unwrap();
         dest.seek(SeekFrom::Start(0)).unwrap();
 
-        let mut source = FileLocation::new("/dev/zero").sources().unwrap().remove(0);
         let err = write_image(
-            &mut source,
+            &mut FileLocation::new(source_path.to_str().unwrap())
+                .sources()
+                .unwrap()
+                .remove(0),
             &mut dest,
             &dest_path,
             image_copy_default,
             false,
-            None,
-            Some((offset, explanation.into())),
+            Some(&saved),
             None,
         )
         .unwrap_err()
         .display_chain()
         .to_string();
-        assert!(err.contains(explanation), "{}", err);
+        assert!(err.contains("collision with partition"), "{}", err);
 
         dest.seek(SeekFrom::Start(offset)).unwrap();
         let mut buf = vec![0u8; precious.len()];

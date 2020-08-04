@@ -167,9 +167,6 @@ fn write_disk(
         image_copy,
         true,
         Some(&saved),
-        saved
-            .get_offset()?
-            .map(|(offset, desc)| (offset, format!("collision with {}", desc))),
         Some(sector_size),
     )?;
     table.reread()?;
