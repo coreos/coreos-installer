@@ -310,7 +310,7 @@ pub fn bls_entry_options_delete_and_append_kargs(
 // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
 // handle occurrences in quoted args) but will work for now (one thing that saves us is
 // that we're acting on our baked configs, which have straight-forward kargs).
-fn modify_kargs(
+pub fn modify_kargs(
     current_kargs: &str,
     kargs_append: &[String],
     kargs_replace: &[String],

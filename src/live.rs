@@ -16,6 +16,7 @@ use cpio::{write_cpio, NewcBuilder, NewcReader};
 use error_chain::bail;
 use nix::unistd::isatty;
 use openat_ext::FileExt;
+use serde::Serialize;
 use std::convert::TryInto;
 use std::fs::{read, remove_file, write, File, OpenOptions};
 use std::io::{stdin, stdout, BufReader, Cursor, Read, Seek, SeekFrom, Write};
@@ -23,11 +24,16 @@ use std::os::unix::io::AsRawFd;
 
 use crate::cmdline::*;
 use crate::errors::*;
+use crate::install::*;
 use crate::io::*;
 
 const FILENAME: &str = "config.ign";
 const COREOS_IGNITION_HEADER_MAGIC: &[u8] = b"coreiso+";
 const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
+const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
+const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
+const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
+const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
 
 pub fn iso_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -158,6 +164,206 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
         .chain_err(|| "writing output")?;
     stdout().flush().chain_err(|| "flushing output")?;
     Ok(())
+}
+
+pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
+    let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
+    let mut embed = KargEmbedAreas::for_file(&mut holder.file)?;
+    let current_kargs = embed.get_current_kargs()?;
+    let new_kargs = modify_kargs(
+        &current_kargs,
+        &config.append,
+        &config.replace,
+        &config.delete,
+    )?;
+    embed.write_kargs(&new_kargs)?;
+    holder.complete();
+    Ok(())
+}
+
+pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
+    let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
+    let mut embed = KargEmbedAreas::for_file(&mut holder.file)?;
+    let default_kargs = embed.get_default_kargs()?;
+    embed.write_kargs(&default_kargs)?;
+    holder.complete();
+    Ok(())
+}
+
+pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .open(&config.input)
+        .chain_err(|| format!("opening {}", &config.input))?;
+    let mut embed = KargEmbedAreas::for_file(&mut file)?;
+    if config.header {
+        serde_json::to_writer_pretty(std::io::stdout(), &embed)
+            .chain_err(|| "failed to serialize header")?;
+    } else {
+        let kargs = if config.default {
+            embed.get_default_kargs()?
+        } else {
+            embed.get_current_kargs()?
+        };
+        println!("{}", kargs);
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct KargEmbedAreas<'a> {
+    #[serde(skip_serializing)]
+    file: &'a mut File,
+    length: usize,
+    default_kargs_offset: u64,
+    kargs_offsets: Vec<u64>,
+}
+
+impl<'a> KargEmbedAreas<'a> {
+    fn for_file(file: &'a mut File) -> Result<Self> {
+        let mut buf: [u8; 8] = [0; 8];
+        // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
+        // before the initrd embed area (see EmbedArea below):
+        // 8 bytes: magic string "coreKarg"
+        // 8 bytes little-endian: length of karg embed areas
+        // 8 bytes little-endian: offset to default kargs
+        // 8 bytes little-endian x 6: offsets to karg embed areas
+        file.seek(SeekFrom::Start(
+            32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
+        ))
+        .chain_err(|| "seeking to karg embed header")?;
+        // magic number
+        file.read_exact(&mut buf)
+            .chain_err(|| "reading karg embed header")?;
+        if buf != COREOS_KARG_EMBED_AREA_HEADER_MAGIC {
+            bail!("No karg embed areas found; old or corrupted CoreOS ISO image.");
+        }
+        // length
+        file.read_exact(&mut buf)
+            .chain_err(|| "reading karg embed header")?;
+        let length: usize = u64::from_le_bytes(buf)
+            .try_into()
+            .chain_err(|| "karg embed area length too large to allocate")?;
+        // sanity-check against a reasonable limit
+        if length > COREOS_KARG_EMBED_AREA_MAX_SIZE {
+            bail!(
+                "karg embed area length larger than {} (found {})",
+                COREOS_KARG_EMBED_AREA_MAX_SIZE,
+                length
+            );
+        }
+
+        let metadata = file.metadata().chain_err(|| "reading metadata for ISO")?;
+        let iso_size = metadata.len();
+
+        // default kargs
+        file.read_exact(&mut buf)
+            .chain_err(|| "reading karg embed header")?;
+        let default_kargs_offset: u64 = u64::from_le_bytes(buf);
+        if default_kargs_offset + (length as u64) > iso_size {
+            bail!(
+                "Default kargs area end outside ISO ({}+{} vs {})",
+                default_kargs_offset,
+                length,
+                iso_size
+            );
+        }
+
+        // offsets
+        let mut kargs_offsets: Vec<u64> = Vec::new();
+        while kargs_offsets.len() < COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS {
+            file.read_exact(&mut buf)
+                .chain_err(|| "reading karg embed header")?;
+            let offset: u64 = u64::from_le_bytes(buf);
+            if offset == 0 {
+                break;
+            } else if offset + (length as u64) > iso_size {
+                bail!(
+                    "Kargs area end outside ISO ({}+{} vs {})",
+                    offset,
+                    length,
+                    iso_size
+                );
+            }
+            kargs_offsets.push(offset);
+        }
+
+        // we expect at least one
+        if kargs_offsets.is_empty() {
+            bail!("No karg embed areas found; corrupted CoreOS ISO image.");
+        }
+
+        Ok(KargEmbedAreas {
+            file,
+            length,
+            default_kargs_offset,
+            kargs_offsets,
+        })
+    }
+
+    fn get_current_kargs(&mut self) -> Result<String> {
+        // really, we could just get the kargs from the first file, but let's sanity-check that all
+        // the offsets have the same kargs
+        let mut first_kargs: Option<String> = None;
+        for offset in &self.kargs_offsets {
+            let kargs = get_kargs_at_offset(self.file, self.length, *offset)?;
+            if let Some(ref first_kargs) = first_kargs {
+                if &kargs != first_kargs {
+                    bail!(
+                        "kargs don't match at all offsets! (expected '{}', but offset {} has: '{}')",
+                        first_kargs,
+                        *offset,
+                        kargs
+                    );
+                }
+            } else {
+                first_kargs = Some(kargs);
+            }
+        }
+        Ok(first_kargs.expect("at least one area offset"))
+    }
+
+    fn get_default_kargs(&mut self) -> Result<String> {
+        get_kargs_at_offset(self.file, self.length, self.default_kargs_offset)
+    }
+
+    fn write_kargs(&mut self, kargs: &str) -> Result<()> {
+        let kargs: String = kargs.trim().to_string() + "\n";
+        if kargs.len() > self.length {
+            bail!(
+                "kargs too large for area: {} vs {}",
+                kargs.len(),
+                self.length
+            );
+        }
+
+        let mut new_area = vec![b'#'; self.length];
+        new_area[..kargs.len()].copy_from_slice(kargs.as_bytes());
+
+        for offset in &self.kargs_offsets {
+            self.file
+                .seek(SeekFrom::Start(*offset))
+                .chain_err(|| format!("seeking to karg area offset {}", *offset))?;
+            self.file
+                .write_all(&new_area)
+                .chain_err(|| format!("writing karg embed area at offset {}", *offset))?;
+        }
+        Ok(())
+    }
+}
+
+// This is purposely not an impl function because we need to be able to call it while borrowing
+// parts of the struct (e.g. when iterating over the offsets).
+fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Result<String> {
+    file.seek(SeekFrom::Start(offset))
+        .chain_err(|| format!("seeking to karg area offset {}", offset))?;
+    let area = {
+        let mut buf = vec![0u8; area_length];
+        file.read_exact(&mut buf)
+            .chain_err(|| format!("reading karg area at offset {}", offset))?;
+        String::from_utf8(buf).chain_err(|| "invalid UTF-8 in karg area")?
+    };
+    Ok(area.trim_end_matches('#').trim().into())
 }
 
 struct CopiedFileHolder {

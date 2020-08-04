@@ -32,6 +32,9 @@ cosaPod(buildroot: true, runAsUser: 0) {
                     checklen iso ignition embed
                     checklen iso ignition show
                     checklen iso ignition remove
+                    checklen iso kargs modify
+                    checklen iso kargs reset
+                    checklen iso kargs show
                     checklen pxe
                     checklen pxe ignition
                     checklen pxe ignition wrap
@@ -69,6 +72,7 @@ cosaPod(buildroot: true, runAsUser: 0) {
                     shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal4k/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal4k.tar.xz")
                     archiveArtifacts allowEmptyArchive: true, artifacts: 'kola-testiso*.tar.xz'
                 }
+                shwrap("tests/test-iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
             }
         }
     )
