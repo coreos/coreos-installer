@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use libcoreinst::{cmdline, download, errors, install, iso, osmet, source};
+use libcoreinst::{cmdline, download, errors, install, live, osmet, source};
 
 use cmdline::Config;
 use error_chain::quick_main;
@@ -27,9 +27,9 @@ fn run() -> Result<()> {
         Config::Download(c) => download::download(&c),
         Config::ListStream(c) => source::list_stream(&c),
         Config::Install(c) => install::install(&c),
-        Config::IsoEmbed(c) => iso::iso_embed(&c),
-        Config::IsoShow(c) => iso::iso_show(&c),
-        Config::IsoRemove(c) => iso::iso_remove(&c),
+        Config::IsoEmbed(c) => live::iso_embed(&c),
+        Config::IsoShow(c) => live::iso_show(&c),
+        Config::IsoRemove(c) => live::iso_remove(&c),
         Config::OsmetFiemap(c) => osmet::osmet_fiemap(&c),
         Config::OsmetPack(c) => osmet::osmet_pack(&c),
         Config::OsmetUnpack(c) => osmet::osmet_unpack(&c),
