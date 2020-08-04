@@ -52,7 +52,7 @@ pub struct InstallConfig {
     pub save_partitions: Vec<PartitionFilter>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PartitionFilter {
     Label(glob::Pattern),
     Index(Option<NonZeroU32>, Option<NonZeroU32>),

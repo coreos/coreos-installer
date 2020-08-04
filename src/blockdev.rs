@@ -23,6 +23,7 @@ use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
 };
+use std::io::{Read, Seek, SeekFrom};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -461,6 +462,34 @@ impl Mount {
     }
 }
 
+impl Drop for Mount {
+    fn drop(&mut self) {
+        if !self.owned {
+            return;
+        }
+
+        // Unmount sometimes fails immediately after closing the last open
+        // file on the partition.  Retry several times before giving up.
+        for retries in (0..20).rev() {
+            match mount::umount(&self.mountpoint) {
+                Ok(_) => break,
+                Err(err) => {
+                    if retries == 0 {
+                        eprintln!("umounting {}: {}", self.device, err);
+                        return;
+                    } else {
+                        sleep(Duration::from_millis(100));
+                    }
+                }
+            }
+        }
+        if let Err(err) = remove_dir(&self.mountpoint) {
+            eprintln!("removing {}: {}", self.mountpoint.display(), err);
+            return;
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SavedPartitions {
     sector_size: Option<u64>,
@@ -468,8 +497,7 @@ pub struct SavedPartitions {
 }
 
 impl SavedPartitions {
-    pub fn new<P: AsRef<Path>>(disk: P, filters: &[PartitionFilter]) -> Result<Self> {
-        let disk = disk.as_ref();
+    pub fn new(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
         let mut result = Self {
             sector_size: None,
             partitions: Vec::new(),
@@ -480,50 +508,63 @@ impl SavedPartitions {
             return Ok(result);
         }
 
-        let mut f = OpenOptions::new()
-            .read(true)
-            .open(disk)
-            .chain_err(|| format!("opening {} for reading", disk.display()))?;
-        let gpt = match GPT::find_from(&mut f) {
+        // read GPT
+        let gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
             // no GPT on this disk, so no partitions to save
             Err(gptman::Error::InvalidSignature) => return Ok(result),
-            Err(e) => {
-                return Err(e)
-                    .chain_err(|| format!("reading partition table of {}", disk.display()))?
-            }
+            Err(e) => return Err(e).chain_err(|| "reading partition table")?,
         };
-        Self::verify_disk_sector_size_matches_gpt(disk, &f, gpt.sector_size)?;
+        Self::verify_disk_sector_size_matches_gpt(disk, gpt.sector_size)?;
         result.sector_size = Some(gpt.sector_size);
 
+        // save partitions accepted by filters
         for (i, p) in gpt.iter() {
             if Self::matches_filters(i, p, filters) {
                 result.partitions.push((i, p.clone()));
             }
         }
+
+        // Test restoring the saved partitions to a temporary file.  If the
+        // resulting partition table contains invalid data (e.g. duplicate
+        // partition GUIDs) we need to know now, before the caller
+        // overwrites the partition table.  Otherwise we could fail to
+        // restore, clear the table, and fail to restore _again_ to the
+        // empty table.
+        if !result.partitions.is_empty() {
+            let len = disk
+                .seek(SeekFrom::End(0))
+                .chain_err(|| "getting disk size")?;
+            let mut temp = tempfile::tempfile().chain_err(|| "creating dry run image")?;
+            temp.set_len(len)
+                .chain_err(|| format!("setting test image size to {}", len))?;
+            let mut gpt = GPT::new_from(&mut temp, gpt.sector_size, *Uuid::new_v4().as_bytes())
+                .chain_err(|| "creating dry run partition table")?;
+            for (i, p) in &result.partitions {
+                gpt[*i] = p.clone();
+            }
+            gpt.write_into(&mut temp).chain_err(|| {
+                "failed dry run restoring saved partitions; input partition table may be invalid"
+            })?;
+        }
+
         Ok(result)
     }
 
-    fn verify_disk_sector_size_matches_gpt(
-        disk: &Path,
-        file: &File,
-        sector_size: u64,
-    ) -> Result<()> {
-        if !file
+    fn verify_disk_sector_size_matches_gpt(disk: &File, sector_size: u64) -> Result<()> {
+        if !disk
             .metadata()
-            .chain_err(|| format!("getting metadata for {}", disk.display()))?
+            .chain_err(|| "getting disk metadata")?
             .file_type()
             .is_block_device()
         {
-            // we're running in a unit test
             return Ok(());
         }
-        let disk_sector_size = get_sector_size(&file)?.get() as u64;
+        let disk_sector_size = get_sector_size(&disk)?.get() as u64;
         if disk_sector_size != sector_size {
             bail!(
-                "sector size {} of disk {} doesn't match sector size {} of GPT",
+                "disk sector size {} doesn't match sector size {} of GPT",
                 disk_sector_size,
-                disk.display(),
                 sector_size
             );
         }
@@ -544,7 +585,8 @@ impl SavedPartitions {
         })
     }
 
-    pub fn write<P: AsRef<Path>>(&self, disk: P) -> Result<()> {
+    // Updating the kernel partition table is the caller's responsibility.
+    pub fn write(&self, disk: &mut File) -> Result<()> {
         if self.partitions.is_empty() {
             return Ok(());
         }
@@ -553,13 +595,8 @@ impl SavedPartitions {
             .expect("have partitions but no sector size");
 
         // get or create GPT
-        let disk = disk.as_ref();
-        let mut f = OpenOptions::new()
-            .read(true)
-            .open(disk)
-            .chain_err(|| format!("opening {} for reading", disk.display()))?;
-        Self::verify_disk_sector_size_matches_gpt(disk, &f, sector_size)?;
-        let mut gpt = match GPT::find_from(&mut f) {
+        Self::verify_disk_sector_size_matches_gpt(disk, sector_size)?;
+        let mut gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
             Err(e) => {
                 // Bad or missing GPT.  Maybe the caller just deleted it.
@@ -572,17 +609,16 @@ impl SavedPartitions {
                         eprintln!("Couldn't read partition table: {}.  Recreating.", e);
                     }
                 }
-                GPT::new_from(&mut f, sector_size, *Uuid::new_v4().as_bytes())
-                    .chain_err(|| format!("creating new partition table for {}", disk.display()))?
+                GPT::new_from(disk, sector_size, *Uuid::new_v4().as_bytes())
+                    .chain_err(|| "creating new partition table")?
             }
         };
         if gpt.sector_size != sector_size {
             // install will fail on an image that doesn't match the disk,
             // so this shouldn't happen
             bail!(
-                "sector size {} of GPT on {} doesn't match sector size {} of saved GPT",
+                "sector size {} of disk GPT doesn't match sector size {} of saved GPT",
                 gpt.sector_size,
-                disk.display(),
                 sector_size
             );
         }
@@ -627,12 +663,16 @@ impl SavedPartitions {
         }
 
         // write
-        let mut f = OpenOptions::new()
-            .write(true)
-            .open(disk)
-            .chain_err(|| format!("opening {} for writing", disk.display()))?;
-        gpt.write_into(&mut f)
-            .chain_err(|| format!("writing updated GPT to {}", disk.display()))?;
+        gpt.write_into(disk).chain_err(|| "writing updated GPT")?;
+
+        // If the MBR signature is missing, write a protective MBR, otherwise
+        // leave alone.  The kernel will ignore a GPT without some sort of
+        // MBR.
+        if !disk_has_mbr(disk)? {
+            GPT::write_protective_mbr_into(disk, sector_size)
+                .chain_err(|| "writing protective MBR")?;
+        }
+
         Ok(())
     }
 
@@ -743,34 +783,6 @@ pub fn get_blkdev_deps_recursing(device: &Path) -> Result<Vec<PathBuf>> {
     Ok(ret)
 }
 
-impl Drop for Mount {
-    fn drop(&mut self) {
-        if !self.owned {
-            return;
-        }
-
-        // Unmount sometimes fails immediately after closing the last open
-        // file on the partition.  Retry several times before giving up.
-        for retries in (0..20).rev() {
-            match mount::umount(&self.mountpoint) {
-                Ok(_) => break,
-                Err(err) => {
-                    if retries == 0 {
-                        eprintln!("umounting {}: {}", self.device, err);
-                        return;
-                    } else {
-                        sleep(Duration::from_millis(100));
-                    }
-                }
-            }
-        }
-        if let Err(err) = remove_dir(&self.mountpoint) {
-            eprintln!("removing {}: {}", self.mountpoint.display(), err);
-            return;
-        }
-    }
-}
-
 fn reread_partition_table(file: &mut File) -> Result<()> {
     let fd = file.as_raw_fd();
     // Reread sometimes fails inexplicably.  Retry several times before
@@ -845,14 +857,13 @@ pub fn get_block_device_size(file: &File) -> Result<NonZeroU64> {
     }
 }
 
-// create unsafe ioctl wrappers
-#[allow(clippy::missing_safety_doc)]
-mod ioctl {
-    use super::c_int;
-    use nix::{ioctl_none, ioctl_read, ioctl_read_bad, request_code_none};
-    ioctl_none!(blkrrpart, 0x12, 95);
-    ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
-    ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
+fn disk_has_mbr(disk: &mut (impl Read + Seek)) -> Result<bool> {
+    let mut sig = [0u8; 2];
+    disk.seek(SeekFrom::Start(510))
+        .chain_err(|| "seeking to MBR signature")?;
+    disk.read_exact(&mut sig)
+        .chain_err(|| "reading MBR signature")?;
+    Ok(sig == [0x55, 0xaa])
 }
 
 pub fn udev_settle() -> Result<()> {
@@ -901,12 +912,22 @@ fn detect_formatted_sector_size(buf: &[u8], gpt_512: usize, gpt_4096: usize) -> 
     }
 }
 
+// create unsafe ioctl wrappers
+#[allow(clippy::missing_safety_doc)]
+mod ioctl {
+    use super::c_int;
+    use nix::{ioctl_none, ioctl_read, ioctl_read_bad, request_code_none};
+    ioctl_none!(blkrrpart, 0x12, 95);
+    ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+    ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use maplit::hashmap;
-    use std::io::Read;
-    use tempfile::{Builder, NamedTempFile};
+    use std::io::{copy, Read, Write};
+    use tempfile::tempfile;
     use xz2::read::XzDecoder;
 
     #[test]
@@ -1148,13 +1169,19 @@ mod tests {
             ),
         ];
 
-        let base = make_disk(512, &base_parts);
+        let mut base = make_disk(512, &base_parts);
         for (testnum, (filter, expected_blank, expected_image)) in tests.iter().enumerate() {
             // perform writes in the same order as install()
             // first, try writing to image disk
-            let saved = SavedPartitions::new(base.path(), filter).unwrap();
+            let saved = SavedPartitions::new(&mut base, filter).unwrap();
             let mut disk = make_disk(512, &image_parts);
-            saved.write(disk.path()).unwrap();
+            assert!(!disk_has_mbr(&mut disk).unwrap(), "test {}", testnum);
+            saved.write(&mut disk).unwrap();
+            assert!(
+                expected_blank.is_empty() ^ disk_has_mbr(&mut disk).unwrap(),
+                "test {}",
+                testnum
+            );
             let result = GPT::find_from(&mut disk).unwrap();
             assert_partitions_eq(expected_image, &result, &format!("test {} image", testnum));
             assert_eq!(
@@ -1175,7 +1202,12 @@ mod tests {
 
             // then, try writing to blank disk
             let mut disk = make_unformatted_disk();
-            saved.write(disk.path()).unwrap();
+            saved.write(&mut disk).unwrap();
+            assert!(
+                expected_blank.is_empty() ^ disk_has_mbr(&mut disk).unwrap(),
+                "test {}",
+                testnum
+            );
             if !expected_blank.is_empty() {
                 let result = GPT::find_from(&mut disk).unwrap();
                 assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
@@ -1183,49 +1215,82 @@ mod tests {
         }
 
         // test unformatted initial disk
-        let disk = make_unformatted_disk();
-        let saved = SavedPartitions::new(disk.path(), &vec![label("z")]).unwrap();
+        let mut disk = make_unformatted_disk();
+        let saved = SavedPartitions::new(&mut disk, &vec![label("z")]).unwrap();
         let mut disk = make_disk(512, &image_parts);
-        saved.write(disk.path()).unwrap();
+        saved.write(&mut disk).unwrap();
         let result = GPT::find_from(&mut disk).unwrap();
         assert_partitions_eq(&image_parts, &result, "unformatted disk");
 
+        // test not overwriting existing MBR
+        let saved = SavedPartitions::new(&mut base, &vec![label("five")]).unwrap();
+        let mut disk = make_disk(512, &image_parts);
+        let mut pattern = [17u8; 512];
+        pattern[510] = 0x55;
+        pattern[511] = 0xaa;
+        disk.seek(SeekFrom::Start(0)).unwrap();
+        disk.write_all(&pattern).unwrap();
+        saved.write(&mut disk).unwrap();
+        let mut buf = [0u8; 512];
+        disk.seek(SeekFrom::Start(0)).unwrap();
+        disk.read_exact(&mut buf).unwrap();
+        assert_eq!(&buf[..], &pattern[..]);
+
         // test overlapping partitions
-        let saved = SavedPartitions::new(base.path(), &vec![Index(index(1), index(1))]).unwrap();
-        let disk = make_disk(512, &image_parts);
+        let saved = SavedPartitions::new(&mut base, &vec![Index(index(1), index(1))]).unwrap();
+        let mut disk = make_disk(512, &image_parts);
         assert_eq!(
-            saved.write(disk.path()).unwrap_err().to_string(),
+            saved.write(&mut disk).unwrap_err().to_string(),
             "disk partition 4 ('root') ends after start of saved partition 1 ('one')",
         );
 
         // test sector size mismatch
-        let saved = SavedPartitions::new(base.path(), &vec![label("*i*")]).unwrap();
-        let disk = make_disk(4096, &image_parts);
+        let saved = SavedPartitions::new(&mut base, &vec![label("*i*")]).unwrap();
+        let mut disk = make_disk(4096, &image_parts);
         assert_eq!(
-            saved.write(disk.path()).unwrap_err().to_string(),
-            format!(
-                "sector size 4096 of GPT on {} doesn't match sector size 512 of saved GPT",
-                disk.path().display()
-            )
+            saved.write(&mut disk).unwrap_err().to_string(),
+            "sector size 4096 of disk GPT doesn't match sector size 512 of saved GPT"
+        );
+
+        // test copying invalid partitions
+        let mut disk = make_unformatted_disk();
+        let data = include_bytes!("../fixtures/gpt-512-duplicate-partition-guids.xz");
+        copy(&mut XzDecoder::new(&data[..]), &mut disk).unwrap();
+        assert_eq!(
+            SavedPartitions::new(&mut disk, &vec![label("*")])
+                .unwrap_err()
+                .to_string(),
+            "failed dry run restoring saved partitions; input partition table may be invalid"
         );
     }
 
-    fn make_disk(sector_size: u64, partitions: &Vec<(u32, GPTPartitionEntry)>) -> NamedTempFile {
+    // TODO: The partitions array assumes 512-byte sectors and we don't
+    // scale the start/end values for 4096.  This doesn't matter right now
+    // because the only use of 4096-byte sectors is in an error test.
+    fn make_disk(sector_size: u64, partitions: &Vec<(u32, GPTPartitionEntry)>) -> File {
         let mut disk = make_unformatted_disk();
+        // Make the disk just large enough for its partitions, then resize
+        // it back up afterward.  This tests that we properly handle copying
+        // saved partitions from the larger base disk into the smaller
+        // install image.
+        let len = if partitions.is_empty() {
+            1024 * 1024
+        } else {
+            partitions[partitions.len() - 1].1.ending_lba * sector_size + 1024 * 1024
+        };
+        disk.set_len(len).unwrap();
         let mut gpt = GPT::new_from(&mut disk, sector_size, make_guid("disk")).unwrap();
         for (partnum, entry) in partitions {
             gpt[*partnum] = entry.clone();
         }
         gpt.write_into(&mut disk).unwrap();
+        disk.set_len(10 * 1024 * 1024 * 1024).unwrap();
         disk
     }
 
-    fn make_unformatted_disk() -> NamedTempFile {
-        let disk = Builder::new()
-            .prefix("coreos-installer-blockdev-")
-            .tempfile()
-            .unwrap();
-        disk.as_file().set_len(10 * 1024 * 1024 * 1024).unwrap();
+    fn make_unformatted_disk() -> File {
+        let disk = tempfile().unwrap();
+        disk.set_len(10 * 1024 * 1024 * 1024).unwrap();
         disk
     }
 

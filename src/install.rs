@@ -75,7 +75,8 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // save partitions that we plan to keep
-    let saved = SavedPartitions::new(&config.device, &config.save_partitions)?;
+    let saved = SavedPartitions::new(&mut dest, &config.save_partitions)
+        .chain_err(|| format!("saving partitions from {}", config.device))?;
 
     // get reference to partition table
     // For kpartx partitioning, this will conditionally call kpartx -d
@@ -87,6 +88,8 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
+    dest.seek(SeekFrom::Start(0))
+        .chain_err(|| format!("seeking {}", config.device))?;
     if let Err(err) = write_disk(&config, &mut source, &mut dest, &mut *table, &saved) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
@@ -102,30 +105,10 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                 // failed.  Preserve the saved partitions by writing them to
                 // a file in /tmp and telling the user about it.  Hey, it's
                 // a debug flag.
-                let stash = tempfile::Builder::new()
-                    .prefix("coreos-installer-partitions.")
-                    .tempfile()
-                    .chain_err(|| "creating partition stash file")?;
-                eprintln!(
-                    "Storing saved partition entries to {}",
-                    stash.path().display()
-                );
-                stash
-                    .as_file()
-                    .set_len(1024 * 1024)
-                    .chain_err(|| "extending partition stash file")?;
-                saved
-                    .write(stash.path())
-                    .chain_err(|| "stashing saved partitions")?;
-                stash
-                    .keep()
-                    .chain_err(|| "retaining saved partition stash")?;
+                stash_saved_partitions(&mut dest, &saved)?;
             }
         } else {
-            clear_partition_table(&mut dest, &mut *table)?;
-            saved
-                .write(&config.device)
-                .chain_err(|| "restoring additional partitions")?;
+            reset_partition_table(&mut dest, &mut *table, &saved)?;
         }
 
         // return a generic error so our exit status is right
@@ -191,8 +174,8 @@ fn write_disk(
 
     // restore saved partitions, if any, and reread table
     saved
-        .write(&config.device)
-        .chain_err(|| "restoring saved partitions")?;
+        .write(dest)
+        .chain_err(|| format!("restoring saved partitions to {}", config.device))?;
     table.reread()?;
 
     // postprocess
@@ -238,6 +221,9 @@ fn write_disk(
         #[cfg(target_arch = "s390x")]
         s390x::install_bootloader(mount.mountpoint(), &config.device)?;
     }
+
+    // detect any latent write errors
+    dest.sync_all().chain_err(|| "syncing data to disk")?;
 
     Ok(())
 }
@@ -459,16 +445,23 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     Ok(())
 }
 
-/// Clear the partition table.  For use after a failure.
-fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<()> {
+/// Clear the partition table and restore saved partitions.  For use after
+/// a failure.
+fn reset_partition_table(
+    dest: &mut File,
+    table: &mut dyn PartTable,
+    saved: &SavedPartitions,
+) -> Result<()> {
     eprintln!("Clearing partition table");
+
+    // Clear the first MiB of disk.
     dest.seek(SeekFrom::Start(0))
         .chain_err(|| "seeking to start of disk")?;
     let zeroes = [0u8; 1024 * 1024];
     dest.write_all(&zeroes)
         .chain_err(|| "clearing primary partition table")?;
 
-    // Now the backup GPT, which is in the last LBA.  If there is one, we
+    // Clear the backup GPT, which is in the last LBA.  If there is one, we
     // should clear it, since it might have stale partition info.
     // Constraints:
     //   - Never overwrite partition contents.
@@ -499,11 +492,39 @@ fn clear_partition_table(dest: &mut File, table: &mut dyn PartTable) -> Result<(
             .chain_err(|| "clearing backup partition table")?;
     }
 
-    dest.flush()
-        .chain_err(|| "flushing partition table to disk")?;
+    // Restore saved partitions.
+    saved
+        .write(dest)
+        .chain_err(|| "restoring saved partitions")?;
+
+    // Finish writeback and reread the partition table.
     dest.sync_all()
         .chain_err(|| "syncing partition table to disk")?;
     table.reread()?;
+
+    Ok(())
+}
+
+// Preserve saved partitions by writing them to a file in /tmp and reporting
+// the path.
+fn stash_saved_partitions(disk: &mut File, saved: &SavedPartitions) -> Result<()> {
+    let mut stash = tempfile::Builder::new()
+        .prefix("coreos-installer-partitions.")
+        .tempfile()
+        .chain_err(|| "creating partition stash file")?;
+    let path = stash.path().to_owned();
+    eprintln!("Storing saved partition entries to {}", path.display());
+    let len = disk.seek(SeekFrom::End(0)).chain_err(|| "seeking disk")?;
+    stash
+        .as_file()
+        .set_len(len)
+        .chain_err(|| format!("extending partition stash file {}", path.display()))?;
+    saved
+        .write(stash.as_file_mut())
+        .chain_err(|| format!("stashing saved partitions to {}", path.display()))?;
+    stash
+        .keep()
+        .chain_err(|| format!("retaining saved partition stash in {}", path.display()))?;
     Ok(())
 }
 
