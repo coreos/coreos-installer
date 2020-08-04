@@ -172,11 +172,6 @@ fn write_disk(
             .map(|(offset, desc)| (offset, format!("collision with {}", desc))),
         Some(sector_size),
     )?;
-
-    // restore saved partitions, if any, and reread table
-    saved
-        .merge(dest)
-        .chain_err(|| format!("restoring saved partitions to {}", config.device))?;
     table.reread()?;
 
     // postprocess

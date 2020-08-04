@@ -16,14 +16,14 @@ use byte_unit::Byte;
 use error_chain::bail;
 use nix::unistd::isatty;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{self, copy, stderr, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, stderr, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::result;
 use std::time::{Duration, Instant};
 
-use crate::blockdev::{detect_formatted_sector_size, SavedPartitions};
+use crate::blockdev::{detect_formatted_sector_size, get_gpt_size, SavedPartitions};
 use crate::cmdline::*;
 use crate::errors::*;
 use crate::io::*;
@@ -295,10 +295,28 @@ pub fn image_copy_default(
     let dest = buf_dest.into_inner().map_err(|_| "flushing data to disk")?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
-    dest.seek(SeekFrom::Start(0))
-        .chain_err(|| "seeking to start of disk")?;
-    dest.write_all(first_mb)
-        .chain_err(|| "writing to first MiB of disk")?;
+    let offset = match saved {
+        Some(saved) if saved.is_saved() => {
+            // write merged GPT
+            let mut cursor = Cursor::new(first_mb);
+            saved
+                .merge(&mut cursor, dest)
+                .chain_err(|| "writing updated GPT")?;
+
+            // copy all remaining bytes from first_mb (probably not
+            // important but can't hurt)
+            get_gpt_size(dest).chain_err(|| "getting GPT size")?
+        }
+        _ => {
+            // copy all of first_mb
+            0
+        }
+    };
+    // do the copy
+    dest.seek(SeekFrom::Start(offset))
+        .chain_err(|| format!("seeking disk to offset {}", offset))?;
+    dest.write_all(&first_mb[offset as usize..first_mb.len()])
+        .chain_err(|| "writing first MiB of disk")?;
 
     Ok(())
 }
@@ -428,6 +446,9 @@ impl<'a, R: Read> Drop for ProgressReader<'a, R> {
 mod tests {
     use super::*;
     use error_chain::ChainedError;
+    use gptman::{GPTPartitionEntry, GPT};
+    use std::io::{Seek, SeekFrom};
+    use uuid::Uuid;
 
     #[test]
     fn test_write_image_limit() {
@@ -463,5 +484,107 @@ mod tests {
         let mut buf = vec![0u8; precious.len()];
         dest.read_exact(&mut buf).unwrap();
         assert_eq!(buf, precious.as_bytes());
+    }
+
+    #[test]
+    fn test_image_copy_default_first_mb() {
+        let len: usize = 2 * 1024 * 1024;
+        let mb: usize = 1024 * 1024;
+
+        let mut data = vec![0u8; len];
+        for i in 0..data.len() {
+            data[i] = (i % 256) as u8;
+        }
+
+        // no saved partitions
+        let mut source = Cursor::new(&data);
+        let mut dest = tempfile::tempfile().unwrap();
+        // copy
+        source.seek(SeekFrom::Start(mb as u64)).unwrap();
+        image_copy_default(&data[0..mb], &mut source, &mut dest, Path::new("/z"), None).unwrap();
+        // compare
+        dest.seek(SeekFrom::Start(0)).unwrap();
+        let mut result = vec![0u8; len];
+        dest.read_exact(&mut result).unwrap();
+        assert_eq!(data, result);
+
+        // SavedPartitions but nothing saved
+        let mut source = Cursor::new(&data);
+        let mut dest = tempfile::tempfile().unwrap();
+        // gptman requires a fixed disk length
+        dest.set_len(len as u64).unwrap();
+        // create saved
+        let saved = SavedPartitions::new(&mut dest, &vec![]).unwrap();
+        assert!(!saved.is_saved());
+        // copy
+        source.seek(SeekFrom::Start(mb as u64)).unwrap();
+        image_copy_default(
+            &data[0..mb],
+            &mut source,
+            &mut dest,
+            Path::new("/z"),
+            Some(&saved),
+        )
+        .unwrap();
+        // compare
+        dest.seek(SeekFrom::Start(0)).unwrap();
+        let mut result = vec![0u8; len];
+        dest.read_exact(&mut result).unwrap();
+        assert_eq!(data, result);
+
+        // saved partition
+        let mut source = Cursor::new(data.clone());
+        let mut dest = tempfile::tempfile().unwrap();
+        // source must have a partition table
+        partition(&mut source, None);
+        let data_partitioned = source.into_inner();
+        let mut source = Cursor::new(&data_partitioned);
+        // gptman requires a fixed disk length
+        dest.set_len(2 * len as u64).unwrap();
+        // create partition to save
+        partition(&mut dest, Some(2));
+        // create saved
+        let saved = SavedPartitions::new(
+            &mut dest,
+            &vec![PartitionFilter::Label(glob::Pattern::new("bovik").unwrap())],
+        )
+        .unwrap();
+        assert!(saved.is_saved());
+        // copy
+        source.seek(SeekFrom::Start(mb as u64)).unwrap();
+        image_copy_default(
+            &data_partitioned[0..mb],
+            &mut source,
+            &mut dest,
+            Path::new("/z"),
+            Some(&saved),
+        )
+        .unwrap();
+        // compare
+        dest.seek(SeekFrom::Start(0)).unwrap();
+        let mut result = vec![0u8; len];
+        dest.read_exact(&mut result).unwrap();
+        assert_eq!(detect_formatted_sector_size(&result), NonZeroU32::new(512));
+        let gpt_size = get_gpt_size(&mut dest).unwrap();
+        assert!(gpt_size < 24576);
+        assert_eq!(
+            data_partitioned[gpt_size as usize..],
+            result[gpt_size as usize..]
+        );
+    }
+
+    fn partition(f: &mut (impl Read + Write + Seek), start_mb: Option<u64>) {
+        let mut gpt = GPT::new_from(f, 512, *Uuid::new_v4().as_bytes()).unwrap();
+        if let Some(start_mb) = start_mb {
+            gpt[1] = GPTPartitionEntry {
+                partition_type_guid: [1u8; 16],
+                unique_parition_guid: [1u8; 16],
+                starting_lba: start_mb * 2048,
+                ending_lba: (start_mb + 1) * 2048,
+                attribute_bits: 0,
+                partition_name: "bovik".into(),
+            };
+        }
+        gpt.write_into(f).unwrap();
     }
 }

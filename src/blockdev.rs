@@ -23,7 +23,7 @@ use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
 };
-use std::io::{Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -629,17 +629,18 @@ impl SavedPartitions {
         Ok(())
     }
 
-    /// If any partitions are saved, merge them into the current GPT, which
-    /// must be valid.  Updating the kernel partition table is the caller's
-    /// responsibility.
-    pub fn merge(&self, disk: &mut File) -> Result<()> {
+    /// If any partitions are saved, merge them into the GPT from source,
+    /// which must be valid.  Updating the kernel partition table is the
+    /// caller's responsibility.
+    pub fn merge(&self, source: &mut (impl Read + Seek), disk: &mut File) -> Result<()> {
         if self.partitions.is_empty() {
             return Ok(());
         }
 
         // read GPT
         Self::verify_disk_sector_size(disk, self.sector_size)?;
-        let mut gpt = GPT::find_from(disk).chain_err(|| "couldn't read partition table")?;
+        let mut gpt =
+            GPT::find_from(source).chain_err(|| "couldn't read partition table from source")?;
         if gpt.sector_size != self.sector_size {
             // install will fail on an image that doesn't match the disk,
             // so this shouldn't happen
@@ -876,6 +877,12 @@ pub fn get_block_device_size(file: &File) -> Result<NonZeroU64> {
     }
 }
 
+/// Get the size of the GPT metadata at the start of the disk.
+pub fn get_gpt_size(file: &mut (impl Read + Seek)) -> Result<u64> {
+    let gpt = GPT::find_from(file).chain_err(|| "reading GPT")?;
+    Ok(gpt.header.first_usable_lba * gpt.sector_size)
+}
+
 pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
@@ -1053,6 +1060,7 @@ mod tests {
             make_part(2, "EFI-SYSTEM", 384, 512),
             make_part(4, "root", 1024, 2200),
         ];
+        let merge_base_parts = vec![make_part(2, "unused", 500, 3500)];
 
         let index = |i| Some(NonZeroU32::new(i).unwrap());
         let label = |l| Label(glob::Pattern::new(l).unwrap());
@@ -1153,25 +1161,14 @@ mod tests {
             (
                 vec![Index(index(15), None)],
                 vec![],
-                vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                ],
+                merge_base_parts.clone(),
             ),
             // No filters
-            (
-                vec![],
-                vec![],
-                vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                ],
-            ),
+            (vec![], vec![], merge_base_parts.clone()),
         ];
 
         let mut base = make_disk(512, &base_parts);
+        let mut image = make_disk(512, &image_parts);
         for (testnum, (filter, expected_blank, expected_image)) in tests.iter().enumerate() {
             // try overwriting on blank disk
             let saved = SavedPartitions::new(&mut base, filter).unwrap();
@@ -1179,13 +1176,21 @@ mod tests {
             saved.overwrite(&mut disk).unwrap();
             assert!(disk_has_mbr(&mut disk), "test {}", testnum);
             let result = GPT::find_from(&mut disk).unwrap();
+            assert_eq!(
+                get_gpt_size(&mut disk).unwrap(),
+                512 * result.header.first_usable_lba
+            );
             assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
 
-            // try merging with image disk
-            let mut disk = make_disk(512, &image_parts);
-            saved.merge(&mut disk).unwrap();
+            // try merging with image disk onto merge_base disk
+            let mut disk = make_disk(512, &merge_base_parts);
+            saved.merge(&mut image, &mut disk).unwrap();
             assert!(!disk_has_mbr(&mut disk), "test {}", testnum);
             let result = GPT::find_from(&mut disk).unwrap();
+            assert_eq!(
+                get_gpt_size(&mut disk).unwrap(),
+                512 * result.header.first_usable_lba
+            );
             assert_partitions_eq(expected_image, &result, &format!("test {} image", testnum));
             assert_eq!(
                 saved.get_offset().unwrap(),
@@ -1207,24 +1212,35 @@ mod tests {
         // test merging with unformatted initial disk
         let mut disk = make_unformatted_disk();
         let saved = SavedPartitions::new(&mut disk, &vec![label("z")]).unwrap();
-        let mut disk = make_disk(512, &image_parts);
-        saved.merge(&mut disk).unwrap();
+        let mut disk = make_disk(512, &merge_base_parts);
+        saved.merge(&mut image, &mut disk).unwrap();
         let result = GPT::find_from(&mut disk).unwrap();
-        assert_partitions_eq(&image_parts, &result, "unformatted disk");
+        assert_partitions_eq(&merge_base_parts, &result, "unformatted disk");
 
         // test overlapping partitions
         let saved = SavedPartitions::new(&mut base, &vec![Index(index(1), index(1))]).unwrap();
-        let mut disk = make_disk(512, &image_parts);
+        let mut disk = make_disk(512, &merge_base_parts);
         assert_eq!(
-            saved.merge(&mut disk).unwrap_err().to_string(),
+            saved.merge(&mut image, &mut disk).unwrap_err().to_string(),
             "disk partition 4 ('root') ends after start of saved partition 1 ('one')",
         );
 
         // test sector size mismatch
         let saved = SavedPartitions::new(&mut base, &vec![label("*i*")]).unwrap();
-        let mut disk = make_disk(4096, &image_parts);
+        let mut image_4096 = make_disk(4096, &image_parts);
         assert_eq!(
-            saved.merge(&mut disk).unwrap_err().to_string(),
+            get_gpt_size(&mut image_4096).unwrap(),
+            4096 * GPT::find_from(&mut image_4096)
+                .unwrap()
+                .header
+                .first_usable_lba
+        );
+        let mut disk = make_disk(4096, &merge_base_parts);
+        assert_eq!(
+            saved
+                .merge(&mut image_4096, &mut disk)
+                .unwrap_err()
+                .to_string(),
             "sector size 4096 of disk GPT doesn't match expected sector size 512"
         );
 
