@@ -41,7 +41,7 @@ cosaPod(buildroot: true) {
             stage("Build metal+live") {
                 shwrap("cd /srv/fcos && cosa buildextend-metal")
                 shwrap("cd /srv/fcos && cosa buildextend-metal4k")
-                shwrap("cd /srv/fcos && cosa buildextend-live")
+                shwrap("cd /srv/fcos && cosa buildextend-live --fast")
                 // Test metal with an uncompressed image and metal4k with a
                 // compressed one
                 shwrap("cd /srv/fcos && cosa compress --artifact=metal4k")
