@@ -665,6 +665,11 @@ impl SavedPartitions {
         let mut gpt =
             GPT::find_from(source).chain_err(|| "couldn't read partition table from source")?;
         Self::verify_gpt_sector_size(&gpt, self.sector_size)?;
+        // The GPT thinks the disk is the size of the install image.
+        // Update sizing.
+        gpt.header
+            .update_from(disk, self.sector_size)
+            .chain_err(|| "updating GPT header")?;
 
         // Fail if the last on-disk partition overlaps with the beginning of
         // the first saved partition.  Ignore holes.  This test is distinct
