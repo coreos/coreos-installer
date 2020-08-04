@@ -17,8 +17,8 @@ use error_chain::bail;
 use flate2::read::GzDecoder;
 use flate2::{Compression, GzBuilder};
 use std::convert::TryInto;
-use std::fs::{remove_file, File, OpenOptions};
-use std::io::{copy, stdin, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::fs::{read, remove_file, File, OpenOptions};
+use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 
 use crate::cmdline::*;
 use crate::errors::*;
@@ -30,18 +30,17 @@ pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
     let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
     let mut embed = EmbedArea::for_file(&mut holder.file)?;
 
-    let mut ignition: Vec<u8> = Vec::new();
-    if let Some(ignition_path) = config.ignition.as_ref() {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .open(&ignition_path)
-            .chain_err(|| format!("opening {}", ignition_path))?;
-        file.read_to_end(&mut ignition)
-            .chain_err(|| format!("reading {}", ignition_path))?;
-    } else {
-        stdin()
-            .read_to_end(&mut ignition)
-            .chain_err(|| "reading stdin")?;
+    let ignition = match config.ignition {
+        Some(ref ignition_path) => {
+            read(ignition_path).chain_err(|| format!("reading {}", ignition_path))?
+        }
+        None => {
+            let mut data = Vec::new();
+            stdin()
+                .read_to_end(&mut data)
+                .chain_err(|| "reading stdin")?;
+            data
+        }
     };
 
     let cpio = make_cpio(&ignition)?;
@@ -85,9 +84,10 @@ pub fn iso_show(config: &IsoShowConfig) -> Result<()> {
     if buf == embed.new_buffer() {
         bail!("No embedded Ignition config.");
     }
-    let config =
-        String::from_utf8(extract_cpio(&buf)?).chain_err(|| "couldn't decode Ignition config")?;
-    print!("{}", config);
+    stdout()
+        .write_all(&extract_cpio(&buf)?)
+        .chain_err(|| "writing output")?;
+    stdout().flush().chain_err(|| "flushing output")?;
     Ok(())
 }
 
