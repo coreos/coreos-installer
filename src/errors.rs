@@ -24,5 +24,6 @@ error_chain! {
         Nix(nix::Error);
         WalkDir(walkdir::Error);
         Parse(std::num::ParseIntError);
+        Xz(xz2::stream::Error);
     }
 }

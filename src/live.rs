@@ -14,8 +14,6 @@
 
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use error_chain::bail;
-use flate2::read::GzDecoder;
-use flate2::{Compression, GzBuilder};
 use std::convert::TryInto;
 use std::fs::{read, remove_file, File, OpenOptions};
 use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
@@ -264,10 +262,15 @@ impl<'a> EmbedArea<'a> {
 
 /// Make a gzipped CPIO archive containing the specified Ignition config.
 fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
+    use xz2::stream::{Check, Stream};
+    use xz2::write::XzEncoder;
+
     let mut result = Cursor::new(Vec::new());
-    let encoder = GzBuilder::new()
-        .mtime(0)
-        .write(&mut result, Compression::best());
+    // kernel requires CRC32: https://www.kernel.org/doc/Documentation/xz.txt
+    let encoder = XzEncoder::new_stream(
+        &mut result,
+        Stream::new_easy_encoder(9, Check::Crc32).chain_err(|| "creating XZ encoder")?,
+    );
     let mut input_files = vec![(
         // S_IFREG | 0644
         NewcBuilder::new(FILENAME).mode(0o100_644),
@@ -280,7 +283,9 @@ fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
 /// Extract a gzipped CPIO archive and return the contents of the Ignition
 /// config.
 fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
-    let mut decompressor = GzDecoder::new(buf);
+    // older versions of this program, and its predecessor, compressed
+    // with gzip
+    let mut decompressor = DecompressReader::new(BufReader::new(buf))?;
     loop {
         let mut reader = NewcReader::new(decompressor).chain_err(|| "reading CPIO entry")?;
         let entry = reader.entry();
