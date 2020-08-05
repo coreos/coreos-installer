@@ -1,6 +1,6 @@
 language: rust
 rust:
-  - 1.44.1  # minimum supported toolchain; used for clippy as well
+  - 1.44.1  # minimum supported toolchain; used for clippy/rustfmt as well
   - stable
   - beta
   - nightly
@@ -22,7 +22,7 @@ env:
 
 before_script:
   - bash -c 'if [[ "$TRAVIS_RUST_VERSION" == "$MSRV" ]]; then
-      rustup component add clippy;
+      rustup component add clippy rustfmt;
     fi'
 
 script:
@@ -31,4 +31,5 @@ script:
   - bash -c 'if [[ "$TRAVIS_RUST_VERSION" == "$MSRV" ]]; then
       cargo clippy -- -D warnings;
       cargo clippy --features rdcore -- -D warnings;
+      cargo fmt -- --check;
     fi'
