@@ -26,7 +26,22 @@ use crate::io::*;
 
 const FILENAME: &str = "config.ign";
 
-pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
+pub fn iso_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
+    eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
+    iso_ignition_embed(config)
+}
+
+pub fn iso_show(config: &IsoIgnitionShowConfig) -> Result<()> {
+    eprintln!("`iso show` is deprecated; use `iso ignition show`.  Continuing.");
+    iso_ignition_show(config)
+}
+
+pub fn iso_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
+    eprintln!("`iso remove` is deprecated; use `iso ignition remove`.  Continuing.");
+    iso_ignition_remove(config)
+}
+
+pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
     let mut embed = EmbedArea::for_file(&mut holder.file)?;
 
@@ -70,7 +85,7 @@ pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn iso_show(config: &IsoShowConfig) -> Result<()> {
+pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
     let mut file = OpenOptions::new()
         .read(true)
         .open(&config.input)
@@ -91,7 +106,7 @@ pub fn iso_show(config: &IsoShowConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn iso_remove(config: &IsoRemoveConfig) -> Result<()> {
+pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
     let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
     let mut embed = EmbedArea::for_file(&mut holder.file)?;
     embed.clear()?;
