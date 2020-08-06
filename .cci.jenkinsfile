@@ -27,6 +27,9 @@ cosaPod(buildroot: true) {
                     checklen iso embed
                     checklen iso show
                     checklen iso remove
+                    checklen iso ignition embed
+                    checklen iso ignition show
+                    checklen iso ignition remove
                     if [ "${fail}" = 1 ]; then
                         exit 1
                     fi

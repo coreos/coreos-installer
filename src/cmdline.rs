@@ -29,9 +29,12 @@ pub enum Config {
     Install(InstallConfig),
     Download(DownloadConfig),
     ListStream(ListStreamConfig),
-    IsoEmbed(IsoEmbedConfig),
-    IsoShow(IsoShowConfig),
-    IsoRemove(IsoRemoveConfig),
+    IsoEmbed(IsoIgnitionEmbedConfig),
+    IsoShow(IsoIgnitionShowConfig),
+    IsoRemove(IsoIgnitionRemoveConfig),
+    IsoIgnitionEmbed(IsoIgnitionEmbedConfig),
+    IsoIgnitionShow(IsoIgnitionShowConfig),
+    IsoIgnitionRemove(IsoIgnitionRemoveConfig),
     OsmetFiemap(OsmetFiemapConfig),
     OsmetPack(OsmetPackConfig),
     OsmetUnpack(OsmetUnpackConfig),
@@ -70,18 +73,18 @@ pub struct ListStreamConfig {
     pub stream: String,
 }
 
-pub struct IsoEmbedConfig {
+pub struct IsoIgnitionEmbedConfig {
     pub input: String,
     pub output: Option<String>,
     pub ignition: Option<String>,
     pub force: bool,
 }
 
-pub struct IsoShowConfig {
+pub struct IsoIgnitionShowConfig {
     pub input: String,
 }
 
-pub struct IsoRemoveConfig {
+pub struct IsoIgnitionRemoveConfig {
     pub input: String,
     pub output: Option<String>,
 }
@@ -404,9 +407,10 @@ pub fn parse_args() -> Result<Config> {
         )
         .subcommand(
             SubCommand::with_name("iso")
-                .about("Embed an Ignition config in a CoreOS live ISO image")
+                .about("Commands to manage a CoreOS live ISO image")
                 .subcommand(
                     SubCommand::with_name("embed")
+                        .setting(AppSettings::Hidden)
                         .about("Embed an Ignition config in an ISO image")
                         .arg(
                             Arg::with_name("config")
@@ -440,6 +444,7 @@ pub fn parse_args() -> Result<Config> {
                 )
                 .subcommand(
                     SubCommand::with_name("show")
+                        .setting(AppSettings::Hidden)
                         .about("Show the embedded Ignition config from an ISO image")
                         .arg(
                             Arg::with_name("input")
@@ -451,6 +456,7 @@ pub fn parse_args() -> Result<Config> {
                 )
                 .subcommand(
                     SubCommand::with_name("remove")
+                        .setting(AppSettings::Hidden)
                         .about("Remove an existing embedded Ignition config from an ISO image")
                         .arg(
                             Arg::with_name("output")
@@ -467,7 +473,74 @@ pub fn parse_args() -> Result<Config> {
                                 .required(true)
                                 .takes_value(true),
                         ),
-                ),
+                )
+            .subcommand(
+                SubCommand::with_name("ignition")
+                    .about("Embed an Ignition config in a CoreOS live ISO image")
+                    .subcommand(
+                        SubCommand::with_name("embed")
+                            .about("Embed an Ignition config in an ISO image")
+                            .arg(
+                                Arg::with_name("force")
+                                    .short("f")
+                                    .long("force")
+                                    .help("Overwrite an existing Ignition config"),
+                            )
+                            .arg(
+                                Arg::with_name("config")
+                                    .short("i")
+                                    .long("ignition-file")
+                                    .value_name("path")
+                                    .help("Ignition config to embed [default: stdin]")
+                                    .takes_value(true),
+                            )
+                            .arg(
+                                Arg::with_name("output")
+                                    .short("o")
+                                    .long("output")
+                                    .value_name("path")
+                                    .help("Write ISO to a new output file")
+                                    .takes_value(true),
+                            )
+                            .arg(
+                                Arg::with_name("input")
+                                    .value_name("ISO")
+                                    .help("ISO image")
+                                    .required(true)
+                                    .takes_value(true),
+                            ),
+                    )
+                    .subcommand(
+                        SubCommand::with_name("show")
+                            .about("Show the embedded Ignition config from an ISO image")
+                            .arg(
+                                Arg::with_name("input")
+                                    .value_name("ISO")
+                                    .help("ISO image")
+                                    .required(true)
+                                    .takes_value(true),
+                            ),
+                    )
+                    .subcommand(
+                        SubCommand::with_name("remove")
+                            .about("Remove an existing embedded Ignition config from an ISO image")
+                            .arg(
+                                Arg::with_name("output")
+                                    .short("o")
+                                    .long("output")
+                                    .value_name("path")
+                                    .help("Copy to a new file, instead of modifying in place")
+                                    .takes_value(true),
+                            )
+                            .arg(
+                                Arg::with_name("input")
+                                    .value_name("ISO")
+                                    .help("ISO image")
+                                    .required(true)
+                                    .takes_value(true),
+                            ),
+                    ),
+            )
         )
         .subcommand(
             SubCommand::with_name("osmet")
@@ -575,6 +648,12 @@ pub fn parse_args() -> Result<Config> {
             ("embed", Some(matches)) => parse_iso_embed(&matches),
             ("show", Some(matches)) => parse_iso_show(&matches),
             ("remove", Some(matches)) => parse_iso_remove(&matches),
+            ("ignition", Some(ignition_matches)) => match ignition_matches.subcommand() {
+                ("embed", Some(matches)) => parse_iso_ignition_embed(&matches),
+                ("show", Some(matches)) => parse_iso_ignition_show(&matches),
+                ("remove", Some(matches)) => parse_iso_remove(&matches),
+                _ => bail!("unrecognized 'ignition' subcommand"),
+            },
             _ => bail!("unrecognized 'iso' subcommand"),
         },
         ("osmet", Some(osmet_matches)) => match osmet_matches.subcommand() {
@@ -827,7 +906,31 @@ fn parse_list_stream(matches: &ArgMatches) -> Result<Config> {
 }
 
 fn parse_iso_embed(matches: &ArgMatches) -> Result<Config> {
-    Ok(Config::IsoEmbed(IsoEmbedConfig {
+    if let Config::IsoIgnitionEmbed(result) = parse_iso_ignition_embed(matches)? {
+        Ok(Config::IsoEmbed(result))
+    } else {
+        unreachable!();
+    }
+}
+
+fn parse_iso_show(matches: &ArgMatches) -> Result<Config> {
+    if let Config::IsoIgnitionShow(result) = parse_iso_ignition_show(matches)? {
+        Ok(Config::IsoShow(result))
+    } else {
+        unreachable!();
+    }
+}
+
+fn parse_iso_remove(matches: &ArgMatches) -> Result<Config> {
+    if let Config::IsoIgnitionRemove(result) = parse_iso_ignition_remove(matches)? {
+        Ok(Config::IsoRemove(result))
+    } else {
+        unreachable!();
+    }
+}
+
+fn parse_iso_ignition_embed(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoIgnitionEmbed(IsoIgnitionEmbedConfig {
         input: matches
             .value_of("input")
             .map(String::from)
@@ -838,8 +941,8 @@ fn parse_iso_embed(matches: &ArgMatches) -> Result<Config> {
     }))
 }
 
-fn parse_iso_show(matches: &ArgMatches) -> Result<Config> {
-    Ok(Config::IsoShow(IsoShowConfig {
+fn parse_iso_ignition_show(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoIgnitionShow(IsoIgnitionShowConfig {
         input: matches
             .value_of("input")
             .map(String::from)
@@ -847,8 +950,8 @@ fn parse_iso_show(matches: &ArgMatches) -> Result<Config> {
     }))
 }
 
-fn parse_iso_remove(matches: &ArgMatches) -> Result<Config> {
-    Ok(Config::IsoRemove(IsoRemoveConfig {
+fn parse_iso_ignition_remove(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoIgnitionRemove(IsoIgnitionRemoveConfig {
         input: matches
             .value_of("input")
             .map(String::from)

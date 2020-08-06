@@ -18,7 +18,7 @@ pub mod download;
 pub mod errors;
 pub mod install;
 pub mod io;
-pub mod iso;
+pub mod live;
 pub mod osmet;
 #[cfg(target_arch = "s390x")]
 pub mod s390x;
