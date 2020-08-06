@@ -14,16 +14,14 @@
 
 use byte_unit::Byte;
 use error_chain::bail;
-use flate2::read::GzDecoder;
 use nix::unistd::isatty;
 use std::fs::{remove_file, File, OpenOptions};
-use std::io::{self, copy, stderr, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, stderr, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::result;
 use std::time::{Duration, Instant};
-use xz2::read::XzDecoder;
 
 use crate::blockdev::detect_formatted_sector_size_start;
 use crate::cmdline::*;
@@ -200,22 +198,16 @@ where
         &source.artifact_type,
     )?;
 
-    // Wrap in a BufReader so we can peek at the first few bytes for
-    // format sniffing, and to amortize read overhead.  Don't trust the
-    // content-type since the server may not be configured correctly, or
-    // the file might be local.  Then wrap in a reader for decompression.
+    // Wrap in a BufReader so DecompressReader can peek at the first few
+    // bytes for format sniffing, and to amortize read overhead.  Don't
+    // trust the content-type since the server may not be configured
+    // correctly, or the file might be local.  Then wrap in a
+    // DecompressReader for decompression.
     let mut buf_reader = BufReader::with_capacity(BUFFER_SIZE, &mut progress_reader);
-    let decompress_reader: Box<dyn Read> = {
-        let sniff = buf_reader.fill_buf().chain_err(|| "sniffing input")?;
-        if !decompress {
-            Box::new(buf_reader)
-        } else if sniff.len() > 2 && &sniff[0..2] == b"\x1f\x8b" {
-            Box::new(GzDecoder::new(buf_reader))
-        } else if sniff.len() > 6 && &sniff[0..6] == b"\xfd7zXZ\x00" {
-            Box::new(XzDecoder::new(buf_reader))
-        } else {
-            Box::new(buf_reader)
-        }
+    let decompress_reader: Box<dyn Read> = if decompress {
+        Box::new(DecompressReader::new(&mut buf_reader)?)
+    } else {
+        Box::new(buf_reader)
     };
 
     // Wrap again for limit checking.

@@ -38,6 +38,8 @@ pub enum Config {
     OsmetFiemap(OsmetFiemapConfig),
     OsmetPack(OsmetPackConfig),
     OsmetUnpack(OsmetUnpackConfig),
+    PxeIgnitionWrap(PxeIgnitionWrapConfig),
+    PxeIgnitionUnwrap(PxeIgnitionUnwrapConfig),
 }
 
 pub struct InstallConfig {
@@ -111,6 +113,15 @@ pub struct OsmetUnpackConfig {
     pub repo: String,
     pub osmet: String,
     pub device: String,
+}
+
+pub struct PxeIgnitionWrapConfig {
+    pub ignition: Option<String>,
+    pub output: Option<String>,
+}
+
+pub struct PxeIgnitionUnwrapConfig {
+    pub input: String,
 }
 
 /// Parse command-line arguments.
@@ -543,6 +554,45 @@ pub fn parse_args() -> Result<Config> {
             )
         )
         .subcommand(
+            SubCommand::with_name("pxe")
+                .about("Commands to manage a CoreOS live PXE image")
+                .subcommand(
+                    SubCommand::with_name("ignition")
+                        .about("Commands to manage a live PXE Ignition config")
+                        .subcommand(
+                            SubCommand::with_name("wrap")
+                            .about("Wrap an Ignition config in an initrd image")
+                            .arg(
+                                Arg::with_name("ignition")
+                                    .short("i")
+                                    .long("ignition-file")
+                                    .value_name("path")
+                                    .help("Ignition config to wrap [default: stdin]")
+                                    .takes_value(true),
+                            )
+                            .arg(
+                                Arg::with_name("output")
+                                    .short("o")
+                                    .long("output")
+                                    .value_name("path")
+                                    .help("Write to a file instead of stdout")
+                                    .takes_value(true),
+                            )
+                    )
+                    .subcommand(
+                        SubCommand::with_name("unwrap")
+                            .about("Show the wrapped Ignition config in an initrd image")
+                            .arg(
+                                Arg::with_name("input")
+                                    .value_name("initrd")
+                                    .help("initrd image")
+                                    .required(true)
+                                    .takes_value(true),
+                            ),
+                    )
+            )
+        )
+        .subcommand(
             SubCommand::with_name("osmet")
                 .about("Efficient CoreOS metal disk image packing using OSTree commits")
                 // users shouldn't be interacting with this command normally
@@ -661,6 +711,14 @@ pub fn parse_args() -> Result<Config> {
             ("unpack", Some(matches)) => parse_osmet_unpack(&matches),
             ("fiemap", Some(matches)) => parse_osmet_fiemap(&matches),
             _ => bail!("unrecognized 'osmet' subcommand"),
+        },
+        ("pxe", Some(pxe_matches)) => match pxe_matches.subcommand() {
+            ("ignition", Some(ignition_matches)) => match ignition_matches.subcommand() {
+                ("wrap", Some(matches)) => parse_pxe_ignition_wrap(&matches),
+                ("unwrap", Some(matches)) => parse_pxe_ignition_unwrap(&matches),
+                _ => bail!("unrecognized 'ignition' subcommand"),
+            },
+            _ => bail!("unrecognized 'pxe' subcommand"),
         },
         _ => bail!("unrecognized subcommand"),
     }
@@ -1023,6 +1081,22 @@ fn parse_osmet_fiemap(matches: &ArgMatches) -> Result<Config> {
             .value_of("file")
             .map(String::from)
             .expect("file missing"),
+    }))
+}
+
+fn parse_pxe_ignition_wrap(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::PxeIgnitionWrap(PxeIgnitionWrapConfig {
+        ignition: matches.value_of("ignition").map(String::from),
+        output: matches.value_of("output").map(String::from),
+    }))
+}
+
+fn parse_pxe_ignition_unwrap(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::PxeIgnitionUnwrap(PxeIgnitionUnwrapConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
     }))
 }
 
