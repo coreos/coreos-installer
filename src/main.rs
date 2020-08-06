@@ -36,5 +36,7 @@ fn run() -> Result<()> {
         Config::OsmetFiemap(c) => osmet::osmet_fiemap(&c),
         Config::OsmetPack(c) => osmet::osmet_pack(&c),
         Config::OsmetUnpack(c) => osmet::osmet_unpack(&c),
+        Config::PxeIgnitionWrap(c) => live::pxe_ignition_wrap(&c),
+        Config::PxeIgnitionUnwrap(c) => live::pxe_ignition_unwrap(&c),
     }
 }

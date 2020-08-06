@@ -14,9 +14,11 @@
 
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use error_chain::bail;
+use nix::unistd::isatty;
 use std::convert::TryInto;
-use std::fs::{read, remove_file, File, OpenOptions};
+use std::fs::{read, remove_file, write, File, OpenOptions};
 use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::os::unix::io::AsRawFd;
 
 use crate::cmdline::*;
 use crate::errors::*;
@@ -109,6 +111,49 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
     let mut embed = EmbedArea::for_file(&mut holder.file)?;
     embed.clear()?;
     holder.complete();
+    Ok(())
+}
+
+pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
+    if config.output.is_none()
+        && isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")?
+    {
+        bail!("Refusing to write binary data to terminal");
+    }
+
+    let ignition = match config.ignition {
+        Some(ref ignition_path) => {
+            read(ignition_path).chain_err(|| format!("reading {}", ignition_path))?
+        }
+        None => {
+            let mut data = Vec::new();
+            stdin()
+                .read_to_end(&mut data)
+                .chain_err(|| "reading stdin")?;
+            data
+        }
+    };
+
+    let cpio = make_cpio(&ignition)?;
+
+    match &config.output {
+        Some(output_path) => {
+            write(output_path, cpio).chain_err(|| format!("writing {}", output_path))?
+        }
+        None => {
+            stdout().write_all(&cpio).chain_err(|| "writing output")?;
+            stdout().flush().chain_err(|| "flushing output")?;
+        }
+    }
+    Ok(())
+}
+
+pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
+    let buf = read(&config.input).chain_err(|| format!("reading {}", config.input))?;
+    stdout()
+        .write_all(&extract_cpio(&buf)?)
+        .chain_err(|| "writing output")?;
+    stdout().flush().chain_err(|| "flushing output")?;
     Ok(())
 }
 

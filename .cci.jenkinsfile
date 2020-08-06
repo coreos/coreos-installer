@@ -30,6 +30,8 @@ cosaPod(buildroot: true) {
                     checklen iso ignition embed
                     checklen iso ignition show
                     checklen iso ignition remove
+                    checklen pxe ignition wrap
+                    checklen pxe ignition unwrap
                     if [ "${fail}" = 1 ]; then
                         exit 1
                     fi
