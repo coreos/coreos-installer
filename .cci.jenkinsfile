@@ -1,9 +1,10 @@
 // Documentation: https://github.com/coreos/coreos-ci/blob/master/README-upstream-ci.md
 
-cosaPod(buildroot: true) {
+cosaPod(buildroot: true, runAsUser: 0) {
     checkout scm
 
-    shwrap("make")
+    // Make sure cosa is using the binary we just built.
+    shwrap("make && make install")
 
     parallel(
         lint: {
