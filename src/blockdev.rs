@@ -767,7 +767,12 @@ pub fn get_blkdev_deps(device: &Path) -> Result<Vec<PathBuf>> {
         p
     };
     let mut ret: Vec<PathBuf> = Vec::new();
-    for ent in read_dir(&deps).chain_err(|| format!("reading {}", &deps.display()))? {
+    let dir_iter = match read_dir(&deps) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ret),
+        Err(e) => return Err(e).chain_err(|| format!("reading dir {}", &deps.display())),
+        Ok(it) => it,
+    };
+    for ent in dir_iter {
         let ent = ent.chain_err(|| format!("reading {} entry", &deps.display()))?;
         ret.push(Path::new("/dev").join(ent.file_name()));
     }
