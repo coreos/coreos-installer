@@ -56,7 +56,7 @@ cosaPod(buildroot: true) {
                 // now it's buggy)
                 try {
                     parallel metal: {
-                        shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,iso-install,iso-offline-install --output-dir tmp/kola-testiso-metal")
+                        shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,pxe-offline-install,iso-install,iso-offline-install --output-dir tmp/kola-testiso-metal")
                     }, metal4k: {
                         shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install,iso-offline-install --qemu-native-4k --output-dir tmp/kola-testiso-metal4k")
                     }
