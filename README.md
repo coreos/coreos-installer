@@ -128,7 +128,7 @@ Burn the ISO to disk and boot it, or use ISO redirection via a LOM interface.
 Alternatively you can use a VM like so:
 
 ```
-virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-32.20200715.2.0-live.x86_64.iso --network default
+virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso --network default
 ```
 
 Alternatively you can use `qemu` directly.  Create a disk image to use as
@@ -141,7 +141,7 @@ qemu-img create -f qcow2 fcos.qcow2 8G
 Now, run the following qemu command:
 
 ```
-qemu-system-x86_64 -accel kvm -name fcos -m 4500 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-32.20200715.2.0-live.x86_64.iso
+qemu-system-x86_64 -accel kvm -name fcos -m 4500 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso
 ```
 
 Once you have reached the boot menu, press `<TAB>` (isolinux) or
@@ -173,8 +173,8 @@ DEFAULT pxeboot
 TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
-    KERNEL fedora-coreos-32.20200715.2.0-live-kernel-x86_64
-    APPEND initrd=fedora-coreos-32.20200715.2.0-live-initramfs.x86_64.img coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    KERNEL fedora-coreos-32.20200809.2.1-live-kernel-x86_64
+    APPEND initrd=fedora-coreos-32.20200809.2.1-live-initramfs.x86_64.img coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
