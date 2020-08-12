@@ -492,38 +492,77 @@ impl Drop for Mount {
 
 #[derive(Debug)]
 pub struct SavedPartitions {
-    sector_size: Option<u64>,
+    sector_size: u64,
     partitions: Vec<(u32, GPTPartitionEntry)>,
 }
 
 impl SavedPartitions {
-    pub fn new(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
-        let mut result = Self {
-            sector_size: None,
-            partitions: Vec::new(),
-        };
-
-        // skip reading partition table if we don't have an accept filter
-        if filters.is_empty() {
-            return Ok(result);
+    /// Create a SavedPartitions for a block device with a sector size.
+    pub fn new_from_disk(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
+        if !disk
+            .metadata()
+            .chain_err(|| "getting disk metadata")?
+            .file_type()
+            .is_block_device()
+        {
+            bail!("specified file is not a block device");
         }
+        Self::new(disk, get_sector_size(&disk)?.get() as u64, filters)
+    }
 
+    /// Create a SavedPartitions for a file with a specified imputed sector
+    /// size.  Useful for unit tests, and fails on a real disk.
+    #[cfg(test)]
+    pub fn new_from_file(
+        disk: &mut File,
+        sector_size: u64,
+        filters: &[PartitionFilter],
+    ) -> Result<Self> {
+        if disk
+            .metadata()
+            .chain_err(|| "getting disk metadata")?
+            .file_type()
+            .is_block_device()
+        {
+            bail!("called new_from_file() on a block device");
+        }
+        match sector_size {
+            512 | 4096 => (),
+            _ => bail!("specified unreasonable sector size {}", sector_size),
+        }
+        Self::new(disk, sector_size, filters)
+    }
+
+    fn new(disk: &mut File, sector_size: u64, filters: &[PartitionFilter]) -> Result<Self> {
         // read GPT
         let gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
-            // no GPT on this disk, so no partitions to save
-            Err(gptman::Error::InvalidSignature) => return Ok(result),
-            Err(e) => return Err(e).chain_err(|| "reading partition table")?,
+            Err(gptman::Error::InvalidSignature) => {
+                // no GPT on this disk, so no partitions to save
+                return Ok(Self {
+                    sector_size,
+                    partitions: Vec::new(),
+                });
+            }
+            Err(e) => return Err(e).chain_err(|| "reading partition table"),
         };
-        Self::verify_disk_sector_size_matches_gpt(disk, gpt.sector_size)?;
-        result.sector_size = Some(gpt.sector_size);
+
+        // cross-check GPT sector size
+        Self::verify_gpt_sector_size(&gpt, sector_size)?;
 
         // save partitions accepted by filters
-        for (i, p) in gpt.iter() {
-            if Self::matches_filters(i, p, filters) {
-                result.partitions.push((i, p.clone()));
+        let mut partitions = Vec::new();
+        if !filters.is_empty() {
+            for (i, p) in gpt.iter() {
+                if Self::matches_filters(i, p, filters) {
+                    partitions.push((i, p.clone()));
+                }
             }
         }
+        let result = Self {
+            sector_size,
+            partitions,
+        };
 
         // Test restoring the saved partitions to a temporary file.  If the
         // resulting partition table contains invalid data (e.g. duplicate
@@ -538,12 +577,7 @@ impl SavedPartitions {
             let mut temp = tempfile::tempfile().chain_err(|| "creating dry run image")?;
             temp.set_len(len)
                 .chain_err(|| format!("setting test image size to {}", len))?;
-            let mut gpt = GPT::new_from(&mut temp, gpt.sector_size, *Uuid::new_v4().as_bytes())
-                .chain_err(|| "creating dry run partition table")?;
-            for (i, p) in &result.partitions {
-                gpt[*i] = p.clone();
-            }
-            gpt.write_into(&mut temp).chain_err(|| {
+            result.overwrite(&mut temp).chain_err(|| {
                 "failed dry run restoring saved partitions; input partition table may be invalid"
             })?;
         }
@@ -551,7 +585,7 @@ impl SavedPartitions {
         Ok(result)
     }
 
-    fn verify_disk_sector_size_matches_gpt(disk: &File, sector_size: u64) -> Result<()> {
+    fn verify_disk_sector_size(&self, disk: &File) -> Result<()> {
         if !disk
             .metadata()
             .chain_err(|| "getting disk metadata")?
@@ -561,10 +595,21 @@ impl SavedPartitions {
             return Ok(());
         }
         let disk_sector_size = get_sector_size(&disk)?.get() as u64;
-        if disk_sector_size != sector_size {
+        if disk_sector_size != self.sector_size {
             bail!(
-                "disk sector size {} doesn't match sector size {} of GPT",
+                "disk sector size {} doesn't match expected {}",
                 disk_sector_size,
+                self.sector_size
+            );
+        }
+        Ok(())
+    }
+
+    fn verify_gpt_sector_size(gpt: &GPT, sector_size: u64) -> Result<()> {
+        if gpt.sector_size != sector_size {
+            bail!(
+                "GPT sector size {} doesn't match expected {}",
+                gpt.sector_size,
                 sector_size
             );
         }
@@ -585,43 +630,41 @@ impl SavedPartitions {
         })
     }
 
-    // Updating the kernel partition table is the caller's responsibility.
-    pub fn write(&self, disk: &mut File) -> Result<()> {
+    /// Unconditionally write the saved partitions, and only the saved
+    /// partitions, to the disk.  Updating the kernel partition table is the
+    /// caller's responsibility.
+    pub fn overwrite(&self, disk: &mut File) -> Result<()> {
+        // create GPT
+        self.verify_disk_sector_size(disk)?;
+        let mut gpt = GPT::new_from(disk, self.sector_size, *Uuid::new_v4().as_bytes())
+            .chain_err(|| "creating new GPT")?;
+
+        // add partitions
+        for (i, p) in &self.partitions {
+            gpt[*i] = p.clone();
+        }
+
+        // write
+        gpt.write_into(disk).chain_err(|| "writing new GPT")?;
+        GPT::write_protective_mbr_into(disk, self.sector_size)
+            .chain_err(|| "writing protective MBR")?;
+
+        Ok(())
+    }
+
+    /// If any partitions are saved, merge them into the GPT from source,
+    /// which must be valid.  Updating the kernel partition table is the
+    /// caller's responsibility.
+    pub fn merge(&self, source: &mut (impl Read + Seek), disk: &mut File) -> Result<()> {
         if self.partitions.is_empty() {
             return Ok(());
         }
-        let sector_size = self
-            .sector_size
-            .expect("have partitions but no sector size");
 
-        // get or create GPT
-        Self::verify_disk_sector_size_matches_gpt(disk, sector_size)?;
-        let mut gpt = match GPT::find_from(disk) {
-            Ok(gpt) => gpt,
-            Err(e) => {
-                // Bad or missing GPT.  Maybe the caller just deleted it.
-                // Create a new partition table and save to that, otherwise
-                // we risk data loss.  If the error is anything fancier than
-                // a missing table, warn about it.
-                match e {
-                    gptman::Error::InvalidSignature => (),
-                    _ => {
-                        eprintln!("Couldn't read partition table: {}.  Recreating.", e);
-                    }
-                }
-                GPT::new_from(disk, sector_size, *Uuid::new_v4().as_bytes())
-                    .chain_err(|| "creating new partition table")?
-            }
-        };
-        if gpt.sector_size != sector_size {
-            // install will fail on an image that doesn't match the disk,
-            // so this shouldn't happen
-            bail!(
-                "sector size {} of disk GPT doesn't match sector size {} of saved GPT",
-                gpt.sector_size,
-                sector_size
-            );
-        }
+        // read GPT
+        self.verify_disk_sector_size(disk)?;
+        let mut gpt =
+            GPT::find_from(source).chain_err(|| "couldn't read partition table from source")?;
+        Self::verify_gpt_sector_size(&gpt, self.sector_size)?;
 
         // Fail if the last on-disk partition overlaps with the beginning of
         // the first saved partition.  Ignore holes.  This test is distinct
@@ -665,14 +708,6 @@ impl SavedPartitions {
         // write
         gpt.write_into(disk).chain_err(|| "writing updated GPT")?;
 
-        // If the MBR signature is missing, write a protective MBR, otherwise
-        // leave alone.  The kernel will ignore a GPT without some sort of
-        // MBR.
-        if !disk_has_mbr(disk)? {
-            GPT::write_protective_mbr_into(disk, sector_size)
-                .chain_err(|| "writing protective MBR")?;
-        }
-
         Ok(())
     }
 
@@ -683,7 +718,7 @@ impl SavedPartitions {
             None => Ok(None),
             Some((i, p)) => Ok(Some((
                 p.starting_lba
-                    .checked_mul(self.sector_size.expect("missing sector size"))
+                    .checked_mul(self.sector_size)
                     .chain_err(|| "overflow calculating partition start")?,
                 format!("partition {} (\"{}\")", i, p.partition_name.as_str()),
             ))),
@@ -862,13 +897,10 @@ pub fn get_block_device_size(file: &File) -> Result<NonZeroU64> {
     }
 }
 
-fn disk_has_mbr(disk: &mut (impl Read + Seek)) -> Result<bool> {
-    let mut sig = [0u8; 2];
-    disk.seek(SeekFrom::Start(510))
-        .chain_err(|| "seeking to MBR signature")?;
-    disk.read_exact(&mut sig)
-        .chain_err(|| "reading MBR signature")?;
-    Ok(sig == [0x55, 0xaa])
+/// Get the size of the GPT metadata at the start of the disk.
+pub fn get_gpt_size(file: &mut (impl Read + Seek)) -> Result<u64> {
+    let gpt = GPT::find_from(file).chain_err(|| "reading GPT")?;
+    Ok(gpt.header.first_usable_lba * gpt.sector_size)
 }
 
 pub fn udev_settle() -> Result<()> {
@@ -892,24 +924,14 @@ pub fn udev_settle() -> Result<()> {
 
 /// Inspect a buffer from the start of a disk image and return its formatted
 /// sector size, if any can be determined.
-pub fn detect_formatted_sector_size_start(buf: &[u8]) -> Option<NonZeroU32> {
-    detect_formatted_sector_size(buf, 512, 4096)
-}
-
-/// Inspect a buffer 4 KiB from the end of a disk image and return its
-/// formatted sector size, if any can be determined.
-pub fn detect_formatted_sector_size_end(buf: &[u8]) -> Option<NonZeroU32> {
-    detect_formatted_sector_size(buf, 4096 - 512, 0)
-}
-
-fn detect_formatted_sector_size(buf: &[u8], gpt_512: usize, gpt_4096: usize) -> Option<NonZeroU32> {
+pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
     let gpt_magic: &[u8; 8] = b"EFI PART";
 
-    if buf.len() >= gpt_512 + 8 && buf[gpt_512..gpt_512 + 8] == gpt_magic[..] {
-        // 512-byte GPT
+    if buf.len() >= 520 && buf[512..520] == gpt_magic[..] {
+        // GPT at offset 512
         NonZeroU32::new(512)
-    } else if buf.len() >= gpt_4096 + 8 && buf[gpt_4096..gpt_4096 + 8] == gpt_magic[..] {
-        // 4096-byte GPT
+    } else if buf.len() >= 4104 && buf[4096..4104] == gpt_magic[..] {
+        // GPT at offset 4096
         NonZeroU32::new(4096)
     } else {
         // Unknown
@@ -931,7 +953,7 @@ mod ioctl {
 mod tests {
     use super::*;
     use maplit::hashmap;
-    use std::io::{copy, Read, Write};
+    use std::io::{copy, Read};
     use tempfile::tempfile;
     use xz2::read::XzDecoder;
 
@@ -1014,10 +1036,12 @@ mod tests {
             } else {
                 test.data.to_vec()
             };
-            let result = detect_formatted_sector_size_start(&data);
-            assert_eq!(result, test.result, "{}", test.name);
-            let result = detect_formatted_sector_size_end(&data[data.len().saturating_sub(4096)..]);
-            assert_eq!(result, test.result, "{}", test.name);
+            assert_eq!(
+                detect_formatted_sector_size(&data),
+                test.result,
+                "{}",
+                test.name
+            );
         }
     }
 
@@ -1056,6 +1080,7 @@ mod tests {
             make_part(2, "EFI-SYSTEM", 384, 512),
             make_part(4, "root", 1024, 2200),
         ];
+        let merge_base_parts = vec![make_part(2, "unused", 500, 3500)];
 
         let index = |i| Some(NonZeroU32::new(i).unwrap());
         let label = |l| Label(glob::Pattern::new(l).unwrap());
@@ -1156,38 +1181,36 @@ mod tests {
             (
                 vec![Index(index(15), None)],
                 vec![],
-                vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                ],
+                merge_base_parts.clone(),
             ),
             // No filters
-            (
-                vec![],
-                vec![],
-                vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                ],
-            ),
+            (vec![], vec![], merge_base_parts.clone()),
         ];
 
         let mut base = make_disk(512, &base_parts);
+        let mut image = make_disk(512, &image_parts);
         for (testnum, (filter, expected_blank, expected_image)) in tests.iter().enumerate() {
-            // perform writes in the same order as install()
-            // first, try writing to image disk
-            let saved = SavedPartitions::new(&mut base, filter).unwrap();
-            let mut disk = make_disk(512, &image_parts);
-            assert!(!disk_has_mbr(&mut disk).unwrap(), "test {}", testnum);
-            saved.write(&mut disk).unwrap();
-            assert!(
-                expected_blank.is_empty() ^ disk_has_mbr(&mut disk).unwrap(),
-                "test {}",
-                testnum
-            );
+            // try overwriting on blank disk
+            let saved = SavedPartitions::new_from_file(&mut base, 512, filter).unwrap();
+            let mut disk = make_unformatted_disk();
+            saved.overwrite(&mut disk).unwrap();
+            assert!(disk_has_mbr(&mut disk), "test {}", testnum);
             let result = GPT::find_from(&mut disk).unwrap();
+            assert_eq!(
+                get_gpt_size(&mut disk).unwrap(),
+                512 * result.header.first_usable_lba
+            );
+            assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
+
+            // try merging with image disk onto merge_base disk
+            let mut disk = make_disk(512, &merge_base_parts);
+            saved.merge(&mut image, &mut disk).unwrap();
+            assert!(!disk_has_mbr(&mut disk), "test {}", testnum);
+            let result = GPT::find_from(&mut disk).unwrap();
+            assert_eq!(
+                get_gpt_size(&mut disk).unwrap(),
+                512 * result.header.first_usable_lba
+            );
             assert_partitions_eq(expected_image, &result, &format!("test {} image", testnum));
             assert_eq!(
                 saved.get_offset().unwrap(),
@@ -1204,57 +1227,43 @@ mod tests {
                 "test {}",
                 testnum
             );
-
-            // then, try writing to blank disk
-            let mut disk = make_unformatted_disk();
-            saved.write(&mut disk).unwrap();
-            assert!(
-                expected_blank.is_empty() ^ disk_has_mbr(&mut disk).unwrap(),
-                "test {}",
-                testnum
-            );
-            if !expected_blank.is_empty() {
-                let result = GPT::find_from(&mut disk).unwrap();
-                assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
-            }
         }
 
-        // test unformatted initial disk
+        // test merging with unformatted initial disk
         let mut disk = make_unformatted_disk();
-        let saved = SavedPartitions::new(&mut disk, &vec![label("z")]).unwrap();
-        let mut disk = make_disk(512, &image_parts);
-        saved.write(&mut disk).unwrap();
+        let saved = SavedPartitions::new_from_file(&mut disk, 512, &vec![label("z")]).unwrap();
+        let mut disk = make_disk(512, &merge_base_parts);
+        saved.merge(&mut image, &mut disk).unwrap();
         let result = GPT::find_from(&mut disk).unwrap();
-        assert_partitions_eq(&image_parts, &result, "unformatted disk");
-
-        // test not overwriting existing MBR
-        let saved = SavedPartitions::new(&mut base, &vec![label("five")]).unwrap();
-        let mut disk = make_disk(512, &image_parts);
-        let mut pattern = [17u8; 512];
-        pattern[510] = 0x55;
-        pattern[511] = 0xaa;
-        disk.seek(SeekFrom::Start(0)).unwrap();
-        disk.write_all(&pattern).unwrap();
-        saved.write(&mut disk).unwrap();
-        let mut buf = [0u8; 512];
-        disk.seek(SeekFrom::Start(0)).unwrap();
-        disk.read_exact(&mut buf).unwrap();
-        assert_eq!(&buf[..], &pattern[..]);
+        assert_partitions_eq(&merge_base_parts, &result, "unformatted disk");
 
         // test overlapping partitions
-        let saved = SavedPartitions::new(&mut base, &vec![Index(index(1), index(1))]).unwrap();
-        let mut disk = make_disk(512, &image_parts);
+        let saved =
+            SavedPartitions::new_from_file(&mut base, 512, &vec![Index(index(1), index(1))])
+                .unwrap();
+        let mut disk = make_disk(512, &merge_base_parts);
         assert_eq!(
-            saved.write(&mut disk).unwrap_err().to_string(),
+            saved.merge(&mut image, &mut disk).unwrap_err().to_string(),
             "disk partition 4 ('root') ends after start of saved partition 1 ('one')",
         );
 
         // test sector size mismatch
-        let saved = SavedPartitions::new(&mut base, &vec![label("*i*")]).unwrap();
-        let mut disk = make_disk(4096, &image_parts);
+        let saved = SavedPartitions::new_from_file(&mut base, 512, &vec![label("*i*")]).unwrap();
+        let mut image_4096 = make_disk(4096, &image_parts);
         assert_eq!(
-            saved.write(&mut disk).unwrap_err().to_string(),
-            "sector size 4096 of disk GPT doesn't match sector size 512 of saved GPT"
+            get_gpt_size(&mut image_4096).unwrap(),
+            4096 * GPT::find_from(&mut image_4096)
+                .unwrap()
+                .header
+                .first_usable_lba
+        );
+        let mut disk = make_disk(4096, &merge_base_parts);
+        assert_eq!(
+            saved
+                .merge(&mut image_4096, &mut disk)
+                .unwrap_err()
+                .to_string(),
+            "GPT sector size 4096 doesn't match expected 512"
         );
 
         // test copying invalid partitions
@@ -1262,7 +1271,7 @@ mod tests {
         let data = include_bytes!("../fixtures/gpt-512-duplicate-partition-guids.xz");
         copy(&mut XzDecoder::new(&data[..]), &mut disk).unwrap();
         assert_eq!(
-            SavedPartitions::new(&mut disk, &vec![label("*")])
+            SavedPartitions::new_from_file(&mut disk, 512, &vec![label("*")])
                 .unwrap_err()
                 .to_string(),
             "failed dry run restoring saved partitions; input partition table may be invalid"
@@ -1305,6 +1314,13 @@ mod tests {
             guid[i % guid.len()] ^= *b;
         }
         guid
+    }
+
+    fn disk_has_mbr(disk: &mut File) -> bool {
+        let mut sig = [0u8; 2];
+        disk.seek(SeekFrom::Start(510)).unwrap();
+        disk.read_exact(&mut sig).unwrap();
+        sig == [0x55, 0xaa]
     }
 
     fn assert_partitions_eq(expected: &Vec<(u32, GPTPartitionEntry)>, found: &GPT, message: &str) {

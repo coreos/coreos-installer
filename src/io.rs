@@ -207,16 +207,16 @@ pub struct LimitReader<R: Read> {
     source: R,
     length: u64,
     remaining: u64,
-    limit_cause: String,
+    conflict: String,
 }
 
 impl<R: Read> LimitReader<R> {
-    pub fn new(source: R, length: u64, limit_cause: String) -> Self {
+    pub fn new(source: R, length: u64, conflict: String) -> Self {
         Self {
             source,
             length,
             remaining: length,
-            limit_cause,
+            conflict,
         }
     }
 }
@@ -233,7 +233,7 @@ impl<R: Read> Read for LimitReader<R> {
                 Ok(0) => Ok(0),
                 Ok(_) => Err(io::Error::new(
                     io::ErrorKind::Other,
-                    format!("{} at offset {}", self.limit_cause, self.length),
+                    format!("collision with {} at offset {}", self.conflict, self.length),
                 )),
                 Err(e) => Err(e),
             };
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(buf[..30], data[60..90]);
         assert_eq!(
             lim.read(&mut buf).unwrap_err().to_string(),
-            "foo at offset 90"
+            "collision with foo at offset 90"
         );
 
         // buffer exactly equal to limit
@@ -406,7 +406,7 @@ mod tests {
         assert_eq!(buf[..], data[0..60]);
         assert_eq!(
             lim.read(&mut buf).unwrap_err().to_string(),
-            "foo at offset 60"
+            "collision with foo at offset 60"
         );
 
         // buffer larger than limit
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(buf[..50], data[0..50]);
         assert_eq!(
             lim.read(&mut buf).unwrap_err().to_string(),
-            "foo at offset 50"
+            "collision with foo at offset 50"
         );
     }
 }

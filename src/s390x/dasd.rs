@@ -21,7 +21,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::blockdev::{get_sector_size, udev_settle};
+use crate::blockdev::{get_sector_size, udev_settle, SavedPartitions};
 use crate::cmdline::*;
 use crate::errors::*;
 use crate::io::{copy_exactly_n, BUFFER_SIZE};
@@ -54,6 +54,7 @@ pub fn image_copy_s390x(
     source: &mut dyn Read,
     dest_file: &mut File,
     dest_path: &Path,
+    _saved: Option<&SavedPartitions>,
 ) -> Result<()> {
     let (ranges, partitions) = partition_ranges(first_mb, dest_file)?;
     make_partitions(
