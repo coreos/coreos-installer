@@ -119,7 +119,13 @@ line.
 
 ## Installing from ISO
 
-[Download a Fedora CoreOS ISO image](https://getfedora.org/coreos/download/).
+Download a Fedora CoreOS ISO image:
+
+```
+podman run --privileged --pull=always --rm -v .:/data -w /data \
+    quay.io/coreos/coreos-installer:release download -f iso
+```
+
 The ISO image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
@@ -160,7 +166,13 @@ embedded Ignition config will run on first boot.
 
 ## Installing from PXE
 
-[Download a Fedora CoreOS PXE kernel, initramfs, and rootfs image](https://getfedora.org/coreos/download/).
+Download a Fedora CoreOS PXE kernel, initramfs, and rootfs image:
+
+```
+podman run --privileged --pull=always --rm -v .:/data -w /data \
+    quay.io/coreos/coreos-installer:release download -f pxe
+```
+
 The PXE image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
