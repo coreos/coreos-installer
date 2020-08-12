@@ -665,28 +665,11 @@ impl SavedPartitions {
         let mut gpt =
             GPT::find_from(source).chain_err(|| "couldn't read partition table from source")?;
         Self::verify_gpt_sector_size(&gpt, self.sector_size)?;
-
-        // Fail if the last on-disk partition overlaps with the beginning of
-        // the first saved partition.  Ignore holes.  This test is distinct
-        // from the download-time LimitReader checking, because the image
-        // may claim to have partitions beyond the end of the image file.
-        // If this occurs, install() will restore the saved partitions after
-        // clearing the table.
-        if let Some((i_end, end)) = gpt.iter().max_by_key(|(_, p)| p.ending_lba) {
-            if let Some((i_start, start)) =
-                self.partitions.iter().min_by_key(|(_, p)| p.starting_lba)
-            {
-                if end.ending_lba >= start.starting_lba {
-                    bail!(
-                        "disk partition {} ('{}') ends after start of saved partition {} ('{}')",
-                        i_end,
-                        end.partition_name.as_str(),
-                        i_start,
-                        start.partition_name.as_str()
-                    )
-                }
-            }
-        }
+        // The GPT thinks the disk is the size of the install image.
+        // Update sizing.
+        gpt.header
+            .update_from(disk, self.sector_size)
+            .chain_err(|| "updating GPT header")?;
 
         // merge saved partitions into partition table
         // find partition number one larger than the largest used one
@@ -952,6 +935,7 @@ mod ioctl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use error_chain::ChainedError;
     use maplit::hashmap;
     use std::io::{copy, Read};
     use tempfile::tempfile;
@@ -1054,7 +1038,7 @@ mod tests {
                 i,
                 GPTPartitionEntry {
                     partition_type_guid: make_guid("type"),
-                    unique_parition_guid: make_guid(&start.to_string()),
+                    unique_partition_guid: make_guid(&format!("{} {} {}", name, start, end)),
                     starting_lba: start * 2048,
                     ending_lba: end * 2048 - 1,
                     attribute_bits: 0,
@@ -1242,9 +1226,15 @@ mod tests {
             SavedPartitions::new_from_file(&mut base, 512, &vec![Index(index(1), index(1))])
                 .unwrap();
         let mut disk = make_disk(512, &merge_base_parts);
-        assert_eq!(
-            saved.merge(&mut image, &mut disk).unwrap_err().to_string(),
-            "disk partition 4 ('root') ends after start of saved partition 1 ('one')",
+        let err_str = saved
+            .merge(&mut image, &mut disk)
+            .unwrap_err()
+            .display_chain()
+            .to_string();
+        assert!(
+            err_str.contains(&gptman::Error::InvalidPartitionBoundaries.to_string()),
+            "incorrect error: {}",
+            err_str
         );
 
         // test sector size mismatch
@@ -1324,52 +1314,17 @@ mod tests {
     }
 
     fn assert_partitions_eq(expected: &Vec<(u32, GPTPartitionEntry)>, found: &GPT, message: &str) {
-        // GPTPartitionEntry doesn't derive PartialEq.  Compare by hand.
-        // first check that indexes are equal
         assert_eq!(
-            expected.iter().map(|(i, _)| *i).collect::<Vec<u32>>(),
+            expected
+                .iter()
+                .map(|(i, p)| (*i, p))
+                .collect::<Vec<(u32, &GPTPartitionEntry)>>(),
             found
                 .iter()
-                .filter(|(_, e)| e.is_used())
-                .map(|(i, _)| i)
-                .collect::<Vec<u32>>(),
+                .filter(|(_, p)| p.is_used())
+                .collect::<Vec<(u32, &GPTPartitionEntry)>>(),
             "{}",
             message
         );
-        // check contents
-        for (i, entry) in expected {
-            assert_eq!(
-                entry.partition_name.as_str(),
-                found[*i].partition_name.as_str(),
-                "{}, partition {}",
-                message,
-                i
-            );
-            assert_eq!(
-                entry.partition_type_guid, found[*i].partition_type_guid,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.unique_parition_guid, found[*i].unique_parition_guid,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.starting_lba, found[*i].starting_lba,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.ending_lba, found[*i].ending_lba,
-                "{}, partition {}",
-                message, i
-            );
-            assert_eq!(
-                entry.attribute_bits, found[*i].attribute_bits,
-                "{}, partition {}",
-                message, i
-            );
-        }
     }
 }
