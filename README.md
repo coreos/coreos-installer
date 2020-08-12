@@ -40,9 +40,9 @@ files in the host.  For example:
 
 ```sh
 sudo podman run --pull=always --privileged --rm \
-    -v /dev:/dev -v /run/udev:/run/udev -v .:/data \
+    -v /dev:/dev -v /run/udev:/run/udev -v .:/data -w /data \
     quay.io/coreos/coreos-installer:release \
-    install /dev/vdb -s testing -i /data/config.ign
+    install /dev/vdb -i config.ign
 ```
 
 # Via a Fedora RPM
@@ -119,7 +119,13 @@ line.
 
 ## Installing from ISO
 
-[Download a Fedora CoreOS ISO image](https://getfedora.org/coreos/download/).
+Download a Fedora CoreOS ISO image:
+
+```
+podman run --privileged --pull=always --rm -v .:/data -w /data \
+    quay.io/coreos/coreos-installer:release download -f iso
+```
+
 The ISO image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
@@ -128,7 +134,7 @@ Burn the ISO to disk and boot it, or use ISO redirection via a LOM interface.
 Alternatively you can use a VM like so:
 
 ```
-virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-32.20200715.2.0-live.x86_64.iso --network default
+virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso --network default
 ```
 
 Alternatively you can use `qemu` directly.  Create a disk image to use as
@@ -141,7 +147,7 @@ qemu-img create -f qcow2 fcos.qcow2 8G
 Now, run the following qemu command:
 
 ```
-qemu-system-x86_64 -accel kvm -name fcos -m 4500 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-32.20200715.2.0-live.x86_64.iso
+qemu-system-x86_64 -accel kvm -name fcos -m 4500 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso
 ```
 
 Once you have reached the boot menu, press `<TAB>` (isolinux) or
@@ -160,7 +166,13 @@ embedded Ignition config will run on first boot.
 
 ## Installing from PXE
 
-[Download a Fedora CoreOS PXE kernel and initramfs image](https://getfedora.org/coreos/download/).
+Download a Fedora CoreOS PXE kernel, initramfs, and rootfs image:
+
+```
+podman run --privileged --pull=always --rm -v .:/data -w /data \
+    quay.io/coreos/coreos-installer:release download -f pxe
+```
+
 The PXE image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
@@ -173,8 +185,8 @@ DEFAULT pxeboot
 TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
-    KERNEL fedora-coreos-32.20200715.2.0-live-kernel-x86_64
-    APPEND initrd=fedora-coreos-32.20200715.2.0-live-initramfs.x86_64.img coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    KERNEL fedora-coreos-32.20200809.2.1-live-kernel-x86_64
+    APPEND initrd=fedora-coreos-32.20200809.2.1-live-initramfs.x86_64.img,fedora-coreos-32.20200809.2.1-live-rootfs.x86_64.img coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
