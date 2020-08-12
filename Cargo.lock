@@ -154,7 +154,7 @@ dependencies = [
  "hex",
  "libc",
  "maplit",
- "nix 0.18.0",
+ "nix",
  "openssl",
  "pipe",
  "regex",
@@ -366,14 +366,14 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gptman"
-version = "0.6.5"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0a28da0c56b559fbe74ecd953f86fe778ca5ecc9f2a50eee94b86cdf46f9314"
+checksum = "1ef4ee167c4401c93a4873137a41a534c44fb4cfed19bc6b087e62ee3b27a2f9"
 dependencies = [
  "bincode",
  "crc",
  "err-derive",
- "nix 0.17.0",
+ "nix",
  "serde",
  "serde_derive",
 ]
@@ -675,19 +675,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "winapi 0.3.8",
-]
-
-[[package]]
-name = "nix"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50e4785f2c3b7589a0d0c1dd60285e1188adac4006e8abd6dd578e1567027363"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
- "void",
 ]
 
 [[package]]
@@ -1290,12 +1277,6 @@ name = "version_check"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "078775d0255232fb988e6fccf26ddc9d1ac274299aaedcedce21c6f72cc533ce"
-
-[[package]]
-name = "void"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "walkdir"
