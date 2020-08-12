@@ -160,7 +160,7 @@ embedded Ignition config will run on first boot.
 
 ## Installing from PXE
 
-[Download a Fedora CoreOS PXE kernel and initramfs image](https://getfedora.org/coreos/download/).
+[Download a Fedora CoreOS PXE kernel, initramfs, and rootfs image](https://getfedora.org/coreos/download/).
 The PXE image can install in either legacy boot (BIOS) mode or in UEFI
 mode. You can boot it in either mode, regardless of what mode the OS will
 boot from once installed.
@@ -174,7 +174,7 @@ TIMEOUT 20
 PROMPT 0
 LABEL pxeboot
     KERNEL fedora-coreos-32.20200809.2.1-live-kernel-x86_64
-    APPEND initrd=fedora-coreos-32.20200809.2.1-live-initramfs.x86_64.img coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
+    APPEND initrd=fedora-coreos-32.20200809.2.1-live-initramfs.x86_64.img,fedora-coreos-32.20200809.2.1-live-rootfs.x86_64.img coreos.inst.install_dev=/dev/sda coreos.inst.ignition_url=http://192.168.1.101:8000/config.ign
 IPAPPEND 2
 ```
 
