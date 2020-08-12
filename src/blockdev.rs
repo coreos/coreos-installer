@@ -497,46 +497,58 @@ pub struct SavedPartitions {
 }
 
 impl SavedPartitions {
-    pub fn new(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
-        // try reading GPT
-        let maybe_gpt = match GPT::find_from(disk) {
-            Ok(gpt) => Some(gpt),
-            // no GPT on this disk, so no partitions to save
-            Err(gptman::Error::InvalidSignature) => None,
-            Err(e) => return Err(e).chain_err(|| "reading partition table"),
-        };
-
-        // determine sector size
-        let sector_size = if disk
+    /// Create a SavedPartitions for a block device with a sector size.
+    pub fn new_from_disk(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
+        if !disk
             .metadata()
             .chain_err(|| "getting disk metadata")?
             .file_type()
             .is_block_device()
         {
-            // We have a real disk, so treat it as the source of truth.
-            get_sector_size(&disk)?.get() as u64
-        } else if let Some(ref gpt) = maybe_gpt {
-            // No real disk, but an existing GPT.  Trust it.
-            gpt.sector_size
-        } else {
-            // We're not reading from a real disk, and there's no existing
-            // GPT.  This should only happen in unit tests.  Pick a default.
-            512
-        };
+            bail!("specified file is not a block device");
+        }
+        Self::new(disk, get_sector_size(&disk)?.get() as u64, filters)
+    }
 
-        // early return if no GPT
-        let gpt = match maybe_gpt {
-            Some(gpt) => gpt,
-            None => {
+    /// Create a SavedPartitions for a file with a specified imputed sector
+    /// size.  Useful for unit tests, and fails on a real disk.
+    #[cfg(test)]
+    pub fn new_from_file(
+        disk: &mut File,
+        sector_size: u64,
+        filters: &[PartitionFilter],
+    ) -> Result<Self> {
+        if disk
+            .metadata()
+            .chain_err(|| "getting disk metadata")?
+            .file_type()
+            .is_block_device()
+        {
+            bail!("called new_from_file() on a block device");
+        }
+        match sector_size {
+            512 | 4096 => (),
+            _ => bail!("specified unreasonable sector size {}", sector_size),
+        }
+        Self::new(disk, sector_size, filters)
+    }
+
+    fn new(disk: &mut File, sector_size: u64, filters: &[PartitionFilter]) -> Result<Self> {
+        // read GPT
+        let gpt = match GPT::find_from(disk) {
+            Ok(gpt) => gpt,
+            Err(gptman::Error::InvalidSignature) => {
+                // no GPT on this disk, so no partitions to save
                 return Ok(Self {
                     sector_size,
                     partitions: Vec::new(),
-                })
+                });
             }
+            Err(e) => return Err(e).chain_err(|| "reading partition table"),
         };
 
-        // cross-check disk and GPT sector sizes if we have both
-        Self::verify_disk_sector_size(disk, gpt.sector_size)?;
+        // cross-check GPT sector size
+        Self::verify_gpt_sector_size(&gpt, sector_size)?;
 
         // save partitions accepted by filters
         let mut partitions = Vec::new();
@@ -573,7 +585,7 @@ impl SavedPartitions {
         Ok(result)
     }
 
-    fn verify_disk_sector_size(disk: &File, sector_size: u64) -> Result<()> {
+    fn verify_disk_sector_size(&self, disk: &File) -> Result<()> {
         if !disk
             .metadata()
             .chain_err(|| "getting disk metadata")?
@@ -583,10 +595,21 @@ impl SavedPartitions {
             return Ok(());
         }
         let disk_sector_size = get_sector_size(&disk)?.get() as u64;
-        if disk_sector_size != sector_size {
+        if disk_sector_size != self.sector_size {
             bail!(
                 "disk sector size {} doesn't match expected {}",
                 disk_sector_size,
+                self.sector_size
+            );
+        }
+        Ok(())
+    }
+
+    fn verify_gpt_sector_size(gpt: &GPT, sector_size: u64) -> Result<()> {
+        if gpt.sector_size != sector_size {
+            bail!(
+                "GPT sector size {} doesn't match expected {}",
+                gpt.sector_size,
                 sector_size
             );
         }
@@ -612,7 +635,7 @@ impl SavedPartitions {
     /// caller's responsibility.
     pub fn overwrite(&self, disk: &mut File) -> Result<()> {
         // create GPT
-        Self::verify_disk_sector_size(disk, self.sector_size)?;
+        self.verify_disk_sector_size(disk)?;
         let mut gpt = GPT::new_from(disk, self.sector_size, *Uuid::new_v4().as_bytes())
             .chain_err(|| "creating new GPT")?;
 
@@ -638,18 +661,10 @@ impl SavedPartitions {
         }
 
         // read GPT
-        Self::verify_disk_sector_size(disk, self.sector_size)?;
+        self.verify_disk_sector_size(disk)?;
         let mut gpt =
             GPT::find_from(source).chain_err(|| "couldn't read partition table from source")?;
-        if gpt.sector_size != self.sector_size {
-            // install will fail on an image that doesn't match the disk,
-            // so this shouldn't happen
-            bail!(
-                "sector size {} of disk GPT doesn't match expected sector size {}",
-                gpt.sector_size,
-                self.sector_size
-            );
-        }
+        Self::verify_gpt_sector_size(&gpt, self.sector_size)?;
 
         // Fail if the last on-disk partition overlaps with the beginning of
         // the first saved partition.  Ignore holes.  This test is distinct
@@ -1171,7 +1186,7 @@ mod tests {
         let mut image = make_disk(512, &image_parts);
         for (testnum, (filter, expected_blank, expected_image)) in tests.iter().enumerate() {
             // try overwriting on blank disk
-            let saved = SavedPartitions::new(&mut base, filter).unwrap();
+            let saved = SavedPartitions::new_from_file(&mut base, 512, filter).unwrap();
             let mut disk = make_unformatted_disk();
             saved.overwrite(&mut disk).unwrap();
             assert!(disk_has_mbr(&mut disk), "test {}", testnum);
@@ -1211,14 +1226,16 @@ mod tests {
 
         // test merging with unformatted initial disk
         let mut disk = make_unformatted_disk();
-        let saved = SavedPartitions::new(&mut disk, &vec![label("z")]).unwrap();
+        let saved = SavedPartitions::new_from_file(&mut disk, 512, &vec![label("z")]).unwrap();
         let mut disk = make_disk(512, &merge_base_parts);
         saved.merge(&mut image, &mut disk).unwrap();
         let result = GPT::find_from(&mut disk).unwrap();
         assert_partitions_eq(&merge_base_parts, &result, "unformatted disk");
 
         // test overlapping partitions
-        let saved = SavedPartitions::new(&mut base, &vec![Index(index(1), index(1))]).unwrap();
+        let saved =
+            SavedPartitions::new_from_file(&mut base, 512, &vec![Index(index(1), index(1))])
+                .unwrap();
         let mut disk = make_disk(512, &merge_base_parts);
         assert_eq!(
             saved.merge(&mut image, &mut disk).unwrap_err().to_string(),
@@ -1226,7 +1243,7 @@ mod tests {
         );
 
         // test sector size mismatch
-        let saved = SavedPartitions::new(&mut base, &vec![label("*i*")]).unwrap();
+        let saved = SavedPartitions::new_from_file(&mut base, 512, &vec![label("*i*")]).unwrap();
         let mut image_4096 = make_disk(4096, &image_parts);
         assert_eq!(
             get_gpt_size(&mut image_4096).unwrap(),
@@ -1241,7 +1258,7 @@ mod tests {
                 .merge(&mut image_4096, &mut disk)
                 .unwrap_err()
                 .to_string(),
-            "sector size 4096 of disk GPT doesn't match expected sector size 512"
+            "GPT sector size 4096 doesn't match expected 512"
         );
 
         // test copying invalid partitions
@@ -1249,7 +1266,7 @@ mod tests {
         let data = include_bytes!("../fixtures/gpt-512-duplicate-partition-guids.xz");
         copy(&mut XzDecoder::new(&data[..]), &mut disk).unwrap();
         assert_eq!(
-            SavedPartitions::new(&mut disk, &vec![label("*")])
+            SavedPartitions::new_from_file(&mut disk, 512, &vec![label("*")])
                 .unwrap_err()
                 .to_string(),
             "failed dry run restoring saved partitions; input partition table may be invalid"

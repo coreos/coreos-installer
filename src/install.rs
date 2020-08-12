@@ -75,7 +75,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // save partitions that we plan to keep
-    let saved = SavedPartitions::new(&mut dest, &config.save_partitions)
+    let saved = SavedPartitions::new_from_disk(&mut dest, &config.save_partitions)
         .chain_err(|| format!("saving partitions from {}", config.device))?;
 
     // get reference to partition table

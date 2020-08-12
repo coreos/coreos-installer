@@ -466,8 +466,9 @@ mod tests {
             .into_parts();
         dest.set_len(8 * 1024 * 1024).unwrap();
         partition(&mut dest, Some(4));
-        let saved = SavedPartitions::new(
+        let saved = SavedPartitions::new_from_file(
             &mut dest,
+            512,
             &vec![PartitionFilter::Label(glob::Pattern::new("*").unwrap())],
         )
         .unwrap();
@@ -529,7 +530,7 @@ mod tests {
         // gptman requires a fixed disk length
         dest.set_len(len as u64).unwrap();
         // create saved
-        let saved = SavedPartitions::new(&mut dest, &vec![]).unwrap();
+        let saved = SavedPartitions::new_from_file(&mut dest, 512, &vec![]).unwrap();
         assert!(!saved.is_saved());
         // copy
         source.seek(SeekFrom::Start(mb as u64)).unwrap();
@@ -559,8 +560,9 @@ mod tests {
         // create partition to save
         partition(&mut dest, Some(2));
         // create saved
-        let saved = SavedPartitions::new(
+        let saved = SavedPartitions::new_from_file(
             &mut dest,
+            512,
             &vec![PartitionFilter::Label(glob::Pattern::new("bovik").unwrap())],
         )
         .unwrap();
