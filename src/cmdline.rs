@@ -701,7 +701,7 @@ pub fn parse_args() -> Result<Config> {
             ("ignition", Some(ignition_matches)) => match ignition_matches.subcommand() {
                 ("embed", Some(matches)) => parse_iso_ignition_embed(&matches),
                 ("show", Some(matches)) => parse_iso_ignition_show(&matches),
-                ("remove", Some(matches)) => parse_iso_remove(&matches),
+                ("remove", Some(matches)) => parse_iso_ignition_remove(&matches),
                 _ => bail!("unrecognized 'ignition' subcommand"),
             },
             _ => bail!("unrecognized 'iso' subcommand"),
