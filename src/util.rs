@@ -22,6 +22,7 @@ use crate::errors::*;
 /// are adequately prefixed with the full command.
 #[macro_export]
 macro_rules! runcmd {
+    ($cmd:expr) => (runcmd!($cmd,));
     ($cmd:expr, $($args:expr),*) => {{
         let mut cmd = Command::new($cmd);
         $( cmd.arg($args); )*
@@ -40,6 +41,7 @@ macro_rules! runcmd {
 /// output. Output is assumed to be UTF-8. Errors are adequately prefixed with the full command.
 #[macro_export]
 macro_rules! runcmd_output {
+    ($cmd:expr) => (runcmd_output!($cmd,));
     ($cmd:expr, $($args:expr),*) => {{
         let mut cmd = Command::new($cmd);
         $( cmd.arg($args); )*
