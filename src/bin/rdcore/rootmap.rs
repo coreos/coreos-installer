@@ -53,6 +53,12 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
     // systemd-fstab-generator, and it defaults to read-only otherwise
     kargs.push("rw".into());
 
+    let rootflags = runcmd_output!("coreos-rootflags", &config.root_mount)?;
+    let rootflags = rootflags.trim();
+    if !rootflags.is_empty() {
+        kargs.push(format!("rootflags={}", rootflags));
+    }
+
     let boot_mount = if let Some(path) = &config.boot_mount {
         Some(Mount::from_existing(path)?)
     } else if let Some(devpath) = &config.boot_device {
