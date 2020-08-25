@@ -15,7 +15,10 @@ coreos-installer is a program to assist with installing Fedora CoreOS
 * List Fedora CoreOS images available for download
   (`coreos-installer list-stream`)
 * Embed an Ignition config in a live ISO image to customize the running
-  system that boots from it (`coreos-installer iso`)
+  system that boots from it (`coreos-installer iso ignition`)
+* Wrap an Ignition config in an initrd image that can be appended to the
+  live PXE initramfs to customize the running system that boots from it
+  (`coreos-installer pxe ignition`)
 
 The options available for each subcommand are available via the `--help`
 option.  This documentation will focus on how to obtain and run
