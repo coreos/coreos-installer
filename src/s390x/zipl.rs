@@ -30,14 +30,22 @@ use crate::errors::*;
 /// # Arguments
 /// * `boot` - path to boot partition mountpoint, i.e. smth like /boot
 /// * `disk` - smth like /dev/dasda
-pub fn install_bootloader<P: AsRef<Path>>(boot: P, disk: &str) -> Result<()> {
+pub fn install_bootloader<P: AsRef<Path>>(
+    boot: P,
+    disk: &str,
+    extra_kargs: Option<&str>,
+) -> Result<()> {
     eprintln!("Installing bootloader");
 
     let bls_config_path = get_bls_config_path(&boot)?;
     let kernel_path = get_kernel_path(&boot)?;
     let initramfs_path = get_initramfs_path(&boot)?;
 
-    let kargs = format!("{} ignition.firstboot", get_boot_kargs(bls_config_path)?);
+    let kargs = format!(
+        "{} ignition.firstboot {}",
+        get_boot_kargs(bls_config_path)?,
+        extra_kargs.unwrap_or("")
+    );
 
     let status = Command::new("zipl")
         .arg("-P")
