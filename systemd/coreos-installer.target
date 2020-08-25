@@ -1,11 +1,8 @@
 [Unit]
 Description=CoreOS Installer Target
-AllowIsolate=yes
 
 Requires=coreos-installer-pre.target
 Requires=coreos-installer.service
-Requires=coreos-installer-reboot.service
-Requires=coreos-installer-noreboot.service
 
 # Run after most things are up
 Requires=basic.target

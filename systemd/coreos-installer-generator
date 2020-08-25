@@ -30,7 +30,7 @@ karg_bool() {
 }
 
 if [ -n "$(karg coreos.inst.install_dev)" ]; then
-    ln -sf "/usr/lib/systemd/system/coreos-installer.target" \
+    ln -sf "/usr/lib/systemd/system/coreos-installer-post.target" \
         "${UNIT_DIR}/default.target"
 
     # Create precondition for coreos-installer-reboot.service if requested

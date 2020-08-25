@@ -1,0 +1,7 @@
+[Unit]
+Description=Finalize CoreOS Installer Target
+AllowIsolate=yes
+
+Requires=coreos-installer.target
+Requires=coreos-installer-reboot.service
+Requires=coreos-installer-noreboot.service
