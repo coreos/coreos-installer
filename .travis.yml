@@ -15,8 +15,8 @@ services:
 matrix:
   allow_failures:
     - rust: nightly
-    # VM apparently has broken network access
-    - rust: 1.41.0
+    # VM apparently doesn't have enough disk space
+    - rust: stable
       arch: s390x
 
 env:
