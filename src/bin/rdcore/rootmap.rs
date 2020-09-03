@@ -141,6 +141,7 @@ fn get_luks_kargs(root: &Mount, device: &Path) -> Result<Vec<String>> {
             let mut kargs = vec![format!("rd.luks.name={}={}", uuid, name)];
             if crypttab_device_has_netdev(root, &name)? {
                 kargs.push("rd.neednet=1".into());
+                kargs.push("rd.luks.options=_netdev".into());
             }
             Ok(kargs)
         }
