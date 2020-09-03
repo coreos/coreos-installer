@@ -621,17 +621,13 @@ impl SavedPartitions {
         if !p.is_used() {
             return false;
         }
-
-        for f in filters {
-            match f {
-                Index(Some(first), _) if first.get() > i => continue,
-                Index(_, Some(last)) if last.get() < i => continue,
-                Index(_, _) => return true,
-                Label(glob) if glob.matches(p.partition_name.as_str()) => return true,
-                _ => continue,
-            }
-        }
-        false
+        filters.iter().any(|f| match f {
+            Index(Some(first), _) if first.get() > i => false,
+            Index(_, Some(last)) if last.get() < i => false,
+            Index(_, _) => true,
+            Label(glob) if glob.matches(p.partition_name.as_str()) => true,
+            _ => false,
+        })
     }
 
     /// Unconditionally write the saved partitions, and only the saved
