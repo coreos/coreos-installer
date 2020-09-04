@@ -1,3 +1,9 @@
+---
+layout: default
+parent: Development
+nav_order: 1
+---
+
 # ISO-embedded Ignition configuration
 
 CoreOS ISO images are typically used for live-booting machines directly from a read-only storage device (e.g. a CD-ROM or USB stick) on non-cloud platforms.

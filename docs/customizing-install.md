@@ -1,4 +1,13 @@
+---
+layout: default
+nav_order: 5
+---
+
 # Customizing installation
+{: .no_toc }
+
+1. TOC
+{:toc}
 
 ## Hooking coreos-installer at boot time
 
