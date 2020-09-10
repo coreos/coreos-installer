@@ -15,9 +15,10 @@
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use error_chain::bail;
 use nix::unistd::isatty;
+use openat_ext::FileExt;
 use std::convert::TryInto;
 use std::fs::{read, remove_file, write, File, OpenOptions};
-use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{stdin, stdout, BufReader, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::AsRawFd;
 
 use crate::cmdline::*;
@@ -169,26 +170,19 @@ struct CopiedFileHolder {
 impl CopiedFileHolder {
     fn new(input_path: &str, output_path: Option<&String>) -> Result<Self> {
         if let Some(unwrapped_output_path) = output_path {
-            let mut input = OpenOptions::new()
+            let input = OpenOptions::new()
                 .read(true)
                 .open(&input_path)
                 .chain_err(|| format!("opening {}", &input_path))?;
-            let mut output = OpenOptions::new()
+            let output = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create_new(true)
                 .open(&unwrapped_output_path)
                 .chain_err(|| format!("opening {}", &unwrapped_output_path))?;
-            let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &mut output);
-            copy(
-                &mut BufReader::with_capacity(BUFFER_SIZE, &mut input),
-                &mut writer,
-            )
-            .chain_err(|| format!("copying {} to {}", input_path, unwrapped_output_path))?;
-            writer
-                .flush()
-                .chain_err(|| format!("writing {}", unwrapped_output_path))?;
-            drop(writer);
+            input
+                .copy_to(&output)
+                .chain_err(|| format!("copying {} to {}", input_path, unwrapped_output_path))?;
             Ok(CopiedFileHolder {
                 file: output,
                 copied_path: Some(unwrapped_output_path.to_string()),
