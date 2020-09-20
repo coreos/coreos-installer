@@ -710,6 +710,11 @@ impl SavedPartitions {
         Ok(())
     }
 
+    /// Get the sector size in use for this partition table.
+    pub fn get_sector_size(&self) -> u64 {
+        self.sector_size
+    }
+
     /// Get the byte offset of the first byte not to be overwritten, if any,
     /// plus a description of the partition at that offset.
     pub fn get_offset(&self) -> Result<Option<(u64, String)>> {
