@@ -23,7 +23,7 @@ use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
 };
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
 use std::os::raw::c_int;
@@ -631,8 +631,9 @@ impl SavedPartitions {
     }
 
     /// Unconditionally write the saved partitions, and only the saved
-    /// partitions, to the disk.  Updating the kernel partition table is the
-    /// caller's responsibility.
+    /// partitions, to the disk.  Write a protective MBR and overwrite any
+    /// MBR boot code.  Updating the kernel partition table is the caller's
+    /// responsibility.
     pub fn overwrite(&self, disk: &mut File) -> Result<()> {
         // create GPT
         self.verify_disk_sector_size(disk)?;
@@ -644,8 +645,23 @@ impl SavedPartitions {
             gpt[*i] = p.clone();
         }
 
-        // write
+        // write GPT
         gpt.write_into(disk).chain_err(|| "writing new GPT")?;
+
+        // Overwrite only the parts of the MBR that don't contain the
+        // partition table, then write protective MBR.  This ensures that
+        // there's no time window without an MBR, during which the kernel
+        // would refuse to read the GPT.
+        disk.seek(SeekFrom::Start(0))
+            .chain_err(|| "seeking to MBR")?;
+        disk.write(&[0u8; 446])
+            .chain_err(|| "overwriting MBR boot code")?;
+        if self.sector_size > 512 {
+            disk.seek(SeekFrom::Start(512))
+                .chain_err(|| "seeking to end of MBR")?;
+            disk.write(&vec![0u8; self.sector_size as usize - 512])
+                .chain_err(|| "overwriting end of MBR")?;
+        }
         GPT::write_protective_mbr_into(disk, self.sector_size)
             .chain_err(|| "writing protective MBR")?;
 
@@ -1211,6 +1227,27 @@ mod tests {
                 "test {}",
                 testnum
             );
+        }
+
+        // ensure overwrite clobbers every byte of MBR
+        for sector_size in [512 as usize, 4096 as usize].iter() {
+            let mut disk = make_unformatted_disk();
+            disk.write_all(&vec![0xdau8; *sector_size]).unwrap();
+            let saved =
+                SavedPartitions::new_from_file(&mut disk, *sector_size as u64, &vec![]).unwrap();
+            saved.overwrite(&mut disk).unwrap();
+            assert!(disk_has_mbr(&mut disk), "{}", *sector_size);
+            disk.seek(SeekFrom::Start(0)).unwrap();
+            let mut buf = vec![0u8; *sector_size + 1];
+            disk.read_exact(&mut buf).unwrap();
+            assert_eq!(
+                buf.iter().position(|v| *v == 0xda),
+                None,
+                "{}",
+                *sector_size
+            );
+            // verify the first byte of the GPT magic number is intact
+            assert_eq!(buf[*sector_size], 0x45u8, "{}", *sector_size);
         }
 
         // test merging with unformatted initial disk
