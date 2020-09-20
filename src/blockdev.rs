@@ -937,7 +937,7 @@ mod tests {
     use super::*;
     use error_chain::ChainedError;
     use maplit::hashmap;
-    use std::io::{copy, Read};
+    use std::io::copy;
     use tempfile::tempfile;
     use xz2::read::XzDecoder;
 
