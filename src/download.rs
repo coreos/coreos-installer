@@ -588,7 +588,8 @@ mod tests {
         let mut result = vec![0u8; len];
         dest.read_exact(&mut result).unwrap();
         assert_eq!(detect_formatted_sector_size(&result), NonZeroU32::new(512));
-        assert_eq!(data_partitioned[0..512], result[0..512]);
+        // boot code must match install data; partition table will not
+        assert_eq!(data_partitioned[0..446], result[0..446]);
         let gpt_size = get_gpt_size(&mut dest).unwrap();
         assert!(gpt_size < 24576);
         assert_eq!(

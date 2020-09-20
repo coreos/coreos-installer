@@ -669,8 +669,9 @@ impl SavedPartitions {
     }
 
     /// If any partitions are saved, merge them into the GPT from source,
-    /// which must be valid.  Updating the kernel partition table is the
-    /// caller's responsibility.
+    /// which must be valid, and write a protective MBR with the correct
+    /// protective partition size.  Updating the kernel partition table is
+    /// the caller's responsibility.
     pub fn merge(&self, source: &mut (impl Read + Seek), disk: &mut File) -> Result<()> {
         if self.partitions.is_empty() {
             return Ok(());
@@ -706,6 +707,10 @@ impl SavedPartitions {
 
         // write
         gpt.write_into(disk).chain_err(|| "writing updated GPT")?;
+
+        // update protective partition size
+        GPT::write_protective_mbr_into(disk, self.sector_size)
+            .chain_err(|| "writing protective MBR")?;
 
         Ok(())
     }
@@ -1210,7 +1215,11 @@ mod tests {
             // try merging with image disk onto merge_base disk
             let mut disk = make_disk(512, &merge_base_parts);
             saved.merge(&mut image, &mut disk).unwrap();
-            assert!(!disk_has_mbr(&mut disk), "test {}", testnum);
+            assert!(
+                disk_has_mbr(&mut disk) == !expected_blank.is_empty(),
+                "test {}",
+                testnum
+            );
             let result = GPT::find_from(&mut disk).unwrap();
             assert_eq!(
                 get_gpt_size(&mut disk).unwrap(),
