@@ -295,6 +295,12 @@ pub fn image_copy_default(
     // verify_reader has now checked the signature, so fill in the first MiB
     let offset = match saved {
         Some(saved) if saved.is_saved() => {
+            // copy MBR
+            dest.seek(SeekFrom::Start(0))
+                .chain_err(|| "seeking disk to MBR")?;
+            dest.write_all(&first_mb[0..saved.get_sector_size() as usize])
+                .chain_err(|| "writing MBR")?;
+
             // write merged GPT
             let mut cursor = Cursor::new(first_mb);
             saved
@@ -582,6 +588,8 @@ mod tests {
         let mut result = vec![0u8; len];
         dest.read_exact(&mut result).unwrap();
         assert_eq!(detect_formatted_sector_size(&result), NonZeroU32::new(512));
+        // boot code must match install data; partition table will not
+        assert_eq!(data_partitioned[0..446], result[0..446]);
         let gpt_size = get_gpt_size(&mut dest).unwrap();
         assert!(gpt_size < 24576);
         assert_eq!(
