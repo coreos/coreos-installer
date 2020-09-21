@@ -154,7 +154,7 @@ dependencies = [
  "hex",
  "libc",
  "maplit",
- "nix 0.18.0",
+ "nix 0.17.0",
  "openat-ext",
  "openssl",
  "pipe",
