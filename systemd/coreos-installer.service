@@ -3,6 +3,7 @@ Description=CoreOS Installer
 Before=coreos-installer.target
 After=network-online.target
 Wants=network-online.target
+After=systemd-resolved.service
 ConditionKernelCommandLine=coreos.inst.install_dev
 OnFailure=emergency.target
 OnFailureJobMode=replace-irreversibly
