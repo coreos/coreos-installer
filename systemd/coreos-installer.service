@@ -3,6 +3,9 @@ Description=CoreOS Installer
 Before=coreos-installer.target
 After=network-online.target
 Wants=network-online.target
+# Until we retry HTTP requests let's wait here until
+# systemd-resolved comes up if enabled.
+# https://github.com/coreos/coreos-installer/issues/283
 After=systemd-resolved.service
 ConditionKernelCommandLine=coreos.inst.install_dev
 OnFailure=emergency.target
