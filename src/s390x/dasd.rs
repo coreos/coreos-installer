@@ -13,16 +13,16 @@
 // limitations under the License.
 
 use error_chain::bail;
+use gptman::{GPTPartitionEntry, GPT};
 use std::fs::File;
-use std::io::{self, copy, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::num::NonZeroU32;
 use std::path::Path;
 
 use crate::blockdev::SavedPartitions;
 use crate::errors::*;
 use crate::io::{copy_exactly_n, BUFFER_SIZE};
-use crate::s390x::eckd::{
-    default_format, is_invalid, low_level_format, make_partitions, partition_ranges,
-};
+use crate::s390x::eckd::*;
 
 /////////////////////////////////////////////////////////////////////////////
 // IBM DASD Support
@@ -35,13 +35,48 @@ pub(crate) struct Range {
     pub length: u64,
 }
 
-pub fn prepare_dasd(device: &str) -> Result<()> {
-    low_level_format(device)?;
-    if is_invalid(device)? {
-        eprintln!("Disk {} is invalid, formatting", device);
-        default_format(device)?
+/// There are 2 types of DASD devices:
+///   - ECKD (Extended Count Key Data) - is regular DASD of type 3390
+///   - FBA (Fixed Block Access) - is used for emulated device that represents a real SCSI device
+/// Only ECKD disks require `dasdfmt, fdasd` linux tools to be configured.
+enum DasdType {
+    Eckd,
+    Fba,
+}
+
+fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
+    let device = device.as_ref();
+    let device = device
+        .canonicalize()
+        .chain_err(|| format!("getting absolute path to {}", device.display()))?
+        .file_name()
+        .chain_err(|| format!("getting name of {}", device.display()))?
+        .to_string_lossy()
+        .to_string();
+    let devtype_path = format!("/sys/class/block/{}/device/devtype", device);
+    let devtype_str =
+        std::fs::read_to_string(&devtype_path).chain_err(|| format!("reading {}", devtype_path))?;
+    let devtype = match devtype_str.starts_with("3390/") {
+        true => DasdType::Eckd,
+        false => DasdType::Fba,
+    };
+    Ok(devtype)
+}
+
+pub fn prepare_dasd(dasd: &str) -> Result<()> {
+    match get_dasd_type(dasd)? {
+        DasdType::Eckd => eckd_prepare(dasd),
+        DasdType::Fba => Ok(()),
     }
-    Ok(())
+}
+
+/// Returns expected sector size if this is a DASD we'll format later,
+/// or None if the caller should use get_sector_size()
+pub fn dasd_try_get_sector_size(dasd: &str) -> Result<Option<NonZeroU32>> {
+    match get_dasd_type(dasd)? {
+        DasdType::Eckd => eckd_try_get_sector_size(dasd),
+        DasdType::Fba => Ok(None),
+    }
 }
 
 pub fn image_copy_s390x(
@@ -51,13 +86,10 @@ pub fn image_copy_s390x(
     dest_path: &Path,
     _saved: Option<&SavedPartitions>,
 ) -> Result<()> {
-    let (ranges, partitions) = partition_ranges(first_mb, dest_file)?;
-    make_partitions(
-        dest_path
-            .to_str()
-            .chain_err(|| format!("couldn't encode path {}", dest_path.display()))?,
-        &partitions,
-    )?;
+    let ranges = match get_dasd_type(dest_path)? {
+        DasdType::Eckd => eckd_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?,
+        DasdType::Fba => bail!("FBA DASD is not supported"),
+    };
 
     // copy each partition
     eprintln!("Installing to {}", dest_path.display());
@@ -94,4 +126,24 @@ pub fn image_copy_s390x(
     dest.flush().chain_err(|| "flushing data to disk")?;
 
     Ok(())
+}
+
+pub(crate) fn partitions_from_gpt_header(
+    bytes_per_block: u64,
+    header: &[u8],
+) -> Result<Vec<GPTPartitionEntry>> {
+    let gpt = GPT::read_from(&mut Cursor::new(header), bytes_per_block)
+        .chain_err(|| "reading GPT of source image")?;
+    let mut partitions = gpt
+        .iter()
+        .filter(|(_, pt)| pt.is_used())
+        .into_iter()
+        .map(|(_, pt)| pt.clone())
+        .collect::<Vec<GPTPartitionEntry>>();
+    if partitions.is_empty() {
+        bail!("source image has no partitions");
+    }
+    // partitions should be in offset order, but just to be sure
+    partitions.sort_unstable_by_key(|r| r.starting_lba);
+    Ok(partitions)
 }

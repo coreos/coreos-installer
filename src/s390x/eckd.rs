@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use error_chain::bail;
-use gptman::GPT;
 use std::fs::{read_to_string, File};
-use std::io::{Cursor, Write};
+use std::io::Write;
 use std::num::NonZeroU32;
 use std::os::unix::io::AsRawFd;
 use std::process::{Command, Stdio};
@@ -23,57 +22,75 @@ use std::process::{Command, Stdio};
 use crate::blockdev::{get_sector_size, udev_settle};
 use crate::errors::*;
 use crate::runcmd;
-use crate::s390x::dasd::Range;
+use crate::s390x::dasd::{partitions_from_gpt_header, Range};
 use crate::util::*;
 
 const ECKD_DASD_BLOCKSIZE: u32 = 4096;
 
-/// Returns expected sector size if this is a DASD we'll format later,
-/// or None if the caller should use get_sector_size()
-pub fn dasd_try_get_sector_size(device: &str) -> Result<Option<NonZeroU32>> {
-    if is_formatted(device)? {
+pub(crate) fn eckd_try_get_sector_size(dasd: &str) -> Result<Option<NonZeroU32>> {
+    if is_formatted(dasd)? {
         Ok(None)
     } else {
         Ok(Some(NonZeroU32::new(ECKD_DASD_BLOCKSIZE).unwrap()))
     }
 }
 
+pub(crate) fn eckd_prepare(dasd: &str) -> Result<()> {
+    low_level_format(dasd)?;
+    if is_invalid(dasd)? {
+        eprintln!("Disk {} is invalid, formatting", dasd);
+        default_format(dasd)?
+    }
+    Ok(())
+}
+
+pub(crate) fn eckd_make_partitions(
+    dasd: &str,
+    device: &mut File,
+    first_mb: &[u8],
+) -> Result<Vec<Range>> {
+    let (ranges, partitions) = partition_ranges(device, first_mb)?;
+    if partitions.len() > 3 {
+        // fdasd silently ignores partitions after the first 3
+        bail!("Can't create {} partitions, maximum 3", partitions.len());
+    }
+    let mut config = partitions.join("\n");
+    config.push('\n');
+    if try_format(dasd, &config).is_err() {
+        default_format(dasd)?;
+        try_format(dasd, &config)?;
+    }
+    Ok(ranges)
+}
+
 /// Generate partition table entries and byte ranges to copy
-pub(crate) fn partition_ranges(header: &[u8], device: &mut File) -> Result<(Vec<Range>, Vec<String>)> {
-    let bytes_per_block: u64 = get_sector_size(device)?.get().into();
-    let blocks_per_track: u64 = get_sectors_per_track(device)?.get().into();
+fn partition_ranges(device: &mut File, first_mb: &[u8]) -> Result<(Vec<Range>, Vec<String>)> {
+    let bytes_per_block = get_sector_size(device)?.get() as u64;
+    let blocks_per_track = get_sectors_per_track(device)?.get() as u64;
+    let partitions = partitions_from_gpt_header(bytes_per_block, first_mb)?;
+    let last = partitions.len() - 1;
 
-    let gpt = GPT::read_from(&mut Cursor::new(header), bytes_per_block)
-        .chain_err(|| "reading GPT of source image")?;
-
-    let mut ranges = Vec::new();
-    let mut partitions = Vec::new();
     let mut start_track: u64 = 2; // the first 2 tracks of the ECKD DASD are reserved
-    let entries = || gpt.iter().filter(|(_, pt)| pt.is_used());
-    let (last_partition, _) = entries()
-        .last()
-        .chain_err(|| "source image has no partitions")?;
+    let mut ranges = Vec::new();
+    let mut entries = Vec::new();
 
-    for (i, pt) in entries() {
+    for (idx, pt) in partitions.iter().enumerate() {
         let blocks = pt.ending_lba - pt.starting_lba + 1;
-        let end_track = start_track + (blocks + blocks_per_track - 1) / blocks_per_track - 1;
-
         ranges.push(Range {
             in_offset: pt.starting_lba * bytes_per_block,
             out_offset: start_track * blocks_per_track * bytes_per_block,
             length: blocks * bytes_per_block,
         });
+        let end_track = start_track + (blocks + blocks_per_track - 1) / blocks_per_track - 1;
 
-        if i == last_partition {
-            partitions.push(format!("[{}, last, native]", start_track));
+        if idx == last {
+            entries.push(format!("[{}, last, native]", start_track));
         } else {
-            partitions.push(format!("[{}, {}, native]", start_track, end_track));
+            entries.push(format!("[{}, {}, native]", start_track, end_track));
         };
         start_track = end_track + 1;
     }
-    // partitions should be in offset order, but just to be sure
-    ranges.sort_unstable_by_key(|r| r.in_offset);
-    Ok((ranges, partitions))
+    Ok((ranges, entries))
 }
 
 /// Get disk bus id
@@ -114,7 +131,7 @@ fn is_formatted(dasd: &str) -> Result<bool> {
 ///
 /// # Arguments
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
-pub(crate) fn is_invalid(dasd: &str) -> Result<bool> {
+fn is_invalid(dasd: &str) -> Result<bool> {
     let mut cmd = Command::new("fdasd");
     // we're looking for a hardcoded string in the output
     cmd.env("LC_ALL", "C").arg("-p").arg(dasd);
@@ -133,7 +150,7 @@ pub(crate) fn is_invalid(dasd: &str) -> Result<bool> {
 ///
 /// # Arguments
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
-pub(crate) fn low_level_format(dasd: &str) -> Result<()> {
+fn low_level_format(dasd: &str) -> Result<()> {
     if is_formatted(dasd)? {
         eprintln!("Skipping low-level format for {}", dasd);
         return Ok(());
@@ -155,31 +172,12 @@ pub(crate) fn low_level_format(dasd: &str) -> Result<()> {
     Ok(())
 }
 
-/// Format disk and create partitions
-///
-/// # Arguments
-/// * `dasd` - dasd device, i.e. smth like /dev/dasda
-/// * `partitions` - configuration strings
-pub(crate) fn make_partitions(dasd: &str, partitions: &[String]) -> Result<()> {
-    if partitions.len() > 3 {
-        // fdasd silently ignores partitions after the first 3
-        bail!("Can't create {} partitions, maximum 3", partitions.len());
-    }
-    let mut config = partitions.join("\n");
-    config.push('\n');
-    if try_format(dasd, &config).is_err() {
-        default_format(dasd)?;
-        try_format(dasd, &config)?;
-    }
-    Ok(())
-}
-
 /// If config-based format fails, then we have to perform
 /// an auto-format on the whole disk
 ///
 /// # Arguments
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
-pub(crate) fn default_format(dasd: &str) -> Result<()> {
+fn default_format(dasd: &str) -> Result<()> {
     eprintln!("Auto-partitioning {}", dasd);
     runcmd!("fdasd", "-a", "-s", dasd).chain_err(|| format!("auto-formatting {} failed", dasd))?;
     udev_settle()?;
