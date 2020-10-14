@@ -24,7 +24,7 @@ use crate::download::*;
 use crate::errors::*;
 use crate::io::IgnitionHash;
 #[cfg(target_arch = "s390x")]
-use crate::s390x::dasd::dasd_try_get_sector_size;
+use crate::s390x::dasd_try_get_sector_size;
 use crate::source::*;
 
 pub enum Config {
