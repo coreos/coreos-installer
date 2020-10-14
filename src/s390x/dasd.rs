@@ -23,6 +23,7 @@ use crate::blockdev::SavedPartitions;
 use crate::errors::*;
 use crate::io::{copy_exactly_n, BUFFER_SIZE};
 use crate::s390x::eckd::*;
+use crate::s390x::fba::*;
 
 /////////////////////////////////////////////////////////////////////////////
 // IBM DASD Support
@@ -88,7 +89,7 @@ pub fn image_copy_s390x(
 ) -> Result<()> {
     let ranges = match get_dasd_type(dest_path)? {
         DasdType::Eckd => eckd_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?,
-        DasdType::Fba => bail!("FBA DASD is not supported"),
+        DasdType::Fba => fba_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?,
     };
 
     // copy each partition

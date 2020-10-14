@@ -18,3 +18,4 @@ pub mod zipl;
 pub use dasd::{dasd_try_get_sector_size, image_copy_s390x, prepare_dasd};
 pub use zipl::install_bootloader;
 mod eckd;
+mod fba;
