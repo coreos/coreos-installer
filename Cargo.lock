@@ -141,7 +141,7 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
 name = "coreos-installer"
-version = "0.7.1-alpha.0"
+version = "0.7.2-alpha.0"
 dependencies = [
  "bincode",
  "byte-unit",
@@ -154,7 +154,7 @@ dependencies = [
  "hex",
  "libc",
  "maplit",
- "nix 0.19.0",
+ "nix 0.17.0",
  "openat-ext",
  "openssl",
  "pipe",
@@ -696,18 +696,6 @@ name = "nix"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83450fe6a6142ddd95fb064b746083fc4ef1705fe81f64a64e1d4b39f54a1055"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
-]
-
-[[package]]
-name = "nix"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85db2feff6bf70ebc3a4793191517d5f0331100a2f10f9bf93b5e5214f32b7b7"
 dependencies = [
  "bitflags",
  "cc",
