@@ -48,7 +48,7 @@ gptman = { version = "^0.7", default-features = false }
 hex = "^0.4"
 libc = "^0.2"
 nix = ">= 0.17, < 0.20"
-openat-ext = "^0.1.9"
+openat-ext = "^0.1.4"
 openssl = "^0.10"
 pipe = "^0.3"
 regex = "^1.3"
