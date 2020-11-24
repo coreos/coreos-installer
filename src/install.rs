@@ -286,7 +286,8 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
-// This is split out so that we can unit test it.
+/// To be used with `edit_bls_entries()`. Modifies the BLS config as instructed by `delete_args`
+/// and `append_args`.
 pub fn bls_entry_delete_and_append_kargs(
     orig_contents: &str,
     delete_args: Option<&Vec<String>>,
@@ -352,9 +353,10 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     Ok(())
 }
 
-/// Modifies the BLS config, only changing the `ignition.platform.id`. This assumes that we will
-/// only install from metal images and that the bootloader configs will always set
-/// ignition.platform.id.  Fail if those assumptions change.  This is deliberately simplistic.
+/// To be used with `edit_bls_entries()`. Modifies the BLS config, only changing the
+/// `ignition.platform.id`. This assumes that we will only install from metal images and that the
+/// bootloader configs will always set ignition.platform.id.  Fail if those assumptions change.
+/// This is deliberately simplistic.
 fn bls_entry_write_platform(orig_contents: &str, platform: &str) -> Result<String> {
     let new_contents = orig_contents.replace(
         "ignition.platform.id=metal",
