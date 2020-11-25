@@ -14,6 +14,7 @@
 
 use error_chain::{bail, ChainedError};
 use nix::mount;
+use regex::Regex;
 use std::fs::{canonicalize, copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
@@ -309,7 +310,8 @@ pub fn bls_entry_delete_and_append_kargs(
             if let Some(args) = delete_args {
                 for arg in args {
                     let arg = add_whitespaces(&arg);
-                    line = line.replace(&arg, " ");
+                    let re = Regex::new(&arg).unwrap();
+                    line = re.replace_all(&line, " ").to_string()
                 }
             }
             new_contents.push_str(line.trim_start().trim_end());
@@ -587,5 +589,13 @@ mod tests {
             new_content,
             "options foo console=tty0 bar baz console=ttyS1,115200n8\n"
         );
+
+        let delete_kargs = vec![
+            "console=tty[\\w,]+".into(),
+        ];
+
+        let new_content =
+            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+            assert_eq!(new_content, "options foo mitigations=auto,nosmt bar baz\n");
     }
 }
