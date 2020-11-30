@@ -211,22 +211,22 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cced8691919c02aac3cb0a1bc2e9b73d89e832bf9a06fc579d4e71b68a2da061"
+checksum = "dca26ee1f8d361640700bde38b2c37d8c22b3ce2d360e1fc1c74ea4b0aa7d775"
 dependencies = [
+ "cfg-if 1.0.0",
  "crossbeam-utils",
- "maybe-uninit",
 ]
 
 [[package]]
 name = "crossbeam-utils"
-version = "0.7.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
+checksum = "02d96d1e189ef58269ebe5b97953da3274d83a93af647c2ddd6f9dab28cedb8d"
 dependencies = [
  "autocfg",
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "lazy_static",
 ]
 
@@ -608,12 +608,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
-name = "maybe-uninit"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
-
-[[package]]
 name = "memchr"
 version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -839,9 +833,9 @@ checksum = "5894c618ce612a3fa23881b152b608bafb8c56cfc22f434a3ba3120b40f7b587"
 
 [[package]]
 name = "pipe"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcd11e042e056991b5df9c0c5ae6bd0cce219b74294c40f65b89f40f7030106c"
+checksum = "1c7b8f27da217eb966df4c58d4159ea939431950ca03cf782c22bd7c5c1d8d75"
 dependencies = [
  "crossbeam-channel",
 ]
