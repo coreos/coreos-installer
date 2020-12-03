@@ -379,35 +379,37 @@ pub fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -
         let path = entry
             .chain_err(|| format!("reading directory {}", config_path.display()))?
             .path();
-        if path.extension().unwrap_or_default() == "conf" {
-            // slurp in the file
-            let mut config = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&path)
-                .chain_err(|| format!("opening bootloader config {}", path.display()))?;
-            let orig_contents = {
-                let mut s = String::new();
-                config
-                    .read_to_string(&mut s)
-                    .chain_err(|| format!("reading {}", path.display()))?;
-                s
-            };
-
-            let new_contents =
-                f(&orig_contents).chain_err(|| format!("modifying {}", path.display()))?;
-
-            // write out the modified data
-            config
-                .seek(SeekFrom::Start(0))
-                .chain_err(|| format!("seeking {}", path.display()))?;
-            config
-                .set_len(0)
-                .chain_err(|| format!("truncating {}", path.display()))?;
-            config
-                .write(new_contents.as_bytes())
-                .chain_err(|| format!("writing {}", path.display()))?;
+        if path.extension().unwrap_or_default() != "conf" {
+            continue;
         }
+
+        // slurp in the file
+        let mut config = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .chain_err(|| format!("opening bootloader config {}", path.display()))?;
+        let orig_contents = {
+            let mut s = String::new();
+            config
+                .read_to_string(&mut s)
+                .chain_err(|| format!("reading {}", path.display()))?;
+            s
+        };
+
+        let new_contents =
+            f(&orig_contents).chain_err(|| format!("modifying {}", path.display()))?;
+
+        // write out the modified data
+        config
+            .seek(SeekFrom::Start(0))
+            .chain_err(|| format!("seeking {}", path.display()))?;
+        config
+            .set_len(0)
+            .chain_err(|| format!("truncating {}", path.display()))?;
+        config
+            .write(new_contents.as_bytes())
+            .chain_err(|| format!("writing {}", path.display()))?;
     }
 
     Ok(())
