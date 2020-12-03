@@ -324,13 +324,13 @@ impl Partition {
         // easier.
         let start_offset: u64 = start
             .checked_mul(512)
-            .ok_or_else(|| "start offset mult overflow")?;
+            .ok_or("start offset mult overflow")?;
         let end_offset: u64 = start_offset
             .checked_add(
                 size.checked_mul(512)
-                    .ok_or_else(|| "end offset mult overflow")?,
+                    .ok_or("end offset mult overflow")?,
             )
-            .ok_or_else(|| "end offset add overflow")?;
+            .ok_or("end offset add overflow")?;
         Ok((start_offset, end_offset))
     }
 
