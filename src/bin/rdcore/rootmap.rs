@@ -74,7 +74,8 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
     Ok(())
 }
 
-fn get_boot_mount_from_cmdline_args(
+// This is shared with the kargs code -- might move this to a helper file eventually
+pub fn get_boot_mount_from_cmdline_args(
     boot_mount: &Option<String>,
     boot_device: &Option<String>,
 ) -> Result<Option<Mount>> {
