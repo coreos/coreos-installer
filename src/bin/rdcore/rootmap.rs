@@ -72,7 +72,7 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
     };
 
     if let Some(boot_mount) = boot_mount {
-        edit_bls_entries(boot_mount.mountpoint(), |orig_contents: &str| {
+        edit_bls_entry(boot_mount.mountpoint(), |orig_contents: &str| {
             bls_entry_delete_and_append_kargs(orig_contents, None, Some(&kargs))
         })
         .chain_err(|| "appending rootmap kargs")?;

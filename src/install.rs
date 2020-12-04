@@ -17,7 +17,7 @@ use nix::mount;
 use std::fs::{canonicalize, copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::blockdev::*;
 use crate::cmdline::*;
@@ -196,7 +196,7 @@ fn write_disk(
         if config.append_kargs.is_some() || config.delete_kargs.is_some() {
             eprintln!("Modifying kernel arguments");
 
-            edit_bls_entries(mount.mountpoint(), |orig_contents: &str| {
+            edit_bls_entry(mount.mountpoint(), |orig_contents: &str| {
                 bls_entry_delete_and_append_kargs(
                     orig_contents,
                     config.delete_kargs.as_ref(),
@@ -286,7 +286,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
-/// To be used with `edit_bls_entries()`. Modifies the BLS config as instructed by `delete_args`
+/// To be used with `edit_bls_entry()`. Modifies the BLS config as instructed by `delete_args`
 /// and `append_args`.
 pub fn bls_entry_delete_and_append_kargs(
     orig_contents: &str,
@@ -346,14 +346,14 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     }
 
     eprintln!("Setting platform to {}", platform);
-    edit_bls_entries(mountpoint, |orig_contents: &str| {
+    edit_bls_entry(mountpoint, |orig_contents: &str| {
         bls_entry_write_platform(orig_contents, platform)
     })?;
 
     Ok(())
 }
 
-/// To be used with `edit_bls_entries()`. Modifies the BLS config, only changing the
+/// To be used with `edit_bls_entry()`. Modifies the BLS config, only changing the
 /// `ignition.platform.id`. This assumes that we will only install from metal images and that the
 /// bootloader configs will always set ignition.platform.id.  Fail if those assumptions change.
 /// This is deliberately simplistic.
@@ -368,11 +368,20 @@ fn bls_entry_write_platform(orig_contents: &str, platform: &str) -> Result<Strin
     Ok(new_contents)
 }
 
-/// Apply a transforming function on each BLS entry found.
-pub fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -> Result<()> {
+/// Apply a transforming function on the latest (default) BLS entry.
+/// Errors out if no BLS entry was found.
+pub fn edit_bls_entry(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -> Result<()> {
     // walk /boot/loader/entries/*.conf
     let mut config_path = mountpoint.to_path_buf();
     config_path.push("loader/entries");
+
+    // We only want to affect the latest BLS entry (i.e. the default one). This confusingly is the
+    // *last* BLS config in the directory because they are sorted by reverse order:
+    // https://github.com/ostreedev/ostree/pull/1654
+    //
+    // Because `read_dir` doesn't guarantee any ordering, we gather all the filenames up front and
+    // sort them before picking the last one.
+    let mut entries: Vec<PathBuf> = Vec::new();
     for entry in read_dir(&config_path)
         .chain_err(|| format!("reading directory {}", config_path.display()))?
     {
@@ -382,7 +391,11 @@ pub fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -
         if path.extension().unwrap_or_default() != "conf" {
             continue;
         }
+        entries.push(path);
+    }
+    entries.sort();
 
+    if let Some(path) = entries.pop() {
         // slurp in the file
         let mut config = OpenOptions::new()
             .read(true)
@@ -410,6 +423,8 @@ pub fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -
         config
             .write(new_contents.as_bytes())
             .chain_err(|| format!("writing {}", path.display()))?;
+    } else {
+        bail!("Found no BLS entries in {}", config_path.display());
     }
 
     Ok(())
