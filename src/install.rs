@@ -196,9 +196,9 @@ fn write_disk(
         if config.append_kargs.is_some() || config.delete_kargs.is_some() {
             eprintln!("Modifying kernel arguments");
 
-            visit_bls_entry(mount.mountpoint(), |orig_contents: &str| {
+            visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
                 bls_entry_delete_and_append_kargs(
-                    orig_contents,
+                    orig_options,
                     config.delete_kargs.as_ref(),
                     config.append_kargs.as_ref(),
                 )
@@ -286,48 +286,32 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
-/// To be used with `visit_bls_entry()`. Modifies the BLS config as instructed by
+/// To be used with `visit_bls_entry_options()`. Modifies the BLS config as instructed by
 /// `delete_args` and `append_args`.
 pub fn bls_entry_delete_and_append_kargs(
-    orig_contents: &str,
+    orig_options: &str,
     delete_args: Option<&Vec<String>>,
     append_args: Option<&Vec<String>>,
 ) -> Result<Option<String>> {
-    let mut new_contents = String::with_capacity(orig_contents.len());
-    let mut found_options = false;
-    for line in orig_contents.lines() {
-        if !line.starts_with("options ") {
-            new_contents.push_str(line.trim_end());
-        } else if found_options {
-            bail!("Multiple 'options' lines found");
-        } else {
-            // XXX: Need a proper parser here and share it with afterburn. The approach we use here
-            // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
-            // handle occurrences in quoted args) but will work for now (one thing that saves us is
-            // that we're acting on our baked configs, which have straight-forward kargs).
-            new_contents.push_str("options ");
-            let mut line: String = add_whitespaces(&line["options ".len()..]);
-            if let Some(args) = delete_args {
-                for arg in args {
-                    let arg = add_whitespaces(&arg);
-                    line = line.replace(&arg, " ");
-                }
-            }
-            new_contents.push_str(line.trim_start().trim_end());
-            if let Some(args) = append_args {
-                for arg in args {
-                    new_contents.push(' ');
-                    new_contents.push_str(&arg);
-                }
-            }
-            found_options = true;
+    // XXX: Need a proper parser here and share it with afterburn. The approach we use here
+    // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
+    // handle occurrences in quoted args) but will work for now (one thing that saves us is
+    // that we're acting on our baked configs, which have straight-forward kargs).
+    let mut new_options: String = add_whitespaces(&orig_options);
+    if let Some(args) = delete_args {
+        for arg in args {
+            let arg = add_whitespaces(arg.trim());
+            new_options = new_options.replace(&arg, " ");
         }
-        new_contents.push('\n');
     }
-    if !found_options {
-        bail!("Couldn't locate 'options' line");
+    let mut new_options: String = new_options.trim().into();
+    if let Some(args) = append_args {
+        for arg in args {
+            new_options.push(' ');
+            new_options.push_str(arg.trim());
+        }
     }
-    Ok(Some(new_contents))
+    Ok(Some(new_options))
 }
 
 fn add_whitespaces(s: &str) -> String {
@@ -346,26 +330,26 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     }
 
     eprintln!("Setting platform to {}", platform);
-    visit_bls_entry(mountpoint, |orig_contents: &str| {
-        bls_entry_write_platform(orig_contents, platform)
+    visit_bls_entry_options(mountpoint, |orig_options: &str| {
+        bls_entry_write_platform(orig_options, platform)
     })?;
 
     Ok(())
 }
 
-/// To be used with `visit_bls_entry()`. Modifies the BLS config, only changing the
+/// To be used with `visit_bls_entry_options()`. Modifies the BLS config, only changing the
 /// `ignition.platform.id`. This assumes that we will only install from metal images and that the
 /// bootloader configs will always set ignition.platform.id.  Fail if those assumptions change.
 /// This is deliberately simplistic.
-fn bls_entry_write_platform(orig_contents: &str, platform: &str) -> Result<Option<String>> {
-    let new_contents = orig_contents.replace(
+fn bls_entry_write_platform(orig_options: &str, platform: &str) -> Result<Option<String>> {
+    let new_options = orig_options.replace(
         "ignition.platform.id=metal",
         &format!("ignition.platform.id={}", platform),
     );
-    if orig_contents == new_contents {
+    if orig_options == new_options {
         bail!("Couldn't locate platform ID");
     }
-    Ok(Some(new_contents))
+    Ok(Some(new_options))
 }
 
 /// Calls a function on the latest (default) BLS entry and optionally updates it if the function
@@ -432,6 +416,44 @@ pub fn visit_bls_entry(
     }
 
     Ok(())
+}
+
+/// Wrapper around `visit_bls_entry` to specifically visit just the BLS entry's `options` line and
+/// optionally update it if the function returns new content. Errors out if none or more than one
+/// `options` field was found.
+pub fn visit_bls_entry_options(
+    mountpoint: &Path,
+    f: impl Fn(&str) -> Result<Option<String>>,
+) -> Result<()> {
+    visit_bls_entry(mountpoint, |orig_contents: &str| {
+        let mut new_contents = String::with_capacity(orig_contents.len());
+        let mut found_options = false;
+        let mut modified = false;
+        for line in orig_contents.lines() {
+            if !line.starts_with("options ") {
+                new_contents.push_str(line.trim_end());
+            } else if found_options {
+                bail!("Multiple 'options' lines found");
+            } else {
+                let r = f(line["options ".len()..].trim()).chain_err(|| "visiting options")?;
+                if let Some(new_options) = r {
+                    new_contents.push_str("options ");
+                    new_contents.push_str(new_options.trim());
+                    modified = true;
+                }
+                found_options = true;
+            }
+            new_contents.push('\n');
+        }
+        if !found_options {
+            bail!("Couldn't locate 'options' line");
+        }
+        if !modified {
+            Ok(None)
+        } else {
+            Ok(Some(new_contents))
+        }
+    })
 }
 
 /// Copy networking config if asked to do so
@@ -534,66 +556,65 @@ mod tests {
 
     #[test]
     fn test_platform_id() {
-        let orig_content = "options ignition.platform.id=metal foo bar";
+        let orig_content = "ignition.platform.id=metal foo bar";
         let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
             new_content.unwrap(),
-            "options ignition.platform.id=openstack foo bar"
+            "ignition.platform.id=openstack foo bar"
         );
 
-        let orig_content = "options foo ignition.platform.id=metal bar";
+        let orig_content = "foo ignition.platform.id=metal bar";
         let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
             new_content.unwrap(),
-            "options foo ignition.platform.id=openstack bar"
+            "foo ignition.platform.id=openstack bar"
         );
 
-        let orig_content = "options foo bar ignition.platform.id=metal";
+        let orig_content = "foo bar ignition.platform.id=metal";
         let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
             new_content.unwrap(),
-            "options foo bar ignition.platform.id=openstack"
+            "foo bar ignition.platform.id=openstack"
         );
     }
 
     #[test]
     fn test_options_edit() {
-        let orig_content = "options foo bar foobar";
+        let orig_content = "foo bar foobar";
 
         let delete_kargs = vec!["foo".into()];
         let new_content =
             bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content.unwrap(), "options bar foobar\n");
+        assert_eq!(new_content.unwrap(), "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
         let new_content =
             bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content.unwrap(), "options foo foobar\n");
+        assert_eq!(new_content.unwrap(), "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
         let new_content =
             bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content.unwrap(), "options foo bar\n");
+        assert_eq!(new_content.unwrap(), "foo bar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
         let new_content =
             bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content.unwrap(), "options foobar\n");
+        assert_eq!(new_content.unwrap(), "foobar");
 
-        let orig_content = "options foo=val bar baz=val";
+        let orig_content = "foo=val bar baz=val";
 
         let delete_kargs = vec!["foo=val".into()];
         let new_content =
             bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content.unwrap(), "options bar baz=val\n");
+        assert_eq!(new_content.unwrap(), "bar baz=val");
 
         let delete_kargs = vec!["baz=val".into()];
         let new_content =
             bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content.unwrap(), "options foo=val bar\n");
+        assert_eq!(new_content.unwrap(), "foo=val bar");
 
-        let orig_content =
-            "options foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
+        let orig_content = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
 
         let delete_kargs = vec![
             "mitigations=auto,nosmt".into(),
@@ -608,7 +629,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             new_content.unwrap(),
-            "options foo console=tty0 bar baz console=ttyS1,115200n8\n"
+            "foo console=tty0 bar baz console=ttyS1,115200n8"
         );
     }
 }
