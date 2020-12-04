@@ -293,6 +293,12 @@ pub fn bls_entry_delete_and_append_kargs(
     delete_args: Option<&Vec<String>>,
     append_args: Option<&Vec<String>>,
 ) -> Result<Option<String>> {
+    if (delete_args.is_none() || delete_args.unwrap().is_empty())
+        && (append_args.is_none() || append_args.unwrap().is_empty())
+    {
+        return Ok(None);
+    }
+
     // XXX: Need a proper parser here and share it with afterburn. The approach we use here
     // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
     // handle occurrences in quoted args) but will work for now (one thing that saves us is
