@@ -322,14 +322,9 @@ impl Partition {
         // We multiply by 512 here: the kernel values are always in 512 blocks, regardless of the
         // actual sector size of the block device. We keep the values as bytes to make things
         // easier.
-        let start_offset: u64 = start
-            .checked_mul(512)
-            .ok_or("start offset mult overflow")?;
+        let start_offset: u64 = start.checked_mul(512).ok_or("start offset mult overflow")?;
         let end_offset: u64 = start_offset
-            .checked_add(
-                size.checked_mul(512)
-                    .ok_or("end offset mult overflow")?,
-            )
+            .checked_add(size.checked_mul(512).ok_or("end offset mult overflow")?)
             .ok_or("end offset add overflow")?;
         Ok((start_offset, end_offset))
     }
