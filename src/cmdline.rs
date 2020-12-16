@@ -23,6 +23,8 @@ use crate::blockdev::*;
 use crate::download::*;
 use crate::errors::*;
 use crate::io::IgnitionHash;
+#[cfg(target_arch = "s390x")]
+use crate::s390x::dasd::dasd_try_get_sector_size;
 use crate::source::*;
 
 pub enum Config {
@@ -733,7 +735,19 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         .value_of("architecture")
         .expect("architecture missing");
 
-    let sector_size = get_sector_size_for_path(Path::new(&device))
+    // Uninitialized ECKD DASD's blocksize is 512, but after formatting
+    // it changes to the recommended 4096
+    // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
+    #[allow(clippy::match_bool, clippy::match_single_binding)]
+    let sector_size = match is_dasd(&device)
+        .chain_err(|| format!("checking whether {} is an IBM DASD disk", device))?
+    {
+        #[cfg(target_arch = "s390x")]
+        true => dasd_try_get_sector_size(&device).transpose(),
+        _ => None,
+    };
+    let sector_size = sector_size
+        .unwrap_or_else(|| get_sector_size_for_path(Path::new(&device)))
         .chain_err(|| format!("getting sector size of {}", &device))?
         .get();
 

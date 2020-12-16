@@ -22,7 +22,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::blockdev::{get_sector_size, udev_settle, SavedPartitions};
-use crate::cmdline::*;
 use crate::errors::*;
 use crate::io::{copy_exactly_n, BUFFER_SIZE};
 use crate::util::*;
@@ -33,6 +32,8 @@ use crate::runcmd;
 // IBM DASD Support
 /////////////////////////////////////////////////////////////////////////////
 
+const ECKD_DASD_BLOCKSIZE: u32 = 4096;
+
 #[derive(Debug)]
 struct Range {
     in_offset: u64,
@@ -40,11 +41,21 @@ struct Range {
     length: u64,
 }
 
-pub fn prepare_dasd(config: &InstallConfig) -> Result<()> {
-    low_level_format(&config.device)?;
-    if is_invalid(&config.device)? {
-        eprintln!("Disk {} is invalid, formatting", &config.device);
-        default_format(&config.device)?
+/// Returns expected sector size if this is a DASD we'll format later,
+/// or None if the caller should use get_sector_size()
+pub fn dasd_try_get_sector_size(device: &str) -> Result<Option<NonZeroU32>> {
+    if is_formatted(device)? {
+        Ok(None)
+    } else {
+        Ok(Some(NonZeroU32::new(ECKD_DASD_BLOCKSIZE).unwrap()))
+    }
+}
+
+pub fn prepare_dasd(device: &str) -> Result<()> {
+    low_level_format(device)?;
+    if is_invalid(device)? {
+        eprintln!("Disk {} is invalid, formatting", device);
+        default_format(device)?
     }
     Ok(())
 }
@@ -205,7 +216,7 @@ fn low_level_format(dasd: &str) -> Result<()> {
     runcmd!(
         "dasdfmt",
         "--blocksize",
-        "4096",
+        ECKD_DASD_BLOCKSIZE.to_string(),
         "--disk_layout",
         "cdl",
         "--mode",
