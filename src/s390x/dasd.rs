@@ -181,7 +181,15 @@ fn is_invalid(dasd: &str) -> Result<bool> {
     let mut cmd = Command::new("fdasd");
     // we're looking for a hardcoded string in the output
     cmd.env("LC_ALL", "C").arg("-p").arg(dasd);
-    Ok(cmd_output(&mut cmd)?.contains("disk label block is invalid"))
+    let invalid = cmd_output(&mut cmd)?.contains("disk label block is invalid");
+    // Older versions of `fdasd` open the device O_RDWR, which causes udev
+    // to re-probe the device node.  This can cause the fdasd call in
+    // default_format() to fail on 'Error while rereading partition table' or
+    // 'Disk in use'.  To avoid this, wait for udev to settle.
+    // https://bugzilla.redhat.com/1900699
+    // Fixed by https://github.com/ibm-s390-tools/s390-tools/commit/3d74c53
+    udev_settle()?;
+    Ok(invalid)
 }
 
 /// Perform low-level format. This step is necessary before any further disk usage
