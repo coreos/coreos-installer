@@ -26,8 +26,8 @@ pub enum Config {
 pub struct KargsConfig {
     pub boot_device: Option<String>,
     pub boot_mount: Option<String>,
-    pub append_kargs: Option<Vec<String>>,
-    pub delete_kargs: Option<Vec<String>>,
+    pub append_kargs: Vec<String>,
+    pub delete_kargs: Vec<String>,
 }
 
 pub struct RootMapConfig {
@@ -153,10 +153,12 @@ fn parse_kargs(matches: &ArgMatches) -> Result<Config> {
         boot_mount: matches.value_of("boot-mount").map(String::from),
         append_kargs: matches
             .values_of("append")
-            .map(|v| v.map(String::from).collect()),
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
         delete_kargs: matches
             .values_of("delete")
-            .map(|v| v.map(String::from).collect()),
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
     }))
 }
 

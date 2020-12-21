@@ -62,7 +62,7 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
     let boot_mount = get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?;
     if let Some(mount) = boot_mount {
         visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-            bls_entry_delete_and_append_kargs(orig_options, None, Some(&kargs))
+            bls_entry_delete_and_append_kargs(orig_options, &[], &kargs)
         })
         .chain_err(|| "appending rootmap kargs")?;
         eprintln!("Injected kernel arguments into BLS: {}", kargs.join(" "));

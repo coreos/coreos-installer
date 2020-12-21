@@ -174,8 +174,8 @@ fn write_disk(
     // postprocess
     if config.ignition.is_some()
         || config.firstboot_kargs.is_some()
-        || config.append_kargs.is_some()
-        || config.delete_kargs.is_some()
+        || !config.append_kargs.is_empty()
+        || !config.delete_kargs.is_empty()
         || config.platform.is_some()
         || config.network_config.is_some()
         || cfg!(target_arch = "s390x")
@@ -193,14 +193,14 @@ fn write_disk(
             write_firstboot_kargs(mount.mountpoint(), firstboot_kargs)
                 .chain_err(|| "writing firstboot kargs")?;
         }
-        if config.append_kargs.is_some() || config.delete_kargs.is_some() {
+        if !config.append_kargs.is_empty() || !config.delete_kargs.is_empty() {
             eprintln!("Modifying kernel arguments");
 
             visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
                 bls_entry_delete_and_append_kargs(
                     orig_options,
-                    config.delete_kargs.as_ref(),
-                    config.append_kargs.as_ref(),
+                    config.delete_kargs.as_slice(),
+                    config.append_kargs.as_slice(),
                 )
             })
             .chain_err(|| "deleting and appending kargs")?;
@@ -290,12 +290,10 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
 /// `delete_args` and `append_args`.
 pub fn bls_entry_delete_and_append_kargs(
     orig_options: &str,
-    delete_args: Option<&Vec<String>>,
-    append_args: Option<&Vec<String>>,
+    delete_args: &[String],
+    append_args: &[String],
 ) -> Result<Option<String>> {
-    if (delete_args.is_none() || delete_args.unwrap().is_empty())
-        && (append_args.is_none() || append_args.unwrap().is_empty())
-    {
+    if delete_args.is_empty() && append_args.is_empty() {
         return Ok(None);
     }
 
@@ -304,18 +302,15 @@ pub fn bls_entry_delete_and_append_kargs(
     // handle occurrences in quoted args) but will work for now (one thing that saves us is
     // that we're acting on our baked configs, which have straight-forward kargs).
     let mut new_options: String = add_whitespaces(&orig_options);
-    if let Some(args) = delete_args {
-        for arg in args {
-            let arg = add_whitespaces(arg.trim());
-            new_options = new_options.replace(&arg, " ");
-        }
+    for arg in delete_args {
+        let arg = add_whitespaces(arg.trim());
+        new_options = new_options.replace(&arg, " ");
     }
+
     let mut new_options: String = new_options.trim().into();
-    if let Some(args) = append_args {
-        for arg in args {
-            new_options.push(' ');
-            new_options.push_str(arg.trim());
-        }
+    for arg in append_args {
+        new_options.push(' ');
+        new_options.push_str(arg.trim());
     }
     Ok(Some(new_options))
 }
@@ -590,34 +585,34 @@ mod tests {
 
         let delete_kargs = vec!["foo".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foo bar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foobar");
 
         let orig_content = "foo=val bar baz=val";
 
         let delete_kargs = vec!["foo=val".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "bar baz=val");
 
         let delete_kargs = vec!["baz=val".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
+            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foo=val bar");
 
         let orig_content = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
@@ -629,8 +624,8 @@ mod tests {
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
         let new_content = bls_entry_delete_and_append_kargs(
             orig_content,
-            Some(&delete_kargs),
-            Some(&append_kargs),
+            &delete_kargs,
+            &append_kargs,
         )
         .unwrap();
         assert_eq!(

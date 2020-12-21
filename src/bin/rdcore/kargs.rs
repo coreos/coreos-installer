@@ -24,8 +24,8 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
     visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
         let new_options = bls_entry_delete_and_append_kargs(
             orig_options,
-            config.delete_kargs.as_ref(),
-            config.append_kargs.as_ref(),
+            config.delete_kargs.as_slice(),
+            config.append_kargs.as_slice(),
         )?;
 
         // we always print the final kargs

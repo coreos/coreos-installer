@@ -49,8 +49,8 @@ pub struct InstallConfig {
     pub ignition_hash: Option<IgnitionHash>,
     pub platform: Option<String>,
     pub firstboot_kargs: Option<String>,
-    pub append_kargs: Option<Vec<String>>,
-    pub delete_kargs: Option<Vec<String>>,
+    pub append_kargs: Vec<String>,
+    pub delete_kargs: Vec<String>,
     pub insecure: bool,
     pub preserve_on_error: bool,
     pub network_config: Option<String>,
@@ -843,10 +843,12 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
         append_kargs: matches
             .values_of("append-karg")
-            .map(|v| v.map(String::from).collect()),
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
         delete_kargs: matches
             .values_of("delete-karg")
-            .map(|v| v.map(String::from).collect()),
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
         insecure: matches.is_present("insecure"),
         preserve_on_error: matches.is_present("preserve-on-error"),
         network_config,
