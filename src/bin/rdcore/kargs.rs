@@ -22,7 +22,7 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
     // the unwrap() here is safe because we checked in cmdline that one of them must be provided
     let mount = get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?.unwrap();
     visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-        let new_options = bls_entry_delete_and_append_kargs(
+        let new_options = bls_entry_options_delete_and_append_kargs(
             orig_options,
             config.delete_kargs.as_slice(),
             config.append_kargs.as_slice(),

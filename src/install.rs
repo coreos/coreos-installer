@@ -197,7 +197,7 @@ fn write_disk(
             eprintln!("Modifying kernel arguments");
 
             visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-                bls_entry_delete_and_append_kargs(
+                bls_entry_options_delete_and_append_kargs(
                     orig_options,
                     config.delete_kargs.as_slice(),
                     config.append_kargs.as_slice(),
@@ -288,7 +288,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
 
 /// To be used with `visit_bls_entry_options()`. Modifies the BLS config as instructed by
 /// `delete_args` and `append_args`.
-pub fn bls_entry_delete_and_append_kargs(
+pub fn bls_entry_options_delete_and_append_kargs(
     orig_options: &str,
     delete_args: &[String],
     append_args: &[String],
@@ -332,7 +332,7 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 
     eprintln!("Setting platform to {}", platform);
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
-        bls_entry_write_platform(orig_options, platform)
+        bls_entry_options_write_platform(orig_options, platform)
     })?;
 
     Ok(())
@@ -342,7 +342,7 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 /// `ignition.platform.id`. This assumes that we will only install from metal images and that the
 /// bootloader configs will always set ignition.platform.id.  Fail if those assumptions change.
 /// This is deliberately simplistic.
-fn bls_entry_write_platform(orig_options: &str, platform: &str) -> Result<Option<String>> {
+fn bls_entry_options_write_platform(orig_options: &str, platform: &str) -> Result<Option<String>> {
     let new_options = orig_options.replace(
         "ignition.platform.id=metal",
         &format!("ignition.platform.id={}", platform),
@@ -558,21 +558,21 @@ mod tests {
     #[test]
     fn test_platform_id() {
         let orig_content = "ignition.platform.id=metal foo bar";
-        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
             new_content.unwrap(),
             "ignition.platform.id=openstack foo bar"
         );
 
         let orig_content = "foo ignition.platform.id=metal bar";
-        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
             new_content.unwrap(),
             "foo ignition.platform.id=openstack bar"
         );
 
         let orig_content = "foo bar ignition.platform.id=metal";
-        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
             new_content.unwrap(),
             "foo bar ignition.platform.id=openstack"
@@ -585,34 +585,34 @@ mod tests {
 
         let delete_kargs = vec!["foo".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foo bar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foobar");
 
         let orig_content = "foo=val bar baz=val";
 
         let delete_kargs = vec!["foo=val".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "bar baz=val");
 
         let delete_kargs = vec!["baz=val".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
         assert_eq!(new_content.unwrap(), "foo=val bar");
 
         let orig_content = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
@@ -622,12 +622,9 @@ mod tests {
             "console=ttyS0,115200n8".into(),
         ];
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
-        let new_content = bls_entry_delete_and_append_kargs(
-            orig_content,
-            &delete_kargs,
-            &append_kargs,
-        )
-        .unwrap();
+        let new_content =
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &append_kargs)
+                .unwrap();
         assert_eq!(
             new_content.unwrap(),
             "foo console=tty0 bar baz console=ttyS1,115200n8"
