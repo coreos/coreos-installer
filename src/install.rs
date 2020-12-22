@@ -14,7 +14,7 @@
 
 use error_chain::{bail, ChainedError};
 use nix::mount;
-use std::fs::{canonicalize, copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
+use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
 use std::path::Path;
@@ -46,14 +46,14 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 
     #[cfg(target_arch = "s390x")]
     {
-        if is_dasd(config)? {
+        if is_dasd(&config.device)? {
             if !config.save_partitions.is_empty() {
                 // The user requested partition saving, but SavedPartitions
                 // doesn't understand DASD VTOCs and won't find any partitions
                 // to save.
                 bail!("saving DASD partitions is not supported");
             }
-            s390x::prepare_dasd(&config)?;
+            s390x::prepare_dasd(&config.device)?;
         }
     }
 
@@ -155,7 +155,7 @@ fn write_disk(
 
     // copy the image
     #[allow(clippy::match_bool, clippy::match_single_binding)]
-    let image_copy = match is_dasd(config)? {
+    let image_copy = match is_dasd(&config.device)? {
         #[cfg(target_arch = "s390x")]
         true => s390x::image_copy_s390x,
         _ => image_copy_default,
@@ -452,7 +452,7 @@ fn reset_partition_table(
 ) -> Result<()> {
     eprintln!("Resetting partition table");
 
-    if is_dasd(config)? {
+    if is_dasd(&config.device)? {
         // Don't write out a GPT, since the backup GPT may overwrite
         // something we're not allowed to touch.  Just clear the first MiB
         // of disk.
@@ -497,12 +497,6 @@ fn stash_saved_partitions(disk: &mut File, saved: &SavedPartitions) -> Result<()
         .keep()
         .chain_err(|| format!("retaining saved partition stash in {}", path.display()))?;
     Ok(())
-}
-
-fn is_dasd(config: &InstallConfig) -> Result<bool> {
-    let target = canonicalize(&config.device)
-        .chain_err(|| format!("getting absolute path to {}", config.device))?;
-    Ok(target.to_string_lossy().starts_with("/dev/dasd"))
 }
 
 #[cfg(test)]

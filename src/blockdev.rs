@@ -943,6 +943,13 @@ pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
     }
 }
 
+/// Checks if underlying device is IBM DASD disk
+pub fn is_dasd(device: &str) -> Result<bool> {
+    let target =
+        canonicalize(device).chain_err(|| format!("getting absolute path to {}", device))?;
+    Ok(target.to_string_lossy().starts_with("/dev/dasd"))
+}
+
 // create unsafe ioctl wrappers
 #[allow(clippy::missing_safety_doc)]
 mod ioctl {
