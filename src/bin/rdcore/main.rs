@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod cmdline;
+mod kargs;
 mod rootmap;
 mod stream_hash;
 
@@ -29,6 +30,7 @@ fn run() -> Result<()> {
     let config = cmdline::parse_args().chain_err(|| "parsing arguments")?;
 
     match config {
+        Config::Kargs(c) => kargs::kargs(&c),
         Config::RootMap(c) => rootmap::rootmap(&c),
         Config::StreamHash(c) => stream_hash::stream_hash(&c),
     }

@@ -59,21 +59,10 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
         kargs.push(format!("rootflags={}", rootflags));
     }
 
-    let boot_mount = if let Some(path) = &config.boot_mount {
-        Some(Mount::from_existing(path)?)
-    } else if let Some(devpath) = &config.boot_device {
-        let devinfo = lsblk_single(Path::new(devpath))?;
-        let fs = devinfo
-            .get("FSTYPE")
-            .chain_err(|| format!("failed to query filesystem for {}", devpath))?;
-        Some(Mount::try_mount(devpath, fs, mount::MsFlags::empty())?)
-    } else {
-        None
-    };
-
-    if let Some(boot_mount) = boot_mount {
-        edit_bls_entries(boot_mount.mountpoint(), |orig_contents: &str| {
-            bls_entry_delete_and_append_kargs(orig_contents, None, Some(&kargs))
+    let boot_mount = get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?;
+    if let Some(mount) = boot_mount {
+        visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
+            bls_entry_options_delete_and_append_kargs(orig_options, &[], &kargs)
         })
         .chain_err(|| "appending rootmap kargs")?;
         eprintln!("Injected kernel arguments into BLS: {}", kargs.join(" "));
@@ -83,6 +72,28 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
     }
 
     Ok(())
+}
+
+// This is shared with the kargs code -- might move this to a helper file eventually
+pub fn get_boot_mount_from_cmdline_args(
+    boot_mount: &Option<String>,
+    boot_device: &Option<String>,
+) -> Result<Option<Mount>> {
+    if let Some(path) = boot_mount {
+        Ok(Some(Mount::from_existing(path)?))
+    } else if let Some(devpath) = boot_device {
+        let devinfo = lsblk_single(Path::new(devpath))?;
+        let fs = devinfo
+            .get("FSTYPE")
+            .chain_err(|| format!("failed to query filesystem for {}", devpath))?;
+        Ok(Some(Mount::try_mount(
+            devpath,
+            fs,
+            mount::MsFlags::empty(),
+        )?))
+    } else {
+        Ok(None)
+    }
 }
 
 fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>> {

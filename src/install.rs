@@ -17,7 +17,7 @@ use nix::mount;
 use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::blockdev::*;
 use crate::cmdline::*;
@@ -174,8 +174,8 @@ fn write_disk(
     // postprocess
     if config.ignition.is_some()
         || config.firstboot_kargs.is_some()
-        || config.append_kargs.is_some()
-        || config.delete_kargs.is_some()
+        || !config.append_kargs.is_empty()
+        || !config.delete_kargs.is_empty()
         || config.platform.is_some()
         || config.network_config.is_some()
         || cfg!(target_arch = "s390x")
@@ -193,14 +193,14 @@ fn write_disk(
             write_firstboot_kargs(mount.mountpoint(), firstboot_kargs)
                 .chain_err(|| "writing firstboot kargs")?;
         }
-        if config.append_kargs.is_some() || config.delete_kargs.is_some() {
+        if !config.append_kargs.is_empty() || !config.delete_kargs.is_empty() {
             eprintln!("Modifying kernel arguments");
 
-            edit_bls_entries(mount.mountpoint(), |orig_contents: &str| {
-                bls_entry_delete_and_append_kargs(
-                    orig_contents,
-                    config.delete_kargs.as_ref(),
-                    config.append_kargs.as_ref(),
+            visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
+                bls_entry_options_delete_and_append_kargs(
+                    orig_options,
+                    config.delete_kargs.as_slice(),
+                    config.append_kargs.as_slice(),
                 )
             })
             .chain_err(|| "deleting and appending kargs")?;
@@ -286,47 +286,33 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
-// This is split out so that we can unit test it.
-pub fn bls_entry_delete_and_append_kargs(
-    orig_contents: &str,
-    delete_args: Option<&Vec<String>>,
-    append_args: Option<&Vec<String>>,
-) -> Result<String> {
-    let mut new_contents = String::with_capacity(orig_contents.len());
-    let mut found_options = false;
-    for line in orig_contents.lines() {
-        if !line.starts_with("options ") {
-            new_contents.push_str(line.trim_end());
-        } else if found_options {
-            bail!("Multiple 'options' lines found");
-        } else {
-            // XXX: Need a proper parser here and share it with afterburn. The approach we use here
-            // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
-            // handle occurrences in quoted args) but will work for now (one thing that saves us is
-            // that we're acting on our baked configs, which have straight-forward kargs).
-            new_contents.push_str("options ");
-            let mut line: String = add_whitespaces(&line["options ".len()..]);
-            if let Some(args) = delete_args {
-                for arg in args {
-                    let arg = add_whitespaces(&arg);
-                    line = line.replace(&arg, " ");
-                }
-            }
-            new_contents.push_str(line.trim_start().trim_end());
-            if let Some(args) = append_args {
-                for arg in args {
-                    new_contents.push(' ');
-                    new_contents.push_str(&arg);
-                }
-            }
-            found_options = true;
-        }
-        new_contents.push('\n');
+/// To be used with `visit_bls_entry_options()`. Modifies the BLS config as instructed by
+/// `delete_args` and `append_args`.
+pub fn bls_entry_options_delete_and_append_kargs(
+    orig_options: &str,
+    delete_args: &[String],
+    append_args: &[String],
+) -> Result<Option<String>> {
+    if delete_args.is_empty() && append_args.is_empty() {
+        return Ok(None);
     }
-    if !found_options {
-        bail!("Couldn't locate 'options' line");
+
+    // XXX: Need a proper parser here and share it with afterburn. The approach we use here
+    // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
+    // handle occurrences in quoted args) but will work for now (one thing that saves us is
+    // that we're acting on our baked configs, which have straight-forward kargs).
+    let mut new_options: String = add_whitespaces(&orig_options);
+    for arg in delete_args {
+        let arg = add_whitespaces(arg.trim());
+        new_options = new_options.replace(&arg, " ");
     }
-    Ok(new_contents)
+
+    let mut new_options: String = new_options.trim().into();
+    for arg in append_args {
+        new_options.push(' ');
+        new_options.push_str(arg.trim());
+    }
+    Ok(Some(new_options))
 }
 
 fn add_whitespaces(s: &str) -> String {
@@ -345,56 +331,76 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     }
 
     eprintln!("Setting platform to {}", platform);
-    edit_bls_entries(mountpoint, |orig_contents: &str| {
-        bls_entry_write_platform(orig_contents, platform)
+    visit_bls_entry_options(mountpoint, |orig_options: &str| {
+        bls_entry_options_write_platform(orig_options, platform)
     })?;
 
     Ok(())
 }
 
-/// Modifies the BLS config, only changing the `ignition.platform.id`. This assumes that we will
-/// only install from metal images and that the bootloader configs will always set
-/// ignition.platform.id.  Fail if those assumptions change.  This is deliberately simplistic.
-fn bls_entry_write_platform(orig_contents: &str, platform: &str) -> Result<String> {
-    let new_contents = orig_contents.replace(
+/// To be used with `visit_bls_entry_options()`. Modifies the BLS config, only changing the
+/// `ignition.platform.id`. This assumes that we will only install from metal images and that the
+/// bootloader configs will always set ignition.platform.id.  Fail if those assumptions change.
+/// This is deliberately simplistic.
+fn bls_entry_options_write_platform(orig_options: &str, platform: &str) -> Result<Option<String>> {
+    let new_options = orig_options.replace(
         "ignition.platform.id=metal",
         &format!("ignition.platform.id={}", platform),
     );
-    if orig_contents == new_contents {
+    if orig_options == new_options {
         bail!("Couldn't locate platform ID");
     }
-    Ok(new_contents)
+    Ok(Some(new_options))
 }
 
-/// Apply a transforming function on each BLS entry found.
-pub fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -> Result<()> {
+/// Calls a function on the latest (default) BLS entry and optionally updates it if the function
+/// returns new content. Errors out if no BLS entry was found.
+pub fn visit_bls_entry(
+    mountpoint: &Path,
+    f: impl Fn(&str) -> Result<Option<String>>,
+) -> Result<()> {
     // walk /boot/loader/entries/*.conf
     let mut config_path = mountpoint.to_path_buf();
     config_path.push("loader/entries");
+
+    // We only want to affect the latest BLS entry (i.e. the default one). This confusingly is the
+    // *last* BLS config in the directory because they are sorted by reverse order:
+    // https://github.com/ostreedev/ostree/pull/1654
+    //
+    // Because `read_dir` doesn't guarantee any ordering, we gather all the filenames up front and
+    // sort them before picking the last one.
+    let mut entries: Vec<PathBuf> = Vec::new();
     for entry in read_dir(&config_path)
         .chain_err(|| format!("reading directory {}", config_path.display()))?
     {
         let path = entry
             .chain_err(|| format!("reading directory {}", config_path.display()))?
             .path();
-        if path.extension().unwrap_or_default() == "conf" {
-            // slurp in the file
-            let mut config = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&path)
-                .chain_err(|| format!("opening bootloader config {}", path.display()))?;
-            let orig_contents = {
-                let mut s = String::new();
-                config
-                    .read_to_string(&mut s)
-                    .chain_err(|| format!("reading {}", path.display()))?;
-                s
-            };
+        if path.extension().unwrap_or_default() != "conf" {
+            continue;
+        }
+        entries.push(path);
+    }
+    entries.sort();
 
-            let new_contents =
-                f(&orig_contents).chain_err(|| format!("modifying {}", path.display()))?;
+    if let Some(path) = entries.pop() {
+        // slurp in the file
+        let mut config = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .chain_err(|| format!("opening bootloader config {}", path.display()))?;
+        let orig_contents = {
+            let mut s = String::new();
+            config
+                .read_to_string(&mut s)
+                .chain_err(|| format!("reading {}", path.display()))?;
+            s
+        };
 
+        let r = f(&orig_contents).chain_err(|| format!("visiting {}", path.display()))?;
+
+        if let Some(new_contents) = r {
             // write out the modified data
             config
                 .seek(SeekFrom::Start(0))
@@ -406,9 +412,49 @@ pub fn edit_bls_entries(mountpoint: &Path, f: impl Fn(&str) -> Result<String>) -
                 .write(new_contents.as_bytes())
                 .chain_err(|| format!("writing {}", path.display()))?;
         }
+    } else {
+        bail!("Found no BLS entries in {}", config_path.display());
     }
 
     Ok(())
+}
+
+/// Wrapper around `visit_bls_entry` to specifically visit just the BLS entry's `options` line and
+/// optionally update it if the function returns new content. Errors out if none or more than one
+/// `options` field was found.
+pub fn visit_bls_entry_options(
+    mountpoint: &Path,
+    f: impl Fn(&str) -> Result<Option<String>>,
+) -> Result<()> {
+    visit_bls_entry(mountpoint, |orig_contents: &str| {
+        let mut new_contents = String::with_capacity(orig_contents.len());
+        let mut found_options = false;
+        let mut modified = false;
+        for line in orig_contents.lines() {
+            if !line.starts_with("options ") {
+                new_contents.push_str(line.trim_end());
+            } else if found_options {
+                bail!("Multiple 'options' lines found");
+            } else {
+                let r = f(line["options ".len()..].trim()).chain_err(|| "visiting options")?;
+                if let Some(new_options) = r {
+                    new_contents.push_str("options ");
+                    new_contents.push_str(new_options.trim());
+                    modified = true;
+                }
+                found_options = true;
+            }
+            new_contents.push('\n');
+        }
+        if !found_options {
+            bail!("Couldn't locate 'options' line");
+        }
+        if !modified {
+            Ok(None)
+        } else {
+            Ok(Some(new_contents))
+        }
+    })
 }
 
 /// Copy networking config if asked to do so
@@ -505,81 +551,77 @@ mod tests {
 
     #[test]
     fn test_platform_id() {
-        let orig_content = "options ignition.platform.id=metal foo bar";
-        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        let orig_content = "ignition.platform.id=metal foo bar";
+        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
-            new_content,
-            "options ignition.platform.id=openstack foo bar"
+            new_content.unwrap(),
+            "ignition.platform.id=openstack foo bar"
         );
 
-        let orig_content = "options foo ignition.platform.id=metal bar";
-        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        let orig_content = "foo ignition.platform.id=metal bar";
+        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
-            new_content,
-            "options foo ignition.platform.id=openstack bar"
+            new_content.unwrap(),
+            "foo ignition.platform.id=openstack bar"
         );
 
-        let orig_content = "options foo bar ignition.platform.id=metal";
-        let new_content = bls_entry_write_platform(orig_content, "openstack").unwrap();
+        let orig_content = "foo bar ignition.platform.id=metal";
+        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
         assert_eq!(
-            new_content,
-            "options foo bar ignition.platform.id=openstack"
+            new_content.unwrap(),
+            "foo bar ignition.platform.id=openstack"
         );
     }
 
     #[test]
     fn test_options_edit() {
-        let orig_content = "options foo bar foobar";
+        let orig_content = "foo bar foobar";
 
         let delete_kargs = vec!["foo".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content, "options bar foobar\n");
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+        assert_eq!(new_content.unwrap(), "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content, "options foo foobar\n");
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+        assert_eq!(new_content.unwrap(), "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content, "options foo bar\n");
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+        assert_eq!(new_content.unwrap(), "foo bar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content, "options foobar\n");
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+        assert_eq!(new_content.unwrap(), "foobar");
 
-        let orig_content = "options foo=val bar baz=val";
+        let orig_content = "foo=val bar baz=val";
 
         let delete_kargs = vec!["foo=val".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content, "options bar baz=val\n");
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+        assert_eq!(new_content.unwrap(), "bar baz=val");
 
         let delete_kargs = vec!["baz=val".into()];
         let new_content =
-            bls_entry_delete_and_append_kargs(orig_content, Some(&delete_kargs), None).unwrap();
-        assert_eq!(new_content, "options foo=val bar\n");
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
+        assert_eq!(new_content.unwrap(), "foo=val bar");
 
-        let orig_content =
-            "options foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
+        let orig_content = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
 
         let delete_kargs = vec![
             "mitigations=auto,nosmt".into(),
             "console=ttyS0,115200n8".into(),
         ];
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
-        let new_content = bls_entry_delete_and_append_kargs(
-            orig_content,
-            Some(&delete_kargs),
-            Some(&append_kargs),
-        )
-        .unwrap();
+        let new_content =
+            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &append_kargs)
+                .unwrap();
         assert_eq!(
-            new_content,
-            "options foo console=tty0 bar baz console=ttyS1,115200n8\n"
+            new_content.unwrap(),
+            "foo console=tty0 bar baz console=ttyS1,115200n8"
         );
     }
 }

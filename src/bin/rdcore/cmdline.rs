@@ -18,8 +18,16 @@ use error_chain::bail;
 use libcoreinst::errors::*;
 
 pub enum Config {
+    Kargs(KargsConfig),
     RootMap(RootMapConfig),
     StreamHash(StreamHashConfig),
+}
+
+pub struct KargsConfig {
+    pub boot_device: Option<String>,
+    pub boot_mount: Option<String>,
+    pub append_kargs: Vec<String>,
+    pub delete_kargs: Vec<String>,
 }
 
 pub struct RootMapConfig {
@@ -76,6 +84,45 @@ pub fn parse_args() -> Result<Config> {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("kargs")
+                .about("Modify kargs in BLS configs")
+                // see comment block in rootmap command above
+                .arg(
+                    Arg::with_name("boot-device")
+                        .long("boot-device")
+                        .help("Boot device containing BLS entries to modify")
+                        .conflicts_with("boot-mount")
+                        .value_name("DEVPATH")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("boot-mount")
+                        .long("boot-mount")
+                        .help("Boot mount containing BLS entries to modify")
+                        .conflicts_with("boot-device")
+                        .value_name("BOOT_MOUNT")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("append")
+                        .long("append")
+                        .value_name("ARG")
+                        .help("Append kernel arg")
+                        .takes_value(true)
+                        .number_of_values(1)
+                        .multiple(true),
+                )
+                .arg(
+                    Arg::with_name("delete")
+                        .long("delete")
+                        .value_name("ARG")
+                        .help("Delete kernel arg")
+                        .takes_value(true)
+                        .number_of_values(1)
+                        .multiple(true),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("stream-hash")
                 .about("Copy data from stdin to stdout, checking piecewise hashes")
                 .arg(
@@ -89,10 +136,30 @@ pub fn parse_args() -> Result<Config> {
         .get_matches();
 
     match app_matches.subcommand() {
+        ("kargs", Some(matches)) => parse_kargs(&matches),
         ("rootmap", Some(matches)) => parse_rootmap(&matches),
         ("stream-hash", Some(matches)) => parse_stream_hash(&matches),
         _ => bail!("unrecognized subcommand"),
     }
+}
+
+fn parse_kargs(matches: &ArgMatches) -> Result<Config> {
+    // we could enforce these via clap's ArgGroup, but I don't like how the --help text looks
+    if !(matches.is_present("boot-device") || matches.is_present("boot-mount")) {
+        bail!("at least one of --boot-device or --boot-mount required");
+    }
+    Ok(Config::Kargs(KargsConfig {
+        boot_device: matches.value_of("boot-device").map(String::from),
+        boot_mount: matches.value_of("boot-mount").map(String::from),
+        append_kargs: matches
+            .values_of("append")
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
+        delete_kargs: matches
+            .values_of("delete")
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
+    }))
 }
 
 fn parse_rootmap(matches: &ArgMatches) -> Result<Config> {
