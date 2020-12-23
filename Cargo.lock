@@ -420,9 +420,9 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gptman"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "866825455ea78427a37ba45a33f82ce58d15030271c1145a88c13410ff5be662"
+checksum = "ab4e3ed886bcd276a8e651429c10a487581a76de14c24c8f1d02811276b746e6"
 dependencies = [
  "bincode",
  "crc",
