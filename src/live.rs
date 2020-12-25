@@ -26,6 +26,8 @@ use crate::errors::*;
 use crate::io::*;
 
 const FILENAME: &str = "config.ign";
+const COREOS_IGNITION_HEADER_MAGIC: &[u8] = b"coreiso+";
+const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
 
 pub fn iso_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -231,12 +233,12 @@ impl<'a> EmbedArea<'a> {
         // 8 bytes: magic string "coreiso+"
         // 8 bytes little-endian: offset of embed area from start of file
         // 8 bytes little-endian: length of embed area
-        file.seek(SeekFrom::Start(32768 - 24))
+        file.seek(SeekFrom::Start(32768 - COREOS_IGNITION_HEADER_SIZE))
             .chain_err(|| "seeking to embed header")?;
         // magic number
         file.read_exact(&mut buf)
             .chain_err(|| "reading embed header")?;
-        if &buf != b"coreiso+" {
+        if buf != COREOS_IGNITION_HEADER_MAGIC {
             bail!("Unrecognized CoreOS ISO image.");
         }
         // offset
