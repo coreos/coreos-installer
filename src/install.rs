@@ -296,30 +296,32 @@ pub fn bls_entry_options_delete_and_append_kargs(
     if delete_args.is_empty() && append_args.is_empty() {
         return Ok(None);
     }
-
-    // XXX: Need a proper parser here and share it with afterburn. The approach we use here
-    // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
-    // handle occurrences in quoted args) but will work for now (one thing that saves us is
-    // that we're acting on our baked configs, which have straight-forward kargs).
-    let mut new_options: String = add_whitespaces(&orig_options);
-    for arg in delete_args {
-        let arg = add_whitespaces(arg.trim());
-        new_options = new_options.replace(&arg, " ");
-    }
-
-    let mut new_options: String = new_options.trim().into();
-    for arg in append_args {
-        new_options.push(' ');
-        new_options.push_str(arg.trim());
-    }
-    Ok(Some(new_options))
+    Ok(Some(modify_kargs(
+        orig_options,
+        append_args,
+        delete_args,
+    )?))
 }
 
-fn add_whitespaces(s: &str) -> String {
-    let mut r: String = s.into();
-    r.insert(0, ' ');
-    r.push(' ');
-    r
+// XXX: Need a proper parser here and share it with afterburn. The approach we use here
+// is to just do a dumb substring search and replace. This is naive (e.g. doesn't
+// handle occurrences in quoted args) but will work for now (one thing that saves us is
+// that we're acting on our baked configs, which have straight-forward kargs).
+fn modify_kargs(
+    current_kargs: &str,
+    kargs_append: &[String],
+    kargs_delete: &[String],
+) -> Result<String> {
+    let mut new_kargs: String = format!(" {} ", current_kargs);
+    for karg in kargs_delete {
+        let s = format!(" {} ", karg);
+        new_kargs = new_kargs.replace(&s, " ");
+    }
+    for karg in kargs_append {
+        new_kargs.push_str(karg);
+        new_kargs.push(' ');
+    }
+    Ok(new_kargs.trim().into())
 }
 
 /// Override the platform ID.
@@ -574,54 +576,43 @@ mod tests {
     }
 
     #[test]
-    fn test_options_edit() {
-        let orig_content = "foo bar foobar";
+    fn test_modify_kargs() {
+        let orig_kargs = "foo bar foobar";
 
         let delete_kargs = vec!["foo".into()];
-        let new_content =
-            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
-        assert_eq!(new_content.unwrap(), "bar foobar");
+        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
-        let new_content =
-            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
-        assert_eq!(new_content.unwrap(), "foo foobar");
+        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
-        let new_content =
-            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
-        assert_eq!(new_content.unwrap(), "foo bar");
+        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "foo bar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
-        let new_content =
-            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
-        assert_eq!(new_content.unwrap(), "foobar");
+        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "foobar");
 
-        let orig_content = "foo=val bar baz=val";
+        let orig_kargs = "foo=val bar baz=val";
 
         let delete_kargs = vec!["foo=val".into()];
-        let new_content =
-            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
-        assert_eq!(new_content.unwrap(), "bar baz=val");
+        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "bar baz=val");
 
         let delete_kargs = vec!["baz=val".into()];
-        let new_content =
-            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &[]).unwrap();
-        assert_eq!(new_content.unwrap(), "foo=val bar");
+        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "foo=val bar");
 
-        let orig_content = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
+        let orig_kargs = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
 
         let delete_kargs = vec![
             "mitigations=auto,nosmt".into(),
             "console=ttyS0,115200n8".into(),
         ];
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
-        let new_content =
-            bls_entry_options_delete_and_append_kargs(orig_content, &delete_kargs, &append_kargs)
-                .unwrap();
-        assert_eq!(
-            new_content.unwrap(),
-            "foo console=tty0 bar baz console=ttyS1,115200n8"
-        );
+        let new_kargs = modify_kargs(orig_kargs, &append_kargs, &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "foo console=tty0 bar baz console=ttyS1,115200n8");
     }
 }
