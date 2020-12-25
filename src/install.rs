@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use error_chain::{bail, ChainedError};
+use lazy_static::lazy_static;
 use nix::mount;
+use regex::Regex;
 use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
@@ -299,6 +301,7 @@ pub fn bls_entry_options_delete_and_append_kargs(
     Ok(Some(modify_kargs(
         orig_options,
         append_args,
+        &[],
         delete_args,
     )?))
 }
@@ -310,8 +313,12 @@ pub fn bls_entry_options_delete_and_append_kargs(
 fn modify_kargs(
     current_kargs: &str,
     kargs_append: &[String],
+    kargs_replace: &[String],
     kargs_delete: &[String],
 ) -> Result<String> {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"^([^=]+)=([^=]+)=([^=]+)$").unwrap();
+    }
     let mut new_kargs: String = format!(" {} ", current_kargs);
     for karg in kargs_delete {
         let s = format!(" {} ", karg);
@@ -320,6 +327,15 @@ fn modify_kargs(
     for karg in kargs_append {
         new_kargs.push_str(karg);
         new_kargs.push(' ');
+    }
+    for karg in kargs_replace {
+        let caps = match RE.captures(karg) {
+            Some(caps) => caps,
+            None => bail!("Wrong input, format should be: KEY=OLD=NEW"),
+        };
+        let old = format!(" {}={} ", &caps[1], &caps[2]);
+        let new = format!(" {}={} ", &caps[1], &caps[3]);
+        new_kargs = new_kargs.replace(&old, &new);
     }
     Ok(new_kargs.trim().into())
 }
@@ -580,29 +596,29 @@ mod tests {
         let orig_kargs = "foo bar foobar";
 
         let delete_kargs = vec!["foo".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo bar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foobar");
 
         let orig_kargs = "foo=val bar baz=val";
 
         let delete_kargs = vec!["foo=val".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "bar baz=val");
 
         let delete_kargs = vec!["baz=val".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo=val bar");
 
         let orig_kargs = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
@@ -612,7 +628,19 @@ mod tests {
             "console=ttyS0,115200n8".into(),
         ];
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
-        let new_kargs = modify_kargs(orig_kargs, &append_kargs, &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &append_kargs, &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo console=tty0 bar baz console=ttyS1,115200n8");
+
+        let orig_kargs = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
+
+        let append_kargs = vec!["console=ttyS1,115200n8".into()];
+        let replace_kargs = vec!["mitigations=auto,nosmt=auto".into()];
+        let delete_kargs = vec!["console=ttyS0,115200n8".into()];
+        let new_kargs =
+            modify_kargs(orig_kargs, &append_kargs, &replace_kargs, &delete_kargs).unwrap();
+        assert_eq!(
+            new_kargs,
+            "foo mitigations=auto console=tty0 bar baz console=ttyS1,115200n8"
+        );
     }
 }

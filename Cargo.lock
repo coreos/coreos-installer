@@ -176,6 +176,7 @@ dependencies = [
  "glob",
  "gptman",
  "hex",
+ "lazy_static",
  "libc",
  "maplit",
  "mbrman",
