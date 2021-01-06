@@ -444,7 +444,7 @@ pub fn parse_args() -> Result<Config> {
                                 .short("o")
                                 .long("output")
                                 .value_name("path")
-                                .help("Copy to a new file, instead of modifying in place")
+                                .help("Write ISO to a new output file")
                                 .takes_value(true),
                         )
                         .arg(
@@ -476,7 +476,7 @@ pub fn parse_args() -> Result<Config> {
                                 .short("o")
                                 .long("output")
                                 .value_name("path")
-                                .help("Copy to a new file, instead of modifying in place")
+                                .help("Write ISO to a new output file")
                                 .takes_value(true),
                         )
                         .arg(
@@ -542,7 +542,7 @@ pub fn parse_args() -> Result<Config> {
                                     .short("o")
                                     .long("output")
                                     .value_name("path")
-                                    .help("Copy to a new file, instead of modifying in place")
+                                    .help("Write ISO to a new output file")
                                     .takes_value(true),
                             )
                             .arg(
