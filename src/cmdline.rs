@@ -37,6 +37,9 @@ pub enum Config {
     IsoIgnitionEmbed(IsoIgnitionEmbedConfig),
     IsoIgnitionShow(IsoIgnitionShowConfig),
     IsoIgnitionRemove(IsoIgnitionRemoveConfig),
+    IsoKargsModify(IsoKargsModifyConfig),
+    IsoKargsReset(IsoKargsResetConfig),
+    IsoKargsShow(IsoKargsShowConfig),
     OsmetFiemap(OsmetFiemapConfig),
     OsmetPack(OsmetPackConfig),
     OsmetUnpack(OsmetUnpackConfig),
@@ -91,6 +94,25 @@ pub struct IsoIgnitionShowConfig {
 pub struct IsoIgnitionRemoveConfig {
     pub input: String,
     pub output: Option<String>,
+}
+
+pub struct IsoKargsModifyConfig {
+    pub input: String,
+    pub output: Option<String>,
+    pub append: Vec<String>,
+    pub replace: Vec<String>,
+    pub delete: Vec<String>,
+}
+
+pub struct IsoKargsResetConfig {
+    pub input: String,
+    pub output: Option<String>,
+}
+
+pub struct IsoKargsShowConfig {
+    pub input: String,
+    pub default: bool,
+    pub header: bool,
 }
 
 pub struct OsmetFiemapConfig {
@@ -444,7 +466,7 @@ pub fn parse_args() -> Result<Config> {
                                 .short("o")
                                 .long("output")
                                 .value_name("path")
-                                .help("Copy to a new file, instead of modifying in place")
+                                .help("Write ISO to a new output file")
                                 .takes_value(true),
                         )
                         .arg(
@@ -476,7 +498,7 @@ pub fn parse_args() -> Result<Config> {
                                 .short("o")
                                 .long("output")
                                 .value_name("path")
-                                .help("Copy to a new file, instead of modifying in place")
+                                .help("Write ISO to a new output file")
                                 .takes_value(true),
                         )
                         .arg(
@@ -542,7 +564,7 @@ pub fn parse_args() -> Result<Config> {
                                     .short("o")
                                     .long("output")
                                     .value_name("path")
-                                    .help("Copy to a new file, instead of modifying in place")
+                                    .help("Write ISO to a new output file")
                                     .takes_value(true),
                             )
                             .arg(
@@ -554,6 +576,101 @@ pub fn parse_args() -> Result<Config> {
                             ),
                     ),
             )
+            .subcommand(
+                SubCommand::with_name("kargs")
+                    .about("Modify kernel args in a CoreOS live ISO image")
+                    .subcommand(
+                        SubCommand::with_name("modify")
+                            .about("Modify kernel args in an ISO image")
+                            .arg(
+                                Arg::with_name("append")
+                                    .long("append")
+                                    .short("a")
+                                    .value_name("KARG")
+                                    .help("Kernel argument to append")
+                                    .takes_value(true)
+                                    .number_of_values(1)
+                                    .multiple(true),
+                            )
+                            .arg(
+                                Arg::with_name("delete")
+                                    .long("delete")
+                                    .short("d")
+                                    .value_name("KARG")
+                                    .help("Kernel argument to delete")
+                                    .takes_value(true)
+                                    .number_of_values(1)
+                                    .multiple(true),
+                            )
+                            .arg(
+                                Arg::with_name("replace")
+                                    .long("replace")
+                                    .short("r")
+                                    .value_name("KARG=OLDVAL=NEWVAL")
+                                    .help("Kernel argument to replace")
+                                    .takes_value(true)
+                                    .number_of_values(1)
+                                    .multiple(true),
+                            )
+                            .arg(
+                                Arg::with_name("output")
+                                    .short("o")
+                                    .long("output")
+                                    .value_name("PATH")
+                                    .help("Write ISO to a new output file")
+                                    .takes_value(true),
+                            )
+                            .arg(
+                                Arg::with_name("input")
+                                    .value_name("ISO")
+                                    .help("ISO image")
+                                    .required(true)
+                                    .takes_value(true),
+                            ),
+                    )
+                    .subcommand(
+                        SubCommand::with_name("reset")
+                            .about("Reset kernel args in an ISO image to defaults")
+                            .arg(
+                                Arg::with_name("output")
+                                    .short("o")
+                                    .long("output")
+                                    .value_name("PATH")
+                                    .help("Write ISO to a new output file")
+                                    .takes_value(true),
+                            )
+                            .arg(
+                                Arg::with_name("input")
+                                    .value_name("ISO")
+                                    .help("ISO image")
+                                    .required(true)
+                                    .takes_value(true),
+                            ),
+                    )
+                    .subcommand(
+                        SubCommand::with_name("show")
+                            .about("Show kernel args from an ISO image")
+                            .arg(
+                                Arg::with_name("input")
+                                    .value_name("ISO")
+                                    .help("ISO image")
+                                    .required(true)
+                                    .takes_value(true),
+                            )
+                            .arg(
+                                Arg::with_name("default")
+                                    .short("d")
+                                    .long("default")
+                                    .help("Show default kernel args"),
+                            )
+                            .arg(
+                                Arg::with_name("header")
+                                    .long("header")
+                                    .help("Show ISO header (for debugging/testing only)")
+                                    .hidden(true),
+                            ),
+                    ),
+            ),
         )
         .subcommand(
             SubCommand::with_name("pxe")
@@ -705,6 +822,12 @@ pub fn parse_args() -> Result<Config> {
                 ("show", Some(matches)) => parse_iso_ignition_show(&matches),
                 ("remove", Some(matches)) => parse_iso_ignition_remove(&matches),
                 _ => bail!("unrecognized 'ignition' subcommand"),
+            },
+            ("kargs", Some(kargs_matches)) => match kargs_matches.subcommand() {
+                ("modify", Some(matches)) => parse_iso_kargs_modify(&matches),
+                ("reset", Some(matches)) => parse_iso_kargs_reset(&matches),
+                ("show", Some(matches)) => parse_iso_kargs_show(&matches),
+                _ => bail!("unrecognized 'kargs' subcommand"),
             },
             _ => bail!("unrecognized 'iso' subcommand"),
         },
@@ -1031,6 +1154,49 @@ fn parse_iso_ignition_remove(matches: &ArgMatches) -> Result<Config> {
             .map(String::from)
             .expect("input missing"),
         output: matches.value_of("output").map(String::from),
+    }))
+}
+
+fn parse_iso_kargs_modify(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoKargsModify(IsoKargsModifyConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
+        output: matches.value_of("output").map(String::from),
+        append: matches
+            .values_of("append")
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
+        replace: matches
+            .values_of("replace")
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
+        delete: matches
+            .values_of("delete")
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
+    }))
+}
+
+fn parse_iso_kargs_reset(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoKargsReset(IsoKargsResetConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
+        output: matches.value_of("output").map(String::from),
+    }))
+}
+
+fn parse_iso_kargs_show(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoKargsShow(IsoKargsShowConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
+        default: matches.is_present("default"),
+        header: matches.is_present("header"),
     }))
 }
 
