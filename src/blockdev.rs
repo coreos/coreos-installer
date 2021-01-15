@@ -94,7 +94,7 @@ impl Disk {
     fn get_partitions(&self, with_holders: bool) -> Result<Vec<Partition>> {
         // walk each device in the output
         let mut result: Vec<Partition> = Vec::new();
-        for devinfo in lsblk(Path::new(&self.path))? {
+        for devinfo in lsblk(Path::new(&self.path), true)? {
             if let Some(name) = devinfo.get("NAME") {
                 match devinfo.get("TYPE") {
                     // If unknown type, skip.
@@ -755,7 +755,7 @@ fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String>
 }
 
 pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
-    let mut devinfos = lsblk(Path::new(dev))?;
+    let mut devinfos = lsblk(Path::new(dev), false)?;
     if devinfos.is_empty() {
         // this should never happen because `lsblk` itself would've failed
         bail!("no lsblk results for {}", dev.display());
@@ -763,7 +763,7 @@ pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
     Ok(devinfos.remove(0))
 }
 
-pub fn lsblk(dev: &Path) -> Result<Vec<HashMap<String, String>>> {
+pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>> {
     let mut cmd = Command::new("lsblk");
     // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
     cmd.arg("--pairs")
@@ -771,6 +771,9 @@ pub fn lsblk(dev: &Path) -> Result<Vec<HashMap<String, String>>> {
         .arg("--output")
         .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID")
         .arg(dev);
+    if !with_deps {
+        cmd.arg("--nodeps");
+    }
     let output = cmd_output(&mut cmd)?;
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for line in output.lines() {
