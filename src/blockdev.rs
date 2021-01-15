@@ -764,15 +764,14 @@ pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
 }
 
 pub fn lsblk(dev: &Path) -> Result<Vec<HashMap<String, String>>> {
+    let mut cmd = Command::new("lsblk");
     // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
-    let output = runcmd_output!(
-        "lsblk",
-        "--pairs",
-        "--paths",
-        "--output",
-        "NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID",
-        dev
-    )?;
+    cmd.arg("--pairs")
+        .arg("--paths")
+        .arg("--output")
+        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID")
+        .arg(dev);
+    let output = cmd_output(&mut cmd)?;
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for line in output.lines() {
         // parse key-value pairs
