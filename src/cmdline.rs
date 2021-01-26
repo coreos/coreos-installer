@@ -119,17 +119,11 @@ pub struct OsmetFiemapConfig {
     pub file: String,
 }
 
-pub struct OsmetRootBlkDevReal {
-    pub underlying_device: String,
-    pub offset_sectors: u32,
-}
-
 pub struct OsmetPackConfig {
     pub output: String,
     pub device: String,
     pub checksum: String,
     pub description: String,
-    pub rootdev: Option<OsmetRootBlkDevReal>,
     pub fast: bool,
 }
 
@@ -286,7 +280,7 @@ pub fn parse_args() -> Result<Config> {
                         .number_of_values(1)
                         .multiple(true)
                         // allow "a,b" in one argument
-                        .require_delimiter(true)
+                        .require_delimiter(true),
                 )
                 .arg(
                     Arg::with_name("save-partindex")
@@ -300,7 +294,7 @@ pub fn parse_args() -> Result<Config> {
                         // allow "1-5,7" in one argument
                         .require_delimiter(true)
                         // allow ranges like "-2"
-                        .allow_hyphen_values(true)
+                        .allow_hyphen_values(true),
                 )
                 // obscure options without short names
                 .arg(
@@ -509,168 +503,170 @@ pub fn parse_args() -> Result<Config> {
                                 .takes_value(true),
                         ),
                 )
-            .subcommand(
-                SubCommand::with_name("ignition")
-                    .about("Embed an Ignition config in a CoreOS live ISO image")
-                    .subcommand(
-                        SubCommand::with_name("embed")
-                            .about("Embed an Ignition config in an ISO image")
-                            .arg(
-                                Arg::with_name("force")
-                                    .short("f")
-                                    .long("force")
-                                    .help("Overwrite an existing Ignition config"),
-                            )
-                            .arg(
-                                Arg::with_name("config")
-                                    .short("i")
-                                    .long("ignition-file")
-                                    .value_name("path")
-                                    .help("Ignition config to embed [default: stdin]")
-                                    .takes_value(true),
-                            )
-                            .arg(
-                                Arg::with_name("output")
-                                    .short("o")
-                                    .long("output")
-                                    .value_name("path")
-                                    .help("Write ISO to a new output file")
-                                    .takes_value(true),
-                            )
-                            .arg(
-                                Arg::with_name("input")
-                                    .value_name("ISO")
-                                    .help("ISO image")
-                                    .required(true)
-                                    .takes_value(true),
-                            ),
-                    )
-                    .subcommand(
-                        SubCommand::with_name("show")
-                            .about("Show the embedded Ignition config from an ISO image")
-                            .arg(
-                                Arg::with_name("input")
-                                    .value_name("ISO")
-                                    .help("ISO image")
-                                    .required(true)
-                                    .takes_value(true),
-                            ),
-                    )
-                    .subcommand(
-                        SubCommand::with_name("remove")
-                            .about("Remove an existing embedded Ignition config from an ISO image")
-                            .arg(
-                                Arg::with_name("output")
-                                    .short("o")
-                                    .long("output")
-                                    .value_name("path")
-                                    .help("Write ISO to a new output file")
-                                    .takes_value(true),
-                            )
-                            .arg(
-                                Arg::with_name("input")
-                                    .value_name("ISO")
-                                    .help("ISO image")
-                                    .required(true)
-                                    .takes_value(true),
-                            ),
-                    ),
-            )
-            .subcommand(
-                SubCommand::with_name("kargs")
-                    .about("Modify kernel args in a CoreOS live ISO image")
-                    .subcommand(
-                        SubCommand::with_name("modify")
-                            .about("Modify kernel args in an ISO image")
-                            .arg(
-                                Arg::with_name("append")
-                                    .long("append")
-                                    .short("a")
-                                    .value_name("KARG")
-                                    .help("Kernel argument to append")
-                                    .takes_value(true)
-                                    .number_of_values(1)
-                                    .multiple(true),
-                            )
-                            .arg(
-                                Arg::with_name("delete")
-                                    .long("delete")
-                                    .short("d")
-                                    .value_name("KARG")
-                                    .help("Kernel argument to delete")
-                                    .takes_value(true)
-                                    .number_of_values(1)
-                                    .multiple(true),
-                            )
-                            .arg(
-                                Arg::with_name("replace")
-                                    .long("replace")
-                                    .short("r")
-                                    .value_name("KARG=OLDVAL=NEWVAL")
-                                    .help("Kernel argument to replace")
-                                    .takes_value(true)
-                                    .number_of_values(1)
-                                    .multiple(true),
-                            )
-                            .arg(
-                                Arg::with_name("output")
-                                    .short("o")
-                                    .long("output")
-                                    .value_name("PATH")
-                                    .help("Write ISO to a new output file")
-                                    .takes_value(true),
-                            )
-                            .arg(
-                                Arg::with_name("input")
-                                    .value_name("ISO")
-                                    .help("ISO image")
-                                    .required(true)
-                                    .takes_value(true),
-                            ),
-                    )
-                    .subcommand(
-                        SubCommand::with_name("reset")
-                            .about("Reset kernel args in an ISO image to defaults")
-                            .arg(
-                                Arg::with_name("output")
-                                    .short("o")
-                                    .long("output")
-                                    .value_name("PATH")
-                                    .help("Write ISO to a new output file")
-                                    .takes_value(true),
-                            )
-                            .arg(
-                                Arg::with_name("input")
-                                    .value_name("ISO")
-                                    .help("ISO image")
-                                    .required(true)
-                                    .takes_value(true),
-                            ),
-                    )
-                    .subcommand(
-                        SubCommand::with_name("show")
-                            .about("Show kernel args from an ISO image")
-                            .arg(
-                                Arg::with_name("input")
-                                    .value_name("ISO")
-                                    .help("ISO image")
-                                    .required(true)
-                                    .takes_value(true),
-                            )
-                            .arg(
-                                Arg::with_name("default")
-                                    .short("d")
-                                    .long("default")
-                                    .help("Show default kernel args"),
-                            )
-                            .arg(
-                                Arg::with_name("header")
-                                    .long("header")
-                                    .help("Show ISO header (for debugging/testing only)")
-                                    .hidden(true),
-                            ),
-                    ),
-            ),
+                .subcommand(
+                    SubCommand::with_name("ignition")
+                        .about("Embed an Ignition config in a CoreOS live ISO image")
+                        .subcommand(
+                            SubCommand::with_name("embed")
+                                .about("Embed an Ignition config in an ISO image")
+                                .arg(
+                                    Arg::with_name("force")
+                                        .short("f")
+                                        .long("force")
+                                        .help("Overwrite an existing Ignition config"),
+                                )
+                                .arg(
+                                    Arg::with_name("config")
+                                        .short("i")
+                                        .long("ignition-file")
+                                        .value_name("path")
+                                        .help("Ignition config to embed [default: stdin]")
+                                        .takes_value(true),
+                                )
+                                .arg(
+                                    Arg::with_name("output")
+                                        .short("o")
+                                        .long("output")
+                                        .value_name("path")
+                                        .help("Write ISO to a new output file")
+                                        .takes_value(true),
+                                )
+                                .arg(
+                                    Arg::with_name("input")
+                                        .value_name("ISO")
+                                        .help("ISO image")
+                                        .required(true)
+                                        .takes_value(true),
+                                ),
+                        )
+                        .subcommand(
+                            SubCommand::with_name("show")
+                                .about("Show the embedded Ignition config from an ISO image")
+                                .arg(
+                                    Arg::with_name("input")
+                                        .value_name("ISO")
+                                        .help("ISO image")
+                                        .required(true)
+                                        .takes_value(true),
+                                ),
+                        )
+                        .subcommand(
+                            SubCommand::with_name("remove")
+                                .about(
+                                    "Remove an existing embedded Ignition config from an ISO image",
+                                )
+                                .arg(
+                                    Arg::with_name("output")
+                                        .short("o")
+                                        .long("output")
+                                        .value_name("path")
+                                        .help("Write ISO to a new output file")
+                                        .takes_value(true),
+                                )
+                                .arg(
+                                    Arg::with_name("input")
+                                        .value_name("ISO")
+                                        .help("ISO image")
+                                        .required(true)
+                                        .takes_value(true),
+                                ),
+                        ),
+                )
+                .subcommand(
+                    SubCommand::with_name("kargs")
+                        .about("Modify kernel args in a CoreOS live ISO image")
+                        .subcommand(
+                            SubCommand::with_name("modify")
+                                .about("Modify kernel args in an ISO image")
+                                .arg(
+                                    Arg::with_name("append")
+                                        .long("append")
+                                        .short("a")
+                                        .value_name("KARG")
+                                        .help("Kernel argument to append")
+                                        .takes_value(true)
+                                        .number_of_values(1)
+                                        .multiple(true),
+                                )
+                                .arg(
+                                    Arg::with_name("delete")
+                                        .long("delete")
+                                        .short("d")
+                                        .value_name("KARG")
+                                        .help("Kernel argument to delete")
+                                        .takes_value(true)
+                                        .number_of_values(1)
+                                        .multiple(true),
+                                )
+                                .arg(
+                                    Arg::with_name("replace")
+                                        .long("replace")
+                                        .short("r")
+                                        .value_name("KARG=OLDVAL=NEWVAL")
+                                        .help("Kernel argument to replace")
+                                        .takes_value(true)
+                                        .number_of_values(1)
+                                        .multiple(true),
+                                )
+                                .arg(
+                                    Arg::with_name("output")
+                                        .short("o")
+                                        .long("output")
+                                        .value_name("PATH")
+                                        .help("Write ISO to a new output file")
+                                        .takes_value(true),
+                                )
+                                .arg(
+                                    Arg::with_name("input")
+                                        .value_name("ISO")
+                                        .help("ISO image")
+                                        .required(true)
+                                        .takes_value(true),
+                                ),
+                        )
+                        .subcommand(
+                            SubCommand::with_name("reset")
+                                .about("Reset kernel args in an ISO image to defaults")
+                                .arg(
+                                    Arg::with_name("output")
+                                        .short("o")
+                                        .long("output")
+                                        .value_name("PATH")
+                                        .help("Write ISO to a new output file")
+                                        .takes_value(true),
+                                )
+                                .arg(
+                                    Arg::with_name("input")
+                                        .value_name("ISO")
+                                        .help("ISO image")
+                                        .required(true)
+                                        .takes_value(true),
+                                ),
+                        )
+                        .subcommand(
+                            SubCommand::with_name("show")
+                                .about("Show kernel args from an ISO image")
+                                .arg(
+                                    Arg::with_name("input")
+                                        .value_name("ISO")
+                                        .help("ISO image")
+                                        .required(true)
+                                        .takes_value(true),
+                                )
+                                .arg(
+                                    Arg::with_name("default")
+                                        .short("d")
+                                        .long("default")
+                                        .help("Show default kernel args"),
+                                )
+                                .arg(
+                                    Arg::with_name("header")
+                                        .long("header")
+                                        .help("Show ISO header (for debugging/testing only)")
+                                        .hidden(true),
+                                ),
+                        ),
+                ),
         )
         .subcommand(
             SubCommand::with_name("pxe")
@@ -680,36 +676,36 @@ pub fn parse_args() -> Result<Config> {
                         .about("Commands to manage a live PXE Ignition config")
                         .subcommand(
                             SubCommand::with_name("wrap")
-                            .about("Wrap an Ignition config in an initrd image")
-                            .arg(
-                                Arg::with_name("ignition")
-                                    .short("i")
-                                    .long("ignition-file")
-                                    .value_name("path")
-                                    .help("Ignition config to wrap [default: stdin]")
-                                    .takes_value(true),
-                            )
-                            .arg(
-                                Arg::with_name("output")
-                                    .short("o")
-                                    .long("output")
-                                    .value_name("path")
-                                    .help("Write to a file instead of stdout")
-                                    .takes_value(true),
-                            )
-                    )
-                    .subcommand(
-                        SubCommand::with_name("unwrap")
-                            .about("Show the wrapped Ignition config in an initrd image")
-                            .arg(
-                                Arg::with_name("input")
-                                    .value_name("initrd")
-                                    .help("initrd image")
-                                    .required(true)
-                                    .takes_value(true),
-                            ),
-                    )
-            )
+                                .about("Wrap an Ignition config in an initrd image")
+                                .arg(
+                                    Arg::with_name("ignition")
+                                        .short("i")
+                                        .long("ignition-file")
+                                        .value_name("path")
+                                        .help("Ignition config to wrap [default: stdin]")
+                                        .takes_value(true),
+                                )
+                                .arg(
+                                    Arg::with_name("output")
+                                        .short("o")
+                                        .long("output")
+                                        .value_name("path")
+                                        .help("Write to a file instead of stdout")
+                                        .takes_value(true),
+                                ),
+                        )
+                        .subcommand(
+                            SubCommand::with_name("unwrap")
+                                .about("Show the wrapped Ignition config in an initrd image")
+                                .arg(
+                                    Arg::with_name("input")
+                                        .value_name("initrd")
+                                        .help("initrd image")
+                                        .required(true)
+                                        .takes_value(true),
+                                ),
+                        ),
+                ),
         )
         .subcommand(
             SubCommand::with_name("osmet")
@@ -747,16 +743,9 @@ pub fn parse_args() -> Result<Config> {
                                 .takes_value(true),
                         )
                         .arg(
-                            Arg::with_name("real-rootdev")
-                                .long("real-rootdev")
-                                .value_name("PATH,OFFSET")
-                                .help("Underlying device for e.g. RHCOS LUKS container; /dev/disk/by-label/root should be mountable")
-                                .takes_value(true),
-                        )
-                        .arg(
                             Arg::with_name("fast")
                                 .long("fast")
-                                .help("Use worse compression, for development builds")
+                                .help("Use worse compression, for development builds"),
                         )
                         // positional args
                         .arg(
@@ -1200,23 +1189,6 @@ fn parse_iso_kargs_show(matches: &ArgMatches) -> Result<Config> {
     }))
 }
 
-fn parse_real_rootdev<T: AsRef<str>>(s: Option<T>) -> Result<Option<OsmetRootBlkDevReal>> {
-    if let Some(v) = s {
-        let v = v.as_ref();
-        let parts: Vec<_> = v.splitn(2, ',').collect();
-        if parts.len() < 2 {
-            bail!("Expected DEVICE,OFFSET-SECTORS but found {}", v);
-        }
-        let offset = parts[1].parse()?;
-        Ok(Some(OsmetRootBlkDevReal {
-            underlying_device: parts[0].to_string(),
-            offset_sectors: offset,
-        }))
-    } else {
-        Ok(None)
-    }
-}
-
 fn parse_osmet_pack(matches: &ArgMatches) -> Result<Config> {
     Ok(Config::OsmetPack(OsmetPackConfig {
         output: matches
@@ -1235,7 +1207,6 @@ fn parse_osmet_pack(matches: &ArgMatches) -> Result<Config> {
             .value_of("description")
             .map(String::from)
             .expect("description missing"),
-        rootdev: parse_real_rootdev(matches.value_of("real-rootdev"))?,
         fast: matches.is_present("fast"),
     }))
 }
