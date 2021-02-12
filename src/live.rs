@@ -19,7 +19,7 @@ use openat_ext::FileExt;
 use serde::Serialize;
 use std::convert::TryInto;
 use std::fs::{read, remove_file, write, File, OpenOptions};
-use std::io::{stdin, stdout, BufReader, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::AsRawFd;
 
 use crate::cmdline::*;
@@ -51,8 +51,10 @@ pub fn iso_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
-    let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
-    let mut embed = EmbedArea::for_file(&mut holder.file)?;
+    let use_stdout = config.output.as_deref() == Some("-");
+    if use_stdout && isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")? {
+        bail!("Refusing to write binary data to terminal");
+    }
 
     let ignition = match config.ignition {
         Some(ref ignition_path) => {
@@ -66,6 +68,23 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
             data
         }
     };
+
+    let mut holder: CopiedFileHolder;
+    let mut embed: EmbedArea;
+
+    if use_stdout {
+        holder = CopiedFileHolder {
+            file: OpenOptions::new()
+                .read(true)
+                .open(&config.input)
+                .chain_err(|| format!("opening {}", &config.input))?,
+            copied_path: None,
+            complete: false,
+        };
+    } else {
+        holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
+    }
+    embed = EmbedArea::for_file(&mut holder.file)?;
 
     let cpio = make_cpio(&ignition)?;
     if cpio.len() > embed.length {
@@ -85,12 +104,18 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
             bail!("This ISO image already has an embedded Ignition config; use -f to force.");
         }
     }
-    // delete any existing config
-    embed.clear()?;
-    // write new config
-    embed.seek_to_start()?;
-    embed.write(&cpio)?;
-    holder.complete();
+
+    if use_stdout {
+        embed.stream(&cpio, &mut stdout())?;
+    } else {
+        // delete any existing config
+        embed.clear()?;
+        // write new config
+        embed.seek_to_start()?;
+        embed.write(&cpio)?;
+        holder.complete()
+    }
+
     Ok(())
 }
 
@@ -116,10 +141,25 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
-    let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
-    let mut embed = EmbedArea::for_file(&mut holder.file)?;
-    embed.clear()?;
-    holder.complete();
+    let use_stdout = config.output.as_deref() == Some("-");
+    if use_stdout && isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")? {
+        bail!("Refusing to write binary data to terminal");
+    }
+
+    if use_stdout {
+        let mut file = OpenOptions::new()
+            .read(true)
+            .open(&config.input)
+            .chain_err(|| format!("opening {}", &config.input))?;
+        let mut embed = EmbedArea::for_file(&mut file)?;
+        embed.stream(&[], &mut stdout())?;
+    } else {
+        let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
+        let mut embed = EmbedArea::for_file(&mut holder.file)?;
+
+        embed.clear()?;
+        holder.complete();
+    }
     Ok(())
 }
 
@@ -490,6 +530,32 @@ impl<'a> EmbedArea<'a> {
         self.file
             .write_all(buf)
             .chain_err(|| "writing embed area")?;
+        Ok(())
+    }
+
+    fn stream(&mut self, cpio: &[u8], writer: &mut (impl Write + ?Sized)) -> Result<()> {
+        let mut buf = [0u8; BUFFER_SIZE];
+        self.file
+            .seek(SeekFrom::Start(0))
+            .chain_err(|| "seeking to start")?;
+        copy_exactly_n(&mut self.file, writer, self.offset, &mut buf)
+            .chain_err(|| "copying file")?;
+        if cpio.len() > self.length {
+            bail!("buffer larger than embed area");
+        }
+        writer.write_all(cpio).chain_err(|| "writing embed area")?;
+        let zeroes = vec![0; self.length - cpio.len()];
+        writer.write_all(&zeroes).chain_err(|| "writing zeros")?;
+        self.file
+            .seek(SeekFrom::Start(self.offset + self.length as u64))
+            .chain_err(|| "seeking to end of embed area")?;
+        let mut write_buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
+        copy(
+            &mut BufReader::with_capacity(BUFFER_SIZE, self.file),
+            &mut write_buf,
+        )
+        .chain_err(|| "copying file")?;
+        write_buf.flush().chain_err(|| "flushing output")?;
         Ok(())
     }
 
