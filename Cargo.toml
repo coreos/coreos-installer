@@ -57,7 +57,7 @@ reqwest = { version = ">= 0.10, < 0.12", features = ["blocking"] }
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "^1.0"
 tempfile = "^3.2"
-url = "^2.1"
+url = "^2.2"
 uuid = { version = "^0.8", features = ["v4"] }
 walkdir = "^2.3"
 xz2 = "^0.1"
