@@ -82,7 +82,7 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     } else {
         content = ContentFile::new(&config.input, config.output.as_ref())?;
     }
-    let mut embed = EmbedArea::for_file(&mut content.file)?;
+    let mut embed = EmbedArea::for_file(content.as_file_mut())?;
 
     let cpio = make_cpio(&ignition)?;
     if cpio.len() > embed.length {
@@ -153,7 +153,7 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
         embed.stream(&[], &mut stdout())?;
     } else {
         let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
-        let mut embed = EmbedArea::for_file(&mut content.file)?;
+        let mut embed = EmbedArea::for_file(content.as_file_mut())?;
         embed.clear()?;
         content.complete();
     }
@@ -205,7 +205,7 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
 
 pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
-    let mut embed = KargEmbedAreas::for_file(&mut content.file)?;
+    let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
     let current_kargs = embed.get_current_kargs()?;
     let new_kargs = modify_kargs(
         &current_kargs,
@@ -220,7 +220,7 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
 
 pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
     let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
-    let mut embed = KargEmbedAreas::for_file(&mut content.file)?;
+    let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
     let default_kargs = embed.get_default_kargs()?;
     embed.write_kargs(&default_kargs)?;
     content.complete();
@@ -404,7 +404,7 @@ fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Resu
 }
 
 struct ContentFile {
-    pub file: File,
+    file: File,
     copied_path: Option<String>,
     complete: bool,
 }
@@ -448,6 +448,10 @@ impl ContentFile {
                 complete: false,
             })
         }
+    }
+
+    fn as_file_mut(&mut self) -> &mut File {
+        &mut self.file
     }
 
     fn complete(&mut self) {
