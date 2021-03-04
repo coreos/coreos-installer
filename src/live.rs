@@ -69,11 +69,9 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
         }
     };
 
-    let mut holder: CopiedFileHolder;
-    let mut embed: EmbedArea;
-
+    let mut content: ContentFile;
     if use_stdout {
-        holder = CopiedFileHolder {
+        content = ContentFile {
             file: OpenOptions::new()
                 .read(true)
                 .open(&config.input)
@@ -82,9 +80,9 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
             complete: false,
         };
     } else {
-        holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
+        content = ContentFile::new(&config.input, config.output.as_ref())?;
     }
-    embed = EmbedArea::for_file(&mut holder.file)?;
+    let mut embed = EmbedArea::for_file(&mut content.file)?;
 
     let cpio = make_cpio(&ignition)?;
     if cpio.len() > embed.length {
@@ -113,7 +111,7 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
         // write new config
         embed.seek_to_start()?;
         embed.write(&cpio)?;
-        holder.complete()
+        content.complete();
     }
 
     Ok(())
@@ -154,11 +152,10 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
         let mut embed = EmbedArea::for_file(&mut file)?;
         embed.stream(&[], &mut stdout())?;
     } else {
-        let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
-        let mut embed = EmbedArea::for_file(&mut holder.file)?;
-
+        let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+        let mut embed = EmbedArea::for_file(&mut content.file)?;
         embed.clear()?;
-        holder.complete();
+        content.complete();
     }
     Ok(())
 }
@@ -207,8 +204,8 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
 }
 
 pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
-    let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
-    let mut embed = KargEmbedAreas::for_file(&mut holder.file)?;
+    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let mut embed = KargEmbedAreas::for_file(&mut content.file)?;
     let current_kargs = embed.get_current_kargs()?;
     let new_kargs = modify_kargs(
         &current_kargs,
@@ -217,16 +214,16 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
         &config.delete,
     )?;
     embed.write_kargs(&new_kargs)?;
-    holder.complete();
+    content.complete();
     Ok(())
 }
 
 pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
-    let mut holder = CopiedFileHolder::new(&config.input, config.output.as_ref())?;
-    let mut embed = KargEmbedAreas::for_file(&mut holder.file)?;
+    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let mut embed = KargEmbedAreas::for_file(&mut content.file)?;
     let default_kargs = embed.get_default_kargs()?;
     embed.write_kargs(&default_kargs)?;
-    holder.complete();
+    content.complete();
     Ok(())
 }
 
@@ -406,16 +403,19 @@ fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Resu
     Ok(area.trim_end_matches('#').trim().into())
 }
 
-struct CopiedFileHolder {
+struct ContentFile {
     pub file: File,
     copied_path: Option<String>,
     complete: bool,
 }
 
-/// Holder for a read/write file handle which is optionally copied from
-/// another file.  If complete() is not called and the file was copied,
-/// the copy will be deleted on drop.
-impl CopiedFileHolder {
+/// Wrapper for a file handle to the content being modified (for example, an
+/// ISO image).  Usually this is where we write our modifications, but if
+/// we're streaming to stdout, it's where we read the content from.  In the
+/// case of an output file, it can be modified in place or copied from
+/// another file.  If complete() is not called and the file was copied, the
+/// copy will be deleted on drop.
+impl ContentFile {
     fn new(input_path: &str, output_path: Option<&String>) -> Result<Self> {
         if let Some(unwrapped_output_path) = output_path {
             let input = OpenOptions::new()
@@ -431,7 +431,7 @@ impl CopiedFileHolder {
             input
                 .copy_to(&output)
                 .chain_err(|| format!("copying {} to {}", input_path, unwrapped_output_path))?;
-            Ok(CopiedFileHolder {
+            Ok(Self {
                 file: output,
                 copied_path: Some(unwrapped_output_path.to_string()),
                 complete: false,
@@ -442,7 +442,7 @@ impl CopiedFileHolder {
                 .write(true)
                 .open(&input_path)
                 .chain_err(|| format!("opening {}", &input_path))?;
-            Ok(CopiedFileHolder {
+            Ok(Self {
                 file,
                 copied_path: None,
                 complete: false,
@@ -455,7 +455,7 @@ impl CopiedFileHolder {
     }
 }
 
-impl Drop for CopiedFileHolder {
+impl Drop for ContentFile {
     fn drop(&mut self) {
         if self.copied_path.is_some() && !self.complete {
             let path = self.copied_path.as_ref().unwrap();
