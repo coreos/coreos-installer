@@ -18,9 +18,11 @@ use nix::unistd::isatty;
 use openat_ext::FileExt;
 use serde::Serialize;
 use std::convert::TryInto;
-use std::fs::{read, remove_file, write, File, OpenOptions};
+use std::fs::{read, write, File, OpenOptions};
 use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::unix::io::AsRawFd;
+use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
 
 use crate::cmdline::*;
 use crate::errors::*;
@@ -51,11 +53,6 @@ pub fn iso_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
-    let use_stdout = config.output.as_deref() == Some("-");
-    if use_stdout && isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")? {
-        bail!("Refusing to write binary data to terminal");
-    }
-
     let ignition = match config.ignition {
         Some(ref ignition_path) => {
             read(ignition_path).chain_err(|| format!("reading {}", ignition_path))?
@@ -69,19 +66,8 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
         }
     };
 
-    let mut content: ContentFile;
-    if use_stdout {
-        content = ContentFile {
-            file: OpenOptions::new()
-                .read(true)
-                .open(&config.input)
-                .chain_err(|| format!("opening {}", &config.input))?,
-            copied_path: None,
-            complete: false,
-        };
-    } else {
-        content = ContentFile::new(&config.input, config.output.as_ref())?;
-    }
+    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let use_stdout = content.is_stdout();
     let mut embed = EmbedArea::for_file(content.as_file_mut())?;
 
     let cpio = make_cpio(&ignition)?;
@@ -111,8 +97,8 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
         // write new config
         embed.seek_to_start()?;
         embed.write(&cpio)?;
-        content.complete();
     }
+    content.complete()?;
 
     Ok(())
 }
@@ -139,24 +125,16 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
-    let use_stdout = config.output.as_deref() == Some("-");
-    if use_stdout && isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")? {
-        bail!("Refusing to write binary data to terminal");
-    }
+    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let use_stdout = content.is_stdout();
+    let mut embed = EmbedArea::for_file(content.as_file_mut())?;
 
     if use_stdout {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .open(&config.input)
-            .chain_err(|| format!("opening {}", &config.input))?;
-        let mut embed = EmbedArea::for_file(&mut file)?;
         embed.stream(&[], &mut stdout())?;
     } else {
-        let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
-        let mut embed = EmbedArea::for_file(content.as_file_mut())?;
         embed.clear()?;
-        content.complete();
     }
+    content.complete()?;
     Ok(())
 }
 
@@ -205,6 +183,9 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
 
 pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    if content.is_stdout() {
+        bail!("Writing to stdout is not supported");
+    }
     let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
     let current_kargs = embed.get_current_kargs()?;
     let new_kargs = modify_kargs(
@@ -214,16 +195,19 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
         &config.delete,
     )?;
     embed.write_kargs(&new_kargs)?;
-    content.complete();
+    content.complete()?;
     Ok(())
 }
 
 pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
     let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    if content.is_stdout() {
+        bail!("Writing to stdout is not supported");
+    }
     let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
     let default_kargs = embed.get_default_kargs()?;
     embed.write_kargs(&default_kargs)?;
-    content.complete();
+    content.complete()?;
     Ok(())
 }
 
@@ -403,10 +387,10 @@ fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Resu
     Ok(area.trim_end_matches('#').trim().into())
 }
 
-struct ContentFile {
-    file: File,
-    copied_path: Option<String>,
-    complete: bool,
+enum ContentFile {
+    ForStdout(File),
+    InPlace(File),
+    Copied((NamedTempFile, PathBuf)),
 }
 
 /// Wrapper for a file handle to the content being modified (for example, an
@@ -417,56 +401,75 @@ struct ContentFile {
 /// copy will be deleted on drop.
 impl ContentFile {
     fn new(input_path: &str, output_path: Option<&String>) -> Result<Self> {
-        if let Some(unwrapped_output_path) = output_path {
-            let input = OpenOptions::new()
-                .read(true)
-                .open(&input_path)
-                .chain_err(|| format!("opening {}", &input_path))?;
-            let output = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create_new(true)
-                .open(&unwrapped_output_path)
-                .chain_err(|| format!("opening {}", &unwrapped_output_path))?;
-            input
-                .copy_to(&output)
-                .chain_err(|| format!("copying {} to {}", input_path, unwrapped_output_path))?;
-            Ok(Self {
-                file: output,
-                copied_path: Some(unwrapped_output_path.to_string()),
-                complete: false,
-            })
-        } else {
-            let file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&input_path)
-                .chain_err(|| format!("opening {}", &input_path))?;
-            Ok(Self {
-                file,
-                copied_path: None,
-                complete: false,
-            })
-        }
-    }
-
-    fn as_file_mut(&mut self) -> &mut File {
-        &mut self.file
-    }
-
-    fn complete(&mut self) {
-        self.complete = true;
-    }
-}
-
-impl Drop for ContentFile {
-    fn drop(&mut self) {
-        if self.copied_path.is_some() && !self.complete {
-            let path = self.copied_path.as_ref().unwrap();
-            if let Err(e) = remove_file(path) {
-                eprintln!("Couldn't remove {}: {}", path, e);
+        match output_path.map(|v| v.as_str()) {
+            None => Ok(Self::InPlace(
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&input_path)
+                    .chain_err(|| format!("opening {}", &input_path))?,
+            )),
+            Some("-") => {
+                // check this here as a convenience to the caller
+                if isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")? {
+                    bail!("Refusing to write binary data to terminal");
+                }
+                // read-only for safety
+                Ok(Self::ForStdout(
+                    OpenOptions::new()
+                        .read(true)
+                        .open(&input_path)
+                        .chain_err(|| format!("opening {}", &input_path))?,
+                ))
+            }
+            Some(unwrapped_output_path) => {
+                let output_dir = Path::new(unwrapped_output_path)
+                    .parent()
+                    .chain_err(|| format!("no parent directory of {}", unwrapped_output_path))?;
+                let input = OpenOptions::new()
+                    .read(true)
+                    .open(&input_path)
+                    .chain_err(|| format!("opening {}", &input_path))?;
+                let mut output = tempfile::Builder::new()
+                    .prefix(".coreos-installer-temp-")
+                    .tempfile_in(output_dir)
+                    .chain_err(|| "creating temporary file")?;
+                input
+                    .copy_to(output.as_file_mut())
+                    .chain_err(|| format!("copying {} to temporary file", input_path))?;
+                Ok(Self::Copied((
+                    output,
+                    Path::new(unwrapped_output_path).to_path_buf(),
+                )))
             }
         }
+    }
+
+    fn is_stdout(&self) -> bool {
+        matches!(self, Self::ForStdout(_))
+    }
+
+    // Return the output file for InPlace and Copied, and the input file
+    // for ForStdout.
+    fn as_file_mut(&mut self) -> &mut File {
+        match self {
+            Self::ForStdout(ref mut file) => file,
+            Self::InPlace(ref mut file) => file,
+            Self::Copied((temp, _)) => temp.as_file_mut(),
+        }
+    }
+
+    fn complete(self) -> Result<()> {
+        match self {
+            Self::ForStdout(_) => (),
+            Self::InPlace(_) => (),
+            Self::Copied((temp, path)) => {
+                temp.persist_noclobber(&path)
+                    .map_err(|e| e.error)
+                    .chain_err(|| format!("persisting output file to {}", path.display()))?;
+            }
+        }
+        Ok(())
     }
 }
 
