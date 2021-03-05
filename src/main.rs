@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use libcoreinst::{cmdline, download, errors, install, live, osmet, source};
+use anyhow::{Context, Result};
+
+use libcoreinst::{cmdline, download, install, live, osmet, source};
 
 use cmdline::Config;
-use error_chain::quick_main;
-use errors::{Result, ResultExt};
 
-quick_main!(run);
-
-fn run() -> Result<()> {
-    let config = cmdline::parse_args().chain_err(|| "parsing arguments")?;
+fn main() -> Result<()> {
+    let config = cmdline::parse_args().context("parsing arguments")?;
 
     match config {
         Config::Download(c) => download::download(&c),

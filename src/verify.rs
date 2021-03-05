@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{bail, Context, Result};
 use std::fs::{metadata, set_permissions, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Stdio};
 use std::result;
 use tempfile::{self, TempDir};
-
-use crate::errors::*;
 
 pub struct GpgReader<R: Read> {
     _gpgdir: TempDir,
@@ -34,13 +32,12 @@ impl<R: Read> GpgReader<R> {
         let gpgdir = tempfile::Builder::new()
             .prefix("coreos-installer-")
             .tempdir()
-            .chain_err(|| "creating temporary directory")?;
-        let meta =
-            metadata(gpgdir.path()).chain_err(|| "getting metadata for temporary directory")?;
+            .context("creating temporary directory")?;
+        let meta = metadata(gpgdir.path()).context("getting metadata for temporary directory")?;
         let mut permissions = meta.permissions();
         permissions.set_mode(0o700);
         set_permissions(gpgdir.path(), permissions)
-            .chain_err(|| "setting mode for temporary directory")?;
+            .context("setting mode for temporary directory")?;
 
         // import public keys
         let keys = include_bytes!("signing-keys.asc");
@@ -52,18 +49,14 @@ impl<R: Read> GpgReader<R> {
             .arg("--import")
             .stdin(Stdio::piped())
             .spawn()
-            .chain_err(|| "running gpg --import")?;
+            .context("running gpg --import")?;
         import
             .stdin
             .as_mut()
             .unwrap()
             .write_all(keys)
-            .chain_err(|| "importing GPG keys")?;
-        if !import
-            .wait()
-            .chain_err(|| "waiting for gpg --import")?
-            .success()
-        {
+            .context("importing GPG keys")?;
+        if !import.wait().context("waiting for gpg --import")?.success() {
             bail!("gpg --import failed");
         }
 
@@ -76,16 +69,16 @@ impl<R: Read> GpgReader<R> {
             .arg("--with-colons")
             .stdout(Stdio::piped())
             .spawn()
-            .chain_err(|| "running gpg --list-keys")?;
+            .context("running gpg --list-keys")?;
         let mut list_output = String::new();
         list.stdout
             .as_mut()
             .unwrap()
             .read_to_string(&mut list_output)
-            .chain_err(|| "listing GPG keys")?;
+            .context("listing GPG keys")?;
         if !list
             .wait()
-            .chain_err(|| "waiting for gpg --list-keys")?
+            .context("waiting for gpg --list-keys")?
             .success()
         {
             bail!("gpg --list-keys failed");
@@ -115,7 +108,7 @@ impl<R: Read> GpgReader<R> {
             .arg("--check-trustdb")
             .args(trust)
             .output()
-            .chain_err(|| "running gpg --check-trustdb")?;
+            .context("running gpg --check-trustdb")?;
         if !trustdb.status.success() {
             // copy out its stderr
             eprint!("{}", String::from_utf8_lossy(&*trustdb.stderr));
@@ -129,10 +122,10 @@ impl<R: Read> GpgReader<R> {
             .create_new(true)
             .write(true)
             .open(&signature_path)
-            .chain_err(|| "creating signature file")?;
+            .context("creating signature file")?;
         signature_file
             .write_all(signature)
-            .chain_err(|| "writing signature file")?;
+            .context("writing signature file")?;
 
         // start verification
         let verify = Command::new("gpg")
@@ -144,7 +137,7 @@ impl<R: Read> GpgReader<R> {
             .arg("-")
             .stdin(Stdio::piped())
             .spawn()
-            .chain_err(|| "running gpg --verify")?;
+            .context("running gpg --verify")?;
 
         Ok(GpgReader {
             _gpgdir: gpgdir,
@@ -157,7 +150,7 @@ impl<R: Read> GpgReader<R> {
     /// verify the signature.
     pub fn consume(&mut self) -> Result<()> {
         let mut buf: [u8; 4096] = [0; 4096];
-        while self.read(&mut buf).chain_err(|| "reading signed content")? > 0 {}
+        while self.read(&mut buf).context("reading signed content")? > 0 {}
         Ok(())
     }
 }

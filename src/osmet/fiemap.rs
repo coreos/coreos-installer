@@ -17,10 +17,8 @@ use std::fs::OpenOptions;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 
-use error_chain::bail;
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-
-use crate::errors::*;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub(super) struct Extent {
@@ -33,10 +31,10 @@ pub(super) fn fiemap_path(path: &OsStr) -> Result<Vec<Extent>> {
     let file = OpenOptions::new()
         .read(true)
         .open(path)
-        .chain_err(|| format!("opening {:?}", path))?;
+        .with_context(|| format!("opening {:?}", path))?;
 
     let fd = file.as_raw_fd();
-    Ok(fiemap(fd).chain_err(|| format!("mapping {:?}", path))?)
+    Ok(fiemap(fd).with_context(|| format!("mapping {:?}", path))?)
 }
 
 /// Returns the `Extent`s associated with the given file. Note that the physical offsets are
@@ -52,7 +50,7 @@ fn fiemap(fd: RawFd) -> Result<Vec<Extent>> {
         };
 
         // just add FS_IOC_FIEMAP in the error msg; higher-level callers will provide more context
-        unsafe { ffi::ioctl::fs_ioc_fiemap(fd, &mut m).chain_err(|| "ioctl(FS_IOC_FIEMAP)")? };
+        unsafe { ffi::ioctl::fs_ioc_fiemap(fd, &mut m).context("ioctl(FS_IOC_FIEMAP)")? };
         if m.fm_mapped_extents == 0 {
             break;
         }

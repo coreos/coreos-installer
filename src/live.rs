@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use anyhow::{bail, Context, Result};
 use cpio::{write_cpio, NewcBuilder, NewcReader};
-use error_chain::bail;
 use nix::unistd::isatty;
 use openat_ext::FileExt;
 use serde::Serialize;
@@ -25,7 +25,6 @@ use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
 use crate::cmdline::*;
-use crate::errors::*;
 use crate::install::*;
 use crate::io::*;
 
@@ -55,13 +54,11 @@ pub fn iso_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     let ignition = match config.ignition {
         Some(ref ignition_path) => {
-            read(ignition_path).chain_err(|| format!("reading {}", ignition_path))?
+            read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
         None => {
             let mut data = Vec::new();
-            stdin()
-                .read_to_end(&mut data)
-                .chain_err(|| "reading stdin")?;
+            stdin().read_to_end(&mut data).context("reading stdin")?;
             data
         }
     };
@@ -107,7 +104,7 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
     let mut file = OpenOptions::new()
         .read(true)
         .open(&config.input)
-        .chain_err(|| format!("opening {}", &config.input))?;
+        .with_context(|| format!("opening {}", &config.input))?;
     let mut embed = EmbedArea::for_file(&mut file)?;
 
     embed.seek_to_start()?;
@@ -119,8 +116,8 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
     }
     stdout()
         .write_all(&extract_cpio(&buf)?)
-        .chain_err(|| "writing output")?;
-    stdout().flush().chain_err(|| "flushing output")?;
+        .context("writing output")?;
+    stdout().flush().context("flushing output")?;
     Ok(())
 }
 
@@ -140,20 +137,18 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 
 pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
     if config.output.is_none()
-        && isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")?
+        && isatty(stdout().as_raw_fd()).context("checking if stdout is a TTY")?
     {
         bail!("Refusing to write binary data to terminal");
     }
 
     let ignition = match config.ignition {
         Some(ref ignition_path) => {
-            read(ignition_path).chain_err(|| format!("reading {}", ignition_path))?
+            read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
         None => {
             let mut data = Vec::new();
-            stdin()
-                .read_to_end(&mut data)
-                .chain_err(|| "reading stdin")?;
+            stdin().read_to_end(&mut data).context("reading stdin")?;
             data
         }
     };
@@ -162,22 +157,22 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
 
     match &config.output {
         Some(output_path) => {
-            write(output_path, cpio).chain_err(|| format!("writing {}", output_path))?
+            write(output_path, cpio).with_context(|| format!("writing {}", output_path))?
         }
         None => {
-            stdout().write_all(&cpio).chain_err(|| "writing output")?;
-            stdout().flush().chain_err(|| "flushing output")?;
+            stdout().write_all(&cpio).context("writing output")?;
+            stdout().flush().context("flushing output")?;
         }
     }
     Ok(())
 }
 
 pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
-    let buf = read(&config.input).chain_err(|| format!("reading {}", config.input))?;
+    let buf = read(&config.input).with_context(|| format!("reading {}", config.input))?;
     stdout()
         .write_all(&extract_cpio(&buf)?)
-        .chain_err(|| "writing output")?;
-    stdout().flush().chain_err(|| "flushing output")?;
+        .context("writing output")?;
+    stdout().flush().context("flushing output")?;
     Ok(())
 }
 
@@ -215,11 +210,11 @@ pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
     let mut file = OpenOptions::new()
         .read(true)
         .open(&config.input)
-        .chain_err(|| format!("opening {}", &config.input))?;
+        .with_context(|| format!("opening {}", &config.input))?;
     let mut embed = KargEmbedAreas::for_file(&mut file)?;
     if config.header {
         serde_json::to_writer_pretty(std::io::stdout(), &embed)
-            .chain_err(|| "failed to serialize header")?;
+            .context("failed to serialize header")?;
     } else {
         let kargs = if config.default {
             embed.get_default_kargs()?
@@ -252,19 +247,19 @@ impl<'a> KargEmbedAreas<'a> {
         file.seek(SeekFrom::Start(
             32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
         ))
-        .chain_err(|| "seeking to karg embed header")?;
+        .context("seeking to karg embed header")?;
         // magic number
         file.read_exact(&mut buf)
-            .chain_err(|| "reading karg embed header")?;
+            .context("reading karg embed header")?;
         if buf != COREOS_KARG_EMBED_AREA_HEADER_MAGIC {
             bail!("No karg embed areas found; old or corrupted CoreOS ISO image.");
         }
         // length
         file.read_exact(&mut buf)
-            .chain_err(|| "reading karg embed header")?;
+            .context("reading karg embed header")?;
         let length: usize = u64::from_le_bytes(buf)
             .try_into()
-            .chain_err(|| "karg embed area length too large to allocate")?;
+            .context("karg embed area length too large to allocate")?;
         // sanity-check against a reasonable limit
         if length > COREOS_KARG_EMBED_AREA_MAX_SIZE {
             bail!(
@@ -274,12 +269,12 @@ impl<'a> KargEmbedAreas<'a> {
             );
         }
 
-        let metadata = file.metadata().chain_err(|| "reading metadata for ISO")?;
+        let metadata = file.metadata().context("reading metadata for ISO")?;
         let iso_size = metadata.len();
 
         // default kargs
         file.read_exact(&mut buf)
-            .chain_err(|| "reading karg embed header")?;
+            .context("reading karg embed header")?;
         let default_kargs_offset: u64 = u64::from_le_bytes(buf);
         if default_kargs_offset + (length as u64) > iso_size {
             bail!(
@@ -294,7 +289,7 @@ impl<'a> KargEmbedAreas<'a> {
         let mut kargs_offsets: Vec<u64> = Vec::new();
         while kargs_offsets.len() < COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS {
             file.read_exact(&mut buf)
-                .chain_err(|| "reading karg embed header")?;
+                .context("reading karg embed header")?;
             let offset: u64 = u64::from_le_bytes(buf);
             if offset == 0 {
                 break;
@@ -364,10 +359,10 @@ impl<'a> KargEmbedAreas<'a> {
         for offset in &self.kargs_offsets {
             self.file
                 .seek(SeekFrom::Start(*offset))
-                .chain_err(|| format!("seeking to karg area offset {}", *offset))?;
+                .with_context(|| format!("seeking to karg area offset {}", *offset))?;
             self.file
                 .write_all(&new_area)
-                .chain_err(|| format!("writing karg embed area at offset {}", *offset))?;
+                .with_context(|| format!("writing karg embed area at offset {}", *offset))?;
         }
         Ok(())
     }
@@ -377,12 +372,12 @@ impl<'a> KargEmbedAreas<'a> {
 // parts of the struct (e.g. when iterating over the offsets).
 fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Result<String> {
     file.seek(SeekFrom::Start(offset))
-        .chain_err(|| format!("seeking to karg area offset {}", offset))?;
+        .with_context(|| format!("seeking to karg area offset {}", offset))?;
     let area = {
         let mut buf = vec![0u8; area_length];
         file.read_exact(&mut buf)
-            .chain_err(|| format!("reading karg area at offset {}", offset))?;
-        String::from_utf8(buf).chain_err(|| "invalid UTF-8 in karg area")?
+            .with_context(|| format!("reading karg area at offset {}", offset))?;
+        String::from_utf8(buf).context("invalid UTF-8 in karg area")?
     };
     Ok(area.trim_end_matches('#').trim().into())
 }
@@ -407,11 +402,11 @@ impl ContentFile {
                     .read(true)
                     .write(true)
                     .open(&input_path)
-                    .chain_err(|| format!("opening {}", &input_path))?,
+                    .with_context(|| format!("opening {}", &input_path))?,
             )),
             Some("-") => {
                 // check this here as a convenience to the caller
-                if isatty(stdout().as_raw_fd()).chain_err(|| "checking if stdout is a TTY")? {
+                if isatty(stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
                     bail!("Refusing to write binary data to terminal");
                 }
                 // read-only for safety
@@ -419,24 +414,24 @@ impl ContentFile {
                     OpenOptions::new()
                         .read(true)
                         .open(&input_path)
-                        .chain_err(|| format!("opening {}", &input_path))?,
+                        .with_context(|| format!("opening {}", &input_path))?,
                 ))
             }
             Some(unwrapped_output_path) => {
                 let output_dir = Path::new(unwrapped_output_path)
                     .parent()
-                    .chain_err(|| format!("no parent directory of {}", unwrapped_output_path))?;
+                    .with_context(|| format!("no parent directory of {}", unwrapped_output_path))?;
                 let input = OpenOptions::new()
                     .read(true)
                     .open(&input_path)
-                    .chain_err(|| format!("opening {}", &input_path))?;
+                    .with_context(|| format!("opening {}", &input_path))?;
                 let mut output = tempfile::Builder::new()
                     .prefix(".coreos-installer-temp-")
                     .tempfile_in(output_dir)
-                    .chain_err(|| "creating temporary file")?;
+                    .context("creating temporary file")?;
                 input
                     .copy_to(output.as_file_mut())
-                    .chain_err(|| format!("copying {} to temporary file", input_path))?;
+                    .with_context(|| format!("copying {} to temporary file", input_path))?;
                 Ok(Self::Copied((
                     output,
                     Path::new(unwrapped_output_path).to_path_buf(),
@@ -466,7 +461,7 @@ impl ContentFile {
             Self::Copied((temp, path)) => {
                 temp.persist_noclobber(&path)
                     .map_err(|e| e.error)
-                    .chain_err(|| format!("persisting output file to {}", path.display()))?;
+                    .with_context(|| format!("persisting output file to {}", path.display()))?;
             }
         }
         Ok(())
@@ -487,27 +482,24 @@ impl<'a> EmbedArea<'a> {
         // 8 bytes little-endian: offset of embed area from start of file
         // 8 bytes little-endian: length of embed area
         file.seek(SeekFrom::Start(32768 - COREOS_IGNITION_HEADER_SIZE))
-            .chain_err(|| "seeking to embed header")?;
+            .context("seeking to embed header")?;
         // magic number
-        file.read_exact(&mut buf)
-            .chain_err(|| "reading embed header")?;
+        file.read_exact(&mut buf).context("reading embed header")?;
         if buf != COREOS_IGNITION_HEADER_MAGIC {
             bail!("Unrecognized CoreOS ISO image.");
         }
         // offset
-        file.read_exact(&mut buf)
-            .chain_err(|| "reading embed header")?;
+        file.read_exact(&mut buf).context("reading embed header")?;
         let offset = u64::from_le_bytes(buf);
         // length
-        file.read_exact(&mut buf)
-            .chain_err(|| "reading embed header")?;
+        file.read_exact(&mut buf).context("reading embed header")?;
         let length: usize = u64::from_le_bytes(buf)
             .try_into()
-            .chain_err(|| "embed area too large to allocate")?;
+            .context("embed area too large to allocate")?;
         // check file size
         if file
             .seek(SeekFrom::End(0))
-            .chain_err(|| "seeking to end of image file")?
+            .context("seeking to end of image file")?
             < offset + length as u64
         {
             bail!("Invalid CoreOS ISO image.");
@@ -522,21 +514,17 @@ impl<'a> EmbedArea<'a> {
     fn seek_to_start(&mut self) -> Result<()> {
         self.file
             .seek(SeekFrom::Start(self.offset))
-            .chain_err(|| "seeking to embed area")?;
+            .context("seeking to embed area")?;
         Ok(())
     }
 
     fn read(&mut self, buf: &mut [u8]) -> Result<()> {
-        self.file
-            .read_exact(buf)
-            .chain_err(|| "reading embed area")?;
+        self.file.read_exact(buf).context("reading embed area")?;
         Ok(())
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<()> {
-        self.file
-            .write_all(buf)
-            .chain_err(|| "writing embed area")?;
+        self.file.write_all(buf).context("writing embed area")?;
         Ok(())
     }
 
@@ -544,25 +532,24 @@ impl<'a> EmbedArea<'a> {
         let mut buf = [0u8; BUFFER_SIZE];
         self.file
             .seek(SeekFrom::Start(0))
-            .chain_err(|| "seeking to start")?;
-        copy_exactly_n(&mut self.file, writer, self.offset, &mut buf)
-            .chain_err(|| "copying file")?;
+            .context("seeking to start")?;
+        copy_exactly_n(&mut self.file, writer, self.offset, &mut buf).context("copying file")?;
         if cpio.len() > self.length {
             bail!("buffer larger than embed area");
         }
-        writer.write_all(cpio).chain_err(|| "writing embed area")?;
+        writer.write_all(cpio).context("writing embed area")?;
         let zeroes = vec![0; self.length - cpio.len()];
-        writer.write_all(&zeroes).chain_err(|| "writing zeros")?;
+        writer.write_all(&zeroes).context("writing zeros")?;
         self.file
             .seek(SeekFrom::Start(self.offset + self.length as u64))
-            .chain_err(|| "seeking to end of embed area")?;
+            .context("seeking to end of embed area")?;
         let mut write_buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
         copy(
             &mut BufReader::with_capacity(BUFFER_SIZE, self.file),
             &mut write_buf,
         )
-        .chain_err(|| "copying file")?;
-        write_buf.flush().chain_err(|| "flushing output")?;
+        .context("copying file")?;
+        write_buf.flush().context("flushing output")?;
         Ok(())
     }
 
@@ -589,14 +576,14 @@ fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
     // kernel requires CRC32: https://www.kernel.org/doc/Documentation/xz.txt
     let encoder = XzEncoder::new_stream(
         &mut result,
-        Stream::new_easy_encoder(9, Check::Crc32).chain_err(|| "creating XZ encoder")?,
+        Stream::new_easy_encoder(9, Check::Crc32).context("creating XZ encoder")?,
     );
     let mut input_files = vec![(
         // S_IFREG | 0644
         NewcBuilder::new(FILENAME).mode(0o100_644),
         Cursor::new(ignition),
     )];
-    write_cpio(input_files.drain(..), encoder).chain_err(|| "writing CPIO archive")?;
+    write_cpio(input_files.drain(..), encoder).context("writing CPIO archive")?;
     Ok(result.into_inner())
 }
 
@@ -607,7 +594,7 @@ fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
     // with gzip
     let mut decompressor = DecompressReader::new(BufReader::new(buf))?;
     loop {
-        let mut reader = NewcReader::new(decompressor).chain_err(|| "reading CPIO entry")?;
+        let mut reader = NewcReader::new(decompressor).context("reading CPIO entry")?;
         let entry = reader.entry();
         if entry.is_trailer() {
             bail!("couldn't find Ignition config in archive");
@@ -616,12 +603,10 @@ fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
             let mut result = Vec::with_capacity(entry.file_size() as usize);
             reader
                 .read_to_end(&mut result)
-                .chain_err(|| "reading CPIO entry contents")?;
+                .context("reading CPIO entry contents")?;
             return Ok(result);
         }
-        decompressor = reader
-            .finish()
-            .chain_err(|| "finishing reading CPIO entry")?;
+        decompressor = reader.finish().context("finishing reading CPIO entry")?;
     }
 }
 

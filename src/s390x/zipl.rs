@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{bail, Context, Result};
 use regex::RegexBuilder;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use walkdir::WalkDir;
-
-use crate::errors::*;
 
 /////////////////////////////////////////////////////////////////////////////
 // IBM Z Bootloader Support
@@ -59,7 +57,7 @@ pub fn install_bootloader<P: AsRef<Path>>(
         .arg("-n")
         .stdout(Stdio::null())
         .status()
-        .chain_err(|| format!("failed to execute zipl on {}", disk))?;
+        .with_context(|| format!("failed to execute zipl on {}", disk))?;
     if !status.success() {
         bail!("couldn't install bootloader on {}", disk);
     }
@@ -69,7 +67,7 @@ pub fn install_bootloader<P: AsRef<Path>>(
         .arg(disk)
         .stdout(Stdio::null())
         .status()
-        .chain_err(|| format!("failed to execute chreipl on {}", disk))?;
+        .with_context(|| format!("failed to execute chreipl on {}", disk))?;
     if !status.success() {
         bail!("couldn't set {} as boot device", disk);
     }
@@ -116,7 +114,7 @@ fn get_initramfs_path<P: AsRef<Path>>(boot: P) -> Result<PathBuf> {
 
 fn get_boot_kargs<P: AsRef<Path>>(bls_config: P) -> Result<String> {
     let contents = read_to_string(&bls_config)
-        .chain_err(|| format!("reading {}", bls_config.as_ref().display()))?;
+        .with_context(|| format!("reading {}", bls_config.as_ref().display()))?;
     // read kargs from options line
     let pt = r"^options (?P<v>.+)$";
     let opts = RegexBuilder::new(pt)
@@ -124,10 +122,10 @@ fn get_boot_kargs<P: AsRef<Path>>(bls_config: P) -> Result<String> {
         .build()
         .unwrap()
         .captures(&contents)
-        .chain_err(|| format!("capturing {:?}", pt))?
+        .with_context(|| format!("capturing {:?}", pt))?
         .name("v")
         .map(|v| v.as_str())
-        .chain_err(|| format!("matching {:?}", pt))?;
+        .with_context(|| format!("matching {:?}", pt))?;
     // filter out variable substitutions such as $ignition_firstboot
     let opts = RegexBuilder::new(r"(^| )\$[a-zA-Z0-9_]+")
         .build()

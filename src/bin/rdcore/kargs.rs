@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use libcoreinst::errors::*;
+use anyhow::{Context, Result};
+
 use libcoreinst::install::*;
 
 use crate::cmdline::*;
@@ -37,7 +38,7 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
 
         Ok(new_options)
     })
-    .chain_err(|| "visiting BLS options")?;
+    .context("visiting BLS options")?;
 
     Ok(())
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{anyhow, bail, Context, Result};
 use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::num::NonZeroU32;
@@ -20,7 +20,6 @@ use std::os::unix::io::AsRawFd;
 use std::process::{Command, Stdio};
 
 use crate::blockdev::{get_sector_size, udev_settle};
-use crate::errors::*;
 use crate::runcmd;
 use crate::s390x::dasd::{partitions_from_gpt_header, Range};
 use crate::util::*;
@@ -106,12 +105,12 @@ fn bus_id(dasd: &str) -> Result<String> {
         .arg(dasd)
         .stderr(Stdio::inherit())
         .output()
-        .chain_err(|| format!("executing lszdev on {}", dasd))?;
+        .with_context(|| format!("executing lszdev on {}", dasd))?;
     if !cmd.status.success() {
         bail!("lszdev on {} failed", dasd);
     }
     Ok(std::str::from_utf8(&cmd.stdout)
-        .chain_err(|| "decoding lszdev output")?
+        .context("decoding lszdev output")?
         .trim_end()
         .to_string())
 }
@@ -123,7 +122,7 @@ fn bus_id(dasd: &str) -> Result<String> {
 fn is_formatted(dasd: &str) -> Result<bool> {
     let id = bus_id(dasd)?;
     let path = format!("/sys/bus/ccw/devices/{}/status", id);
-    let contents = read_to_string(&path).chain_err(|| format!("reading {}", path))?;
+    let contents = read_to_string(&path).with_context(|| format!("reading {}", path))?;
     Ok(!contents.contains("unformatted"))
 }
 
@@ -179,7 +178,8 @@ fn low_level_format(dasd: &str) -> Result<()> {
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
 fn default_format(dasd: &str) -> Result<()> {
     eprintln!("Auto-partitioning {}", dasd);
-    runcmd!("fdasd", "-a", "-s", dasd).chain_err(|| format!("auto-formatting {} failed", dasd))?;
+    runcmd!("fdasd", "-a", "-s", dasd)
+        .with_context(|| format!("auto-formatting {} failed", dasd))?;
     udev_settle()?;
     Ok(())
 }
@@ -198,18 +198,14 @@ fn try_format(dasd: &str, config: &str) -> Result<()> {
         .arg(dasd)
         .stdin(Stdio::piped())
         .spawn()
-        .chain_err(|| "failed to execute fdasd")?;
+        .context("failed to execute fdasd")?;
     child
         .stdin
         .as_mut()
-        .chain_err(|| "couldn't open fdasd stdin")?
+        .context("couldn't open fdasd stdin")?
         .write_all(config.as_bytes())
-        .chain_err(|| "couldn't write fdasd stdin")?;
-    if !child
-        .wait()
-        .chain_err(|| "couldn't wait on fdasd")?
-        .success()
-    {
+        .context("couldn't write fdasd stdin")?;
+    if !child.wait().context("couldn't wait on fdasd")?.success() {
         bail!("couldn't format {} based on:\n{}", dasd, config);
     }
     udev_settle()?;
@@ -221,9 +217,8 @@ fn get_sectors_per_track(file: &File) -> Result<NonZeroU32> {
     let fd = file.as_raw_fd();
     let mut geo: ioctl::hd_geometry = Default::default();
     match unsafe { ioctl::hdio_getgeo(fd, &mut geo) } {
-        Ok(_) => {
-            NonZeroU32::new(geo.sectors.into()).ok_or_else(|| "found sectors/track of zero".into())
-        }
+        Ok(_) => NonZeroU32::new(geo.sectors.into())
+            .ok_or_else(|| anyhow!("found sectors/track of zero")),
         Err(e) => Err(Error::with_chain(e, "getting disk geometry")),
     }
 }
