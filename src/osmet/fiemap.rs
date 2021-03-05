@@ -17,6 +17,7 @@ use std::fs::OpenOptions;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 
+use error_chain::bail;
 use serde::{Deserialize, Serialize};
 
 use crate::errors::*;
@@ -63,18 +64,18 @@ fn fiemap(fd: RawFd) -> Result<Vec<Extent>> {
             // investigate if they do occur, and (2) we don't end up in scenarios where lots of
             // extents fall in those buckets and we end up with hyperinflated osmet binaries.
             if extent.fe_flags & ffi::FIEMAP_EXTENT_NOT_ALIGNED > 0 {
-                return Err("extent not aligned".into());
+                bail!("extent not aligned");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_MERGED > 0 {
-                return Err("file does not support extents".into());
+                bail!("file does not support extents");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_ENCODED > 0 {
-                return Err("extent encoded".into());
+                bail!("extent encoded");
             // the ones below this, we do not expect to hit on a "dead" ro rootfs
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_DELALLOC > 0 {
-                return Err("extent not allocated yet".into());
+                bail!("extent not allocated yet");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_UNWRITTEN > 0 {
-                return Err("extent preallocated".into());
+                bail!("extent preallocated");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_UNKNOWN > 0 {
-                return Err("extent inaccessible".into());
+                bail!("extent inaccessible");
             }
 
             extents.push(Extent {

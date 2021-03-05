@@ -83,11 +83,11 @@ impl Disk {
         // mount it
         match &part.fstype {
             Some(fstype) => Mount::try_mount(&part.path, &fstype, flags),
-            None => Err(format!(
+            None => bail!(
                 "couldn't get filesystem type of {} device for {}",
-                label, self.path
-            )
-            .into()),
+                label,
+                self.path
+            ),
         }
     }
 
@@ -913,9 +913,7 @@ pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
     if !Path::new("/run/udev/control").exists() {
-        return Err(
-            "udevd socket missing; are we running in a container without /run/udev mounted?".into(),
-        );
+        bail!("udevd socket missing; are we running in a container without /run/udev mounted?");
     }
 
     // There's a potential window after rereading the partition table where

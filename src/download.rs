@@ -97,7 +97,7 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
 fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Result<()> {
     // ensure we have something to check
     if source.signature.is_none() {
-        return Err("no signature available; can't check existing file".into());
+        bail!("no signature available; can't check existing file");
     }
     let signature = source.signature.as_ref().unwrap();
 
@@ -111,7 +111,7 @@ fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Re
         .read_to_end(&mut buf)
         .chain_err(|| format!("reading {}", sig_path.display()))?;
     if &buf != signature {
-        return Err("signature file doesn't match source".into());
+        bail!("signature file doesn't match source");
     }
 
     // open image file
