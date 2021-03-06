@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{bail, Context, Result};
 use gptman::{GPTPartitionEntry, GPT};
 use std::fs::File;
 use std::io::{self, copy, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
@@ -20,7 +20,6 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use crate::blockdev::SavedPartitions;
-use crate::errors::*;
 use crate::io::{copy_exactly_n, BUFFER_SIZE};
 use crate::s390x::eckd::*;
 use crate::s390x::fba::*;
@@ -49,14 +48,14 @@ fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
     let device = device.as_ref();
     let device = device
         .canonicalize()
-        .chain_err(|| format!("getting absolute path to {}", device.display()))?
+        .with_context(|| format!("getting absolute path to {}", device.display()))?
         .file_name()
-        .chain_err(|| format!("getting name of {}", device.display()))?
+        .with_context(|| format!("getting name of {}", device.display()))?
         .to_string_lossy()
         .to_string();
     let devtype_path = format!("/sys/class/block/{}/device/devtype", device);
-    let devtype_str =
-        std::fs::read_to_string(&devtype_path).chain_err(|| format!("reading {}", devtype_path))?;
+    let devtype_str = std::fs::read_to_string(&devtype_path)
+        .with_context(|| format!("reading {}", devtype_path))?;
     let devtype = match devtype_str.starts_with("3390/") {
         true => DasdType::Eckd,
         false => DasdType::Fba,
@@ -112,19 +111,18 @@ pub fn image_copy_s390x(
         }
         if range.in_offset > cursor {
             copy_exactly_n(source, sink, range.in_offset - cursor, &mut buf)
-                .chain_err(|| "sinking input data")?;
+                .context("sinking input data")?;
             cursor = range.in_offset;
         }
         dest.seek(SeekFrom::Start(range.out_offset))
-            .chain_err(|| "seeking output")?;
-        copy_exactly_n(source, &mut dest, range.length, &mut buf)
-            .chain_err(|| "copying partition")?;
+            .context("seeking output")?;
+        copy_exactly_n(source, &mut dest, range.length, &mut buf).context("copying partition")?;
         cursor += range.length;
     }
 
     // close out the stream
-    copy(source, sink).chain_err(|| "reading remainder of stream")?;
-    dest.flush().chain_err(|| "flushing data to disk")?;
+    copy(source, sink).context("reading remainder of stream")?;
+    dest.flush().context("flushing data to disk")?;
 
     Ok(())
 }
@@ -134,7 +132,7 @@ pub(crate) fn partitions_from_gpt_header(
     header: &[u8],
 ) -> Result<Vec<GPTPartitionEntry>> {
     let gpt = GPT::read_from(&mut Cursor::new(header), bytes_per_block)
-        .chain_err(|| "reading GPT of source image")?;
+        .context("reading GPT of source image")?;
     let mut partitions = gpt
         .iter()
         .filter(|(_, pt)| pt.is_used())

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use anyhow::{Context, Result};
 use mbrman::{MBRPartitionEntry, CHS, MBR};
 use std::convert::TryInto;
 use std::fs::File;
 
 use crate::blockdev::get_sector_size;
-use crate::errors::*;
 use crate::s390x::dasd::{partitions_from_gpt_header, Range};
 
 pub(crate) fn fba_make_partitions(
@@ -29,7 +29,7 @@ pub(crate) fn fba_make_partitions(
     let partitions = partitions_from_gpt_header(bytes_per_block as u64, first_mb)?;
     let mut ranges = Vec::new();
     let mut mbr = MBR::new_from(device, bytes_per_block, rand::random())
-        .chain_err(|| format!("creating new partition table for {}", dasd))?;
+        .with_context(|| format!("creating new partition table for {}", dasd))?;
 
     for (idx, pt) in partitions.iter().enumerate() {
         let blocks = pt.ending_lba - pt.starting_lba + 1;
@@ -44,7 +44,7 @@ pub(crate) fn fba_make_partitions(
             first_chs: CHS::empty(),
             sys: 0x83, // MBR_LINUX_DATA_PARTITION
             last_chs: CHS::empty(),
-            starting_lba: pt.starting_lba.try_into().chain_err(|| {
+            starting_lba: pt.starting_lba.try_into().with_context(|| {
                 format!(
                     "malformed image: pt #{} starting lba is {}",
                     idx + 1,
@@ -53,10 +53,10 @@ pub(crate) fn fba_make_partitions(
             })?,
             sectors: blocks
                 .try_into()
-                .chain_err(|| format!("malformed image: pt #{} blocks: {}", idx + 1, blocks))?,
+                .with_context(|| format!("malformed image: pt #{} blocks: {}", idx + 1, blocks))?,
         };
     }
     mbr.write_into(device)
-        .chain_err(|| format!("writing partition table to {}", dasd))?;
+        .with_context(|| format!("writing partition table to {}", dasd))?;
     Ok(ranges)
 }

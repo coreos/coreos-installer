@@ -15,7 +15,6 @@
 pub mod blockdev;
 pub mod cmdline;
 pub mod download;
-pub mod errors;
 pub mod install;
 pub mod io;
 pub mod live;

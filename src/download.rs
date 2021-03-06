@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use anyhow::{anyhow, bail, Context, Result};
 use byte_unit::Byte;
-use error_chain::bail;
 use nix::unistd::isatty;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{self, copy, stderr, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
@@ -25,7 +25,6 @@ use std::time::{Duration, Instant};
 
 use crate::blockdev::{detect_formatted_sector_size, get_gpt_size, SavedPartitions};
 use crate::cmdline::*;
-use crate::errors::*;
 use crate::io::*;
 use crate::source::*;
 use crate::verify::*;
@@ -97,7 +96,7 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
 fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Result<()> {
     // ensure we have something to check
     if source.signature.is_none() {
-        return Err("no signature available; can't check existing file".into());
+        bail!("no signature available; can't check existing file");
     }
     let signature = source.signature.as_ref().unwrap();
 
@@ -105,20 +104,20 @@ fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Re
     let mut sig_file = OpenOptions::new()
         .read(true)
         .open(sig_path)
-        .chain_err(|| format!("opening {}", sig_path.display()))?;
+        .with_context(|| format!("opening {}", sig_path.display()))?;
     let mut buf = Vec::new();
     sig_file
         .read_to_end(&mut buf)
-        .chain_err(|| format!("reading {}", sig_path.display()))?;
+        .with_context(|| format!("reading {}", sig_path.display()))?;
     if &buf != signature {
-        return Err("signature file doesn't match source".into());
+        bail!("signature file doesn't match source");
     }
 
     // open image file
     let mut file = OpenOptions::new()
         .read(true)
         .open(path)
-        .chain_err(|| format!("opening {}", path.display()))?;
+        .with_context(|| format!("opening {}", path.display()))?;
 
     // perform GPG verification
     GpgReader::new(&mut file, signature)?.consume()?;
@@ -139,7 +138,7 @@ fn write_image_and_sig(
         .create(true)
         .truncate(true)
         .open(path)
-        .chain_err(|| format!("opening {}", path.display()))?;
+        .with_context(|| format!("opening {}", path.display()))?;
 
     // download and verify image
     // don't check sector size
@@ -160,10 +159,10 @@ fn write_image_and_sig(
             .create(true)
             .truncate(true)
             .open(sig_path)
-            .chain_err(|| format!("opening {}", sig_path.display()))?;
+            .with_context(|| format!("opening {}", sig_path.display()))?;
         sig_dest
             .write_all(signature)
-            .chain_err(|| "writing signature data")?;
+            .context("writing signature data")?;
     }
 
     Ok(())
@@ -222,7 +221,7 @@ where
     let mut first_mb = [0u8; 1024 * 1024];
     limit_reader
         .read_exact(&mut first_mb)
-        .chain_err(|| "decoding first MiB of image")?;
+        .context("decoding first MiB of image")?;
     // Were we asked to check sector size?
     if let Some(expected) = expected_sector_size {
         // Can we derive one from source data?
@@ -242,7 +241,7 @@ where
     image_copy(&first_mb, &mut limit_reader, dest, dest_path, saved)?;
 
     // finish I/O before closing the progress bar
-    dest.sync_all().chain_err(|| "syncing data to disk")?;
+    dest.sync_all().context("syncing data to disk")?;
 
     Ok(())
 }
@@ -262,15 +261,15 @@ pub fn image_copy_default(
         Some(saved) => {
             saved
                 .overwrite(dest)
-                .chain_err(|| "overwriting disk partition table")?;
+                .context("overwriting disk partition table")?;
             dest.seek(SeekFrom::Start(1024 * 1024))
-                .chain_err(|| "seeking disk")?;
+                .context("seeking disk")?;
         }
         None => dest
             .write_all(&[0u8; 1024 * 1024])
-            .chain_err(|| "clearing first MiB of disk")?,
+            .context("clearing first MiB of disk")?,
     };
-    dest.sync_all().chain_err(|| "syncing data to disk")?;
+    dest.sync_all().context("syncing data to disk")?;
 
     // do the rest of the copy
     // This physically writes any runs of zeroes, rather than sparsifying,
@@ -288,28 +287,31 @@ pub fn image_copy_default(
     // Amortize write overhead.  The decompressor will produce bytes in
     // whatever chunk size it chooses.
     let mut buf_dest = BufWriter::with_capacity(BUFFER_SIZE, dest);
-    copy(source, &mut buf_dest).chain_err(|| "decoding and writing image")?;
-    // we can't chain_err() because of lifetime issues
-    let dest = buf_dest.into_inner().map_err(|_| "flushing data to disk")?;
+    copy(source, &mut buf_dest).context("decoding and writing image")?;
+    // we can't retain the original error via context() because of lifetime
+    // issues
+    let dest = buf_dest
+        .into_inner()
+        .map_err(|_| anyhow!("flushing data to disk"))?;
 
     // verify_reader has now checked the signature, so fill in the first MiB
     let offset = match saved {
         Some(saved) if saved.is_saved() => {
             // copy MBR
             dest.seek(SeekFrom::Start(0))
-                .chain_err(|| "seeking disk to MBR")?;
+                .context("seeking disk to MBR")?;
             dest.write_all(&first_mb[0..saved.get_sector_size() as usize])
-                .chain_err(|| "writing MBR")?;
+                .context("writing MBR")?;
 
             // write merged GPT
             let mut cursor = Cursor::new(first_mb);
             saved
                 .merge(&mut cursor, dest)
-                .chain_err(|| "writing updated GPT")?;
+                .context("writing updated GPT")?;
 
             // copy all remaining bytes from first_mb (probably not
             // important but can't hurt)
-            get_gpt_size(dest).chain_err(|| "getting GPT size")?
+            get_gpt_size(dest).context("getting GPT size")?
         }
         _ => {
             // copy all of first_mb
@@ -318,9 +320,9 @@ pub fn image_copy_default(
     };
     // do the copy
     dest.seek(SeekFrom::Start(offset))
-        .chain_err(|| format!("seeking disk to offset {}", offset))?;
+        .with_context(|| format!("seeking disk to offset {}", offset))?;
     dest.write_all(&first_mb[offset as usize..first_mb.len()])
-        .chain_err(|| "writing first MiB of disk")?;
+        .context("writing first MiB of disk")?;
 
     Ok(())
 }
@@ -332,22 +334,22 @@ pub fn download_to_tempfile(url: &str) -> Result<File> {
     let mut resp = client
         .get(url)
         .send()
-        .chain_err(|| format!("sending request for '{}'", url))?
+        .with_context(|| format!("sending request for '{}'", url))?
         .error_for_status()
-        .chain_err(|| format!("fetching '{}'", url))?;
+        .with_context(|| format!("fetching '{}'", url))?;
 
     let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &mut f);
     copy(
         &mut BufReader::with_capacity(BUFFER_SIZE, &mut resp),
         &mut writer,
     )
-    .chain_err(|| format!("couldn't copy '{}'", url))?;
+    .with_context(|| format!("couldn't copy '{}'", url))?;
     writer
         .flush()
-        .chain_err(|| format!("couldn't write '{}' to disk", url))?;
+        .with_context(|| format!("couldn't write '{}' to disk", url))?;
     drop(writer);
     f.seek(SeekFrom::Start(0))
-        .chain_err(|| format!("rewinding file for '{}'", url))?;
+        .with_context(|| format!("rewinding file for '{}'", url))?;
 
     Ok(f)
 }
@@ -449,7 +451,6 @@ impl<'a, R: Read> Drop for ProgressReader<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use error_chain::ChainedError;
     use gptman::{GPTPartitionEntry, GPT};
     use std::io::{Seek, SeekFrom};
     use uuid::Uuid;
@@ -497,10 +498,12 @@ mod tests {
             Some(&saved),
             None,
         )
-        .unwrap_err()
-        .display_chain()
-        .to_string();
-        assert!(err.contains("collision with partition"), "{}", err);
+        .unwrap_err();
+        assert!(
+            format!("{:#}", err).contains("collision with partition"),
+            "incorrect error: {:#}",
+            err
+        );
 
         dest.seek(SeekFrom::Start(offset)).unwrap();
         let mut buf = vec![0u8; precious.len()];

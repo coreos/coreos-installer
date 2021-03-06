@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use anyhow::{bail, Context, Result};
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
-use error_chain::bail;
 use reqwest::Url;
 use std::fs::{File, OpenOptions};
 use std::num::NonZeroU32;
@@ -21,7 +21,6 @@ use std::path::Path;
 
 use crate::blockdev::*;
 use crate::download::*;
-use crate::errors::*;
 use crate::io::IgnitionHash;
 #[cfg(target_arch = "s390x")]
 use crate::s390x::dasd_try_get_sector_size;
@@ -852,7 +851,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
     // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
     #[allow(clippy::match_bool, clippy::match_single_binding)]
     let sector_size = match is_dasd(&device)
-        .chain_err(|| format!("checking whether {} is an IBM DASD disk", device))?
+        .with_context(|| format!("checking whether {} is an IBM DASD disk", device))?
     {
         #[cfg(target_arch = "s390x")]
         true => dasd_try_get_sector_size(&device).transpose(),
@@ -860,7 +859,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
     };
     let sector_size = sector_size
         .unwrap_or_else(|| get_sector_size_for_path(Path::new(&device)))
-        .chain_err(|| format!("getting sector size of {}", &device))?
+        .with_context(|| format!("getting sector size of {}", &device))?
         .get();
 
     let location: Box<dyn ImageLocation> = if matches.is_present("image-file") {
@@ -869,7 +868,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         ))
     } else if matches.is_present("image-url") {
         let image_url = Url::parse(matches.value_of("image-url").expect("image-url missing"))
-            .chain_err(|| "parsing image URL")?;
+            .context("parsing image URL")?;
         Box::new(UrlLocation::new(&image_url))
     } else if matches.is_present("offline") {
         match OsmetLocation::new(architecture, sector_size)? {
@@ -903,7 +902,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
                 }
             };
             let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
-                Some(Url::parse(stream_base_url).chain_err(|| "parsing stream base URL")?)
+                Some(Url::parse(stream_base_url).context("parsing stream base URL")?)
             } else {
                 None
             };
@@ -924,7 +923,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
                 OpenOptions::new()
                     .read(true)
                     .open(file)
-                    .chain_err(|| format!("opening source Ignition config {}", file))
+                    .with_context(|| format!("opening source Ignition config {}", file))
             })
             .transpose()?
     } else if matches.is_present("ignition-url") {
@@ -937,7 +936,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
                 bail!("unknown protocol for URL '{}'", url);
             }
             download_to_tempfile(url)
-                .chain_err(|| format!("downloading source Ignition config {}", url))
+                .with_context(|| format!("downloading source Ignition config {}", url))
         }).transpose()?
     } else {
         None
@@ -964,7 +963,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             .value_of("ignition-hash")
             .map(IgnitionHash::try_parse)
             .transpose()
-            .chain_err(|| "parsing Ignition config hash")?,
+            .context("parsing Ignition config hash")?,
         platform: matches.value_of("platform").map(String::from),
         firstboot_kargs: matches.value_of("firstboot-kargs").map(String::from),
         append_kargs: matches
@@ -999,7 +998,7 @@ fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<Part
     for glob in labels {
         let filter = Label(
             glob::Pattern::new(glob)
-                .chain_err(|| format!("couldn't parse label glob '{}'", glob))?,
+                .with_context(|| format!("couldn't parse label glob '{}'", glob))?,
         );
         filters.push(filter);
     }
@@ -1011,9 +1010,9 @@ fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<Part
             _ => Ok(Some(
                 NonZeroU32::new(
                     i.parse()
-                        .chain_err(|| format!("couldn't parse partition index '{}'", i))?,
+                        .with_context(|| format!("couldn't parse partition index '{}'", i))?,
                 )
-                .chain_err(|| "partition index cannot be zero")?,
+                .context("partition index cannot be zero")?,
             )),
         }
     };
@@ -1045,11 +1044,11 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
     // arguments, so we manually prioritize modes.
     let location: Box<dyn ImageLocation> = if matches.is_present("image-url") {
         let image_url = Url::parse(matches.value_of("image-url").expect("image-url missing"))
-            .chain_err(|| "parsing image URL")?;
+            .context("parsing image URL")?;
         Box::new(UrlLocation::new(&image_url))
     } else {
         let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
-            Some(Url::parse(stream_base_url).chain_err(|| "parsing stream base URL")?)
+            Some(Url::parse(stream_base_url).context("parsing stream base URL")?)
         } else {
             None
         };
@@ -1078,7 +1077,7 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
 
 fn parse_list_stream(matches: &ArgMatches) -> Result<Config> {
     let stream_base_url = if let Some(base_url) = matches.value_of("stream-base-url") {
-        Some(Url::parse(base_url).chain_err(|| "parsing stream base URL")?)
+        Some(Url::parse(base_url).context("parsing stream base URL")?)
     } else {
         None
     };

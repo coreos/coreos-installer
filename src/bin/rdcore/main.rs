@@ -17,17 +17,12 @@ mod kargs;
 mod rootmap;
 mod stream_hash;
 
-use libcoreinst::errors;
-
-use error_chain::quick_main;
-use errors::{Result, ResultExt};
+use anyhow::{Context, Result};
 
 use crate::cmdline::*;
 
-quick_main!(run);
-
-fn run() -> Result<()> {
-    let config = cmdline::parse_args().chain_err(|| "parsing arguments")?;
+fn main() -> Result<()> {
+    let config = cmdline::parse_args().context("parsing arguments")?;
 
     match config {
         Config::Kargs(c) => kargs::kargs(&c),

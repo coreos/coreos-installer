@@ -17,9 +17,8 @@ use std::fs::OpenOptions;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-
-use crate::errors::*;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub(super) struct Extent {
@@ -32,10 +31,10 @@ pub(super) fn fiemap_path(path: &OsStr) -> Result<Vec<Extent>> {
     let file = OpenOptions::new()
         .read(true)
         .open(path)
-        .chain_err(|| format!("opening {:?}", path))?;
+        .with_context(|| format!("opening {:?}", path))?;
 
     let fd = file.as_raw_fd();
-    Ok(fiemap(fd).chain_err(|| format!("mapping {:?}", path))?)
+    Ok(fiemap(fd).with_context(|| format!("mapping {:?}", path))?)
 }
 
 /// Returns the `Extent`s associated with the given file. Note that the physical offsets are
@@ -51,7 +50,7 @@ fn fiemap(fd: RawFd) -> Result<Vec<Extent>> {
         };
 
         // just add FS_IOC_FIEMAP in the error msg; higher-level callers will provide more context
-        unsafe { ffi::ioctl::fs_ioc_fiemap(fd, &mut m).chain_err(|| "ioctl(FS_IOC_FIEMAP)")? };
+        unsafe { ffi::ioctl::fs_ioc_fiemap(fd, &mut m).context("ioctl(FS_IOC_FIEMAP)")? };
         if m.fm_mapped_extents == 0 {
             break;
         }
@@ -63,18 +62,18 @@ fn fiemap(fd: RawFd) -> Result<Vec<Extent>> {
             // investigate if they do occur, and (2) we don't end up in scenarios where lots of
             // extents fall in those buckets and we end up with hyperinflated osmet binaries.
             if extent.fe_flags & ffi::FIEMAP_EXTENT_NOT_ALIGNED > 0 {
-                return Err("extent not aligned".into());
+                bail!("extent not aligned");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_MERGED > 0 {
-                return Err("file does not support extents".into());
+                bail!("file does not support extents");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_ENCODED > 0 {
-                return Err("extent encoded".into());
+                bail!("extent encoded");
             // the ones below this, we do not expect to hit on a "dead" ro rootfs
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_DELALLOC > 0 {
-                return Err("extent not allocated yet".into());
+                bail!("extent not allocated yet");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_UNWRITTEN > 0 {
-                return Err("extent preallocated".into());
+                bail!("extent preallocated");
             } else if extent.fe_flags & ffi::FIEMAP_EXTENT_UNKNOWN > 0 {
-                return Err("extent inaccessible".into());
+                bail!("extent inaccessible");
             }
 
             extents.push(Extent {

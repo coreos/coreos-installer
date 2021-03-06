@@ -16,9 +16,9 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read};
 use std::path::Path;
 
+use anyhow::{anyhow, bail, Context, Result};
 use bincode::Options;
 use clap::crate_version;
-use error_chain::bail;
 use serde::{Deserialize, Serialize};
 use xz2::read::XzDecoder;
 
@@ -73,7 +73,7 @@ pub(super) fn osmet_file_write(
     osmet: Osmet,
     mut xzpacked_image: File,
 ) -> Result<()> {
-    validate_osmet(&osmet).chain_err(|| "validating before writing")?;
+    validate_osmet(&osmet).context("validating before writing")?;
 
     // would be nice to opportunistically do open(O_TMPFILE) then linkat here, but the tempfile API
     // doesn't provide that API: https://github.com/Stebalien/tempfile/pull/31
@@ -87,18 +87,18 @@ pub(super) fn osmet_file_write(
 
     bincoder()
         .serialize_into(&mut f, &header)
-        .chain_err(|| "failed to serialize osmet file header")?;
+        .context("failed to serialize osmet file header")?;
     bincoder()
         .serialize_into(&mut f, &osmet)
-        .chain_err(|| "failed to serialize osmet")?;
+        .context("failed to serialize osmet")?;
 
     // and followed by the xz-compressed packed image
     copy(&mut xzpacked_image, &mut f)?;
 
     f.into_inner()
-        .chain_err(|| "failed to flush write buffer")?
+        .context("failed to flush write buffer")?
         .persist(path)
-        .chain_err(|| format!("failed to persist tempfile to {:?}", path))?;
+        .with_context(|| format!("failed to persist tempfile to {:?}", path))?;
 
     Ok(())
 }
@@ -107,7 +107,7 @@ pub(super) fn osmet_file_write(
 fn read_and_check_header(mut f: &mut impl Read) -> Result<OsmetFileHeader> {
     let header: OsmetFileHeader = bincoder()
         .deserialize_from(&mut f)
-        .chain_err(|| "failed to deserialize osmet file")?;
+        .context("failed to deserialize osmet file")?;
     if header.magic != OSMET_FILE_HEADER_MAGIC {
         bail!("not an OSMET file!");
     }
@@ -124,7 +124,7 @@ pub(super) fn osmet_file_read_header(path: &Path) -> Result<OsmetFileHeader> {
         OpenOptions::new()
             .read(true)
             .open(path)
-            .chain_err(|| format!("opening {:?}", path))?,
+            .with_context(|| format!("opening {:?}", path))?,
     );
 
     Ok(read_and_check_header(&mut f)?)
@@ -136,15 +136,15 @@ pub(super) fn osmet_file_read(path: &Path) -> Result<(OsmetFileHeader, Osmet, im
         OpenOptions::new()
             .read(true)
             .open(path)
-            .chain_err(|| format!("opening {:?}", path))?,
+            .with_context(|| format!("opening {:?}", path))?,
     );
 
     let header = read_and_check_header(&mut f)?;
     let osmet: Osmet = bincoder()
         .deserialize_from(&mut f)
-        .chain_err(|| "failed to deserialize osmet file")?;
+        .context("failed to deserialize osmet file")?;
 
-    validate_osmet(&osmet).chain_err(|| "validating after reading")?;
+    validate_osmet(&osmet).context("validating after reading")?;
     Ok((header, osmet, XzDecoder::new(f)))
 }
 
@@ -165,9 +165,10 @@ fn validate_osmet(osmet: &Osmet) -> Result<()> {
         }
         cursor = cursor
             .checked_add(
-                verify_canonical(&partition.mappings).chain_err(|| format!("partition {}", i))?,
+                verify_canonical(&partition.mappings)
+                    .with_context(|| format!("partition {}", i))?,
             )
-            .ok_or_else(|| format!("overflow after partition {}", i))?;
+            .ok_or_else(|| anyhow!("overflow after partition {}", i))?;
         if cursor > partition.end_offset {
             bail!(
                 "cursor past partition end: {} vs {}",
@@ -195,7 +196,7 @@ fn verify_canonical(mappings: &[Mapping]) -> Result<u64> {
             .extent
             .physical
             .checked_add(mapping.extent.length)
-            .ok_or_else(|| format!("overflow after mapping {}", i))?;
+            .ok_or_else(|| anyhow!("overflow after mapping {}", i))?;
     }
 
     Ok(cursor)

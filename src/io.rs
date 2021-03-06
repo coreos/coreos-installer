@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::{bail, ensure};
+use anyhow::{bail, ensure, Context, Result};
 use flate2::read::GzDecoder;
 use openssl::sha;
 use std::io::{self, BufRead, ErrorKind, Read, Write};
 use std::result;
 use xz2::read::XzDecoder;
-
-use crate::errors::*;
 
 // The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
 // enough to fully amortize system call overhead.
@@ -108,7 +106,7 @@ impl IgnitionHash {
 
         let hash = match hash_kind {
             "sha256" => {
-                let digest = hex::decode(hex_digest).chain_err(|| "decoding hex digest")?;
+                let digest = hex::decode(hex_digest).context("decoding hex digest")?;
                 ensure!(
                     digest.len().saturating_mul(8) == 256,
                     "wrong digest length ({})",
@@ -117,7 +115,7 @@ impl IgnitionHash {
                 IgnitionHash::Sha256(digest)
             }
             "sha512" => {
-                let digest = hex::decode(hex_digest).chain_err(|| "decoding hex digest")?;
+                let digest = hex::decode(hex_digest).context("decoding hex digest")?;
                 ensure!(
                     digest.len().saturating_mul(8) == 512,
                     "wrong digest length ({})",
@@ -146,7 +144,7 @@ impl IgnitionHash {
                     IgnitionHasher::Sha512(ref mut h) => h.update(&buf[..n]),
                 },
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e).chain_err(|| "reading input"),
+                Err(e) => return Err(e).context("reading input"),
             };
         }
         let computed = match hasher {
@@ -180,7 +178,7 @@ pub struct DecompressReader<R: BufRead> {
 impl<R: BufRead> DecompressReader<R> {
     pub fn new(mut source: R) -> Result<Self> {
         use CompressDecoder::*;
-        let sniff = source.fill_buf().chain_err(|| "sniffing input")?;
+        let sniff = source.fill_buf().context("sniffing input")?;
         let decoder = if sniff.len() > 2 && &sniff[0..2] == b"\x1f\x8b" {
             Gzip(GzDecoder::new(source))
         } else if sniff.len() > 6 && &sniff[0..6] == b"\xfd7zXZ\x00" {

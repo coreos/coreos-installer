@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{bail, Context, Result};
 use nix::mount;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use libcoreinst::blockdev::*;
-use libcoreinst::errors::*;
 use libcoreinst::install::*;
 use libcoreinst::util::*;
 
@@ -64,7 +63,7 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
         visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
             bls_entry_options_delete_and_append_kargs(orig_options, &[], &kargs)
         })
-        .chain_err(|| "appending rootmap kargs")?;
+        .context("appending rootmap kargs")?;
         eprintln!("Injected kernel arguments into BLS: {}", kargs.join(" "));
     } else {
         // without /boot options, we just print the kargs; note we output to stdout here
@@ -85,7 +84,7 @@ pub fn get_boot_mount_from_cmdline_args(
         let devinfo = lsblk_single(Path::new(devpath))?;
         let fs = devinfo
             .get("FSTYPE")
-            .chain_err(|| format!("failed to query filesystem for {}", devpath))?;
+            .with_context(|| format!("failed to query filesystem for {}", devpath))?;
         Ok(Some(Mount::try_mount(
             devpath,
             fs,
@@ -100,7 +99,7 @@ fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>>
     let blkinfo = lsblk_single(&device)?;
     let blktype = blkinfo
         .get("TYPE")
-        .chain_err(|| format!("missing TYPE for {}", device.display()))?;
+        .with_context(|| format!("missing TYPE for {}", device.display()))?;
     // a `match {}` construct would be nice here, but for RAID it's a prefix match
     if blktype.starts_with("raid") {
         Ok(Some(get_raid_kargs(&device)?))
@@ -117,7 +116,7 @@ fn get_raid_kargs(device: &Path) -> Result<Vec<String>> {
     let details = mdadm_detail(device)?;
     let uuid = details
         .get("MD_UUID")
-        .chain_err(|| format!("missing MD_UUID for {}", device.display()))?;
+        .with_context(|| format!("missing MD_UUID for {}", device.display()))?;
     Ok(vec![format!("rd.md.uuid={}", uuid)])
 }
 
@@ -168,7 +167,7 @@ fn crypttab_device_has_netdev(root: &Mount, dmname: &str) -> Result<bool> {
     let crypttab_path = root.mountpoint().join("etc/crypttab");
 
     let crypttab = std::fs::read_to_string(&crypttab_path)
-        .chain_err(|| format!("opening {}", crypttab_path.display()))?;
+        .with_context(|| format!("opening {}", crypttab_path.display()))?;
     for line in crypttab.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {

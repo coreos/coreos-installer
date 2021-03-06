@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{bail, Context, Result};
 use openssl::sha;
 use regex::Regex;
 use std::fs::OpenOptions;
 use std::io::{self, stdin, stdout, BufRead, BufReader, Read, Write};
 
 use crate::cmdline::*;
-use crate::errors::*;
 
 const MAX_CHUNK_SIZE: usize = 64 * 1024 * 1024;
 
@@ -43,7 +42,7 @@ pub fn stream_hash(config: &StreamHashConfig) -> Result<()> {
     let mut hash_file = OpenOptions::new()
         .read(true)
         .open(&config.hash_file)
-        .chain_err(|| format!("opening {}", config.hash_file))?;
+        .with_context(|| format!("opening {}", config.hash_file))?;
     do_stream_hash(&mut hash_file, &mut stdin(), &mut stdout())
 }
 
@@ -59,7 +58,7 @@ fn do_stream_hash(
     let mut line = String::new();
     if hash_file
         .read_line(&mut line)
-        .chain_err(|| "reading hash file")?
+        .context("reading hash file")?
         == 0
     {
         bail!("hash file is empty");
@@ -69,7 +68,7 @@ fn do_stream_hash(
     let captures = Regex::new(r"^stream-hash ([a-z0-9]+) ([0-9]+)\n$")
         .expect("compiling RE")
         .captures(&line)
-        .chain_err(|| "couldn't parse hash file header")?;
+        .context("couldn't parse hash file header")?;
     let hash_func = match captures
         .get(1)
         .expect("digest algorithm not found")
@@ -83,7 +82,7 @@ fn do_stream_hash(
         .expect("chunk size not found")
         .as_str()
         .parse::<usize>()
-        .chain_err(|| "couldn't parse chunk size")?;
+        .context("couldn't parse chunk size")?;
     if chunk_size == 0 {
         bail!("chunk size cannot be zero");
     } else if chunk_size > MAX_CHUNK_SIZE {
@@ -99,9 +98,9 @@ fn do_stream_hash(
     let mut offset: u64 = 0;
     for line in hash_file.lines() {
         // get expected hash
-        let line = line.chain_err(|| "couldn't read hash from hash file")?;
+        let line = line.context("couldn't read hash from hash file")?;
         let expected_hash =
-            hex::decode(&line).chain_err(|| format!("couldn't decode hash: {:?}", line))?;
+            hex::decode(&line).with_context(|| format!("couldn't decode hash: {:?}", line))?;
 
         // read data
         let mut count = 0;
@@ -110,7 +109,7 @@ fn do_stream_hash(
                 Ok(0) => break,
                 Ok(n) => n,
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                Err(e) => return Err(e).chain_err(|| "reading input"),
+                Err(e) => return Err(e).context("reading input"),
             };
         }
         if count == 0 {
@@ -130,12 +129,12 @@ fn do_stream_hash(
         }
 
         // write out buffer
-        output.write_all(data).chain_err(|| "writing output")?;
+        output.write_all(data).context("writing output")?;
         offset += data.len() as u64;
     }
 
     // ran out of hashes; make sure we ran out of data
-    if input.read(&mut buf[..1]).chain_err(|| "draining input")? != 0 {
+    if input.read(&mut buf[..1]).context("draining input")? != 0 {
         bail!("found extra input data at offset {}", offset);
     }
 

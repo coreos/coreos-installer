@@ -18,7 +18,7 @@ use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
-use error_chain::bail;
+use anyhow::{anyhow, bail, Context, Error, Result};
 use openssl::hash::{Hasher, MessageDigest};
 use serde::{Deserialize, Serialize};
 
@@ -31,12 +31,9 @@ impl TryFrom<Hasher> for Sha256Digest {
     type Error = Error;
 
     fn try_from(mut hasher: Hasher) -> std::result::Result<Self, Self::Error> {
-        let digest = hasher.finish().chain_err(|| "finishing hash")?;
+        let digest = hasher.finish().context("finishing hash")?;
         Ok(Sha256Digest(
-            digest
-                .as_ref()
-                .try_into()
-                .chain_err(|| "converting to SHA256")?,
+            digest.as_ref().try_into().context("converting to SHA256")?,
         ))
     }
 }
@@ -54,7 +51,7 @@ pub fn object_path_to_checksum(path: &Path) -> Result<Sha256Digest> {
         .file_stem()
         .unwrap()
         .to_str()
-        .ok_or_else(|| format!("invalid non-UTF-8 object filename: {:?}", path))?;
+        .ok_or_else(|| anyhow!("invalid non-UTF-8 object filename: {:?}", path))?;
     if chksum2.len() != 2 || chksum62.len() != 62 {
         bail!("Malformed object path {:?}", path);
     }
@@ -90,7 +87,7 @@ pub fn get_path_digest(path: &Path) -> Result<Sha256Digest> {
     let mut f = OpenOptions::new()
         .read(true)
         .open(path)
-        .chain_err(|| format!("opening {:?}", path))?;
+        .with_context(|| format!("opening {:?}", path))?;
 
     // tell kernel to optimize for sequential reading
     if unsafe { libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL) } < 0 {
@@ -100,7 +97,7 @@ pub fn get_path_digest(path: &Path) -> Result<Sha256Digest> {
         );
     }
 
-    let mut hasher = Hasher::new(MessageDigest::sha256()).chain_err(|| "creating SHA256 hasher")?;
+    let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
     copy(&mut f, &mut hasher)?;
     Ok(hasher.try_into()?)
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{anyhow, bail, Context, Result};
 use gptman::{GPTPartitionEntry, GPT};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount};
@@ -36,7 +36,6 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::cmdline::PartitionFilter;
-use crate::errors::*;
 use crate::util::*;
 
 use crate::{runcmd, runcmd_output};
@@ -83,11 +82,11 @@ impl Disk {
         // mount it
         match &part.fstype {
             Some(fstype) => Mount::try_mount(&part.path, &fstype, flags),
-            None => Err(format!(
+            None => bail!(
                 "couldn't get filesystem type of {} device for {}",
-                label, self.path
-            )
-            .into()),
+                label,
+                self.path
+            ),
         }
     }
 
@@ -136,7 +135,7 @@ impl Disk {
             let mut f = OpenOptions::new()
                 .write(true)
                 .open(&self.path)
-                .chain_err(|| format!("opening {}", &self.path))?;
+                .with_context(|| format!("opening {}", &self.path))?;
             reread_partition_table(&mut f).map(|_| Vec::new())
         };
         if rereadpt_result.is_ok() {
@@ -200,7 +199,7 @@ impl PartTableKernel {
         let file = OpenOptions::new()
             .write(true)
             .open(path)
-            .chain_err(|| format!("opening {}", path))?;
+            .with_context(|| format!("opening {}", path))?;
         Ok(Self {
             path: path.to_string(),
             file,
@@ -242,14 +241,14 @@ impl PartTableKpartx {
         let re = Regex::new(r"^p[0-9]+$").expect("compiling RE");
         let expected = Path::new(path)
             .file_name()
-            .chain_err(|| format!("getting filename of {}", path))?
+            .with_context(|| format!("getting filename of {}", path))?
             .to_os_string()
             .into_string()
-            .map_err(|_| format!("converting filename of {}", path))?;
-        for ent in read_dir("/dev/mapper").chain_err(|| "listing /dev/mapper")? {
-            let ent = ent.chain_err(|| "reading /dev/mapper entry")?;
+            .map_err(|_| anyhow!("converting filename of {}", path))?;
+        for ent in read_dir("/dev/mapper").context("listing /dev/mapper")? {
+            let ent = ent.context("reading /dev/mapper entry")?;
             let found = ent.file_name().into_string().map_err(|_| {
-                format!(
+                anyhow!(
                     "converting filename of {}",
                     Path::new(&ent.file_name()).display()
                 )
@@ -311,7 +310,7 @@ impl Partition {
     /// Return start and end offsets within the disk.
     pub fn get_offsets(path: &str) -> Result<(u64, u64)> {
         let dev = metadata(path)
-            .chain_err(|| format!("getting metadata for {}", path))?
+            .with_context(|| format!("getting metadata for {}", path))?
             .st_rdev();
         let maj: u64 = major(dev);
         let min: u64 = minor(dev);
@@ -322,18 +321,23 @@ impl Partition {
         // We multiply by 512 here: the kernel values are always in 512 blocks, regardless of the
         // actual sector size of the block device. We keep the values as bytes to make things
         // easier.
-        let start_offset: u64 = start.checked_mul(512).ok_or("start offset mult overflow")?;
+        let start_offset: u64 = start
+            .checked_mul(512)
+            .ok_or_else(|| anyhow!("start offset mult overflow"))?;
         let end_offset: u64 = start_offset
-            .checked_add(size.checked_mul(512).ok_or("end offset mult overflow")?)
-            .ok_or("end offset add overflow")?;
+            .checked_add(
+                size.checked_mul(512)
+                    .ok_or_else(|| anyhow!("end offset mult overflow"))?,
+            )
+            .ok_or_else(|| anyhow!("end offset add overflow"))?;
         Ok((start_offset, end_offset))
     }
 
     pub fn get_holders(&self) -> Result<Vec<String>> {
         let holders = self.get_sysfs_dir()?.join("holders");
         let mut ret: Vec<String> = Vec::new();
-        for ent in read_dir(&holders).chain_err(|| format!("reading {}", &holders.display()))? {
-            let ent = ent.chain_err(|| format!("reading {} entry", &holders.display()))?;
+        for ent in read_dir(&holders).with_context(|| format!("reading {}", &holders.display()))? {
+            let ent = ent.with_context(|| format!("reading {} entry", &holders.display()))?;
             ret.push(format!("/dev/{}", ent.file_name().to_string_lossy()));
         }
         Ok(ret)
@@ -349,12 +353,12 @@ impl Partition {
             .join(
                 Path::new(&self.parent)
                     .file_name()
-                    .chain_err(|| format!("parent {} has no filename", self.parent))?,
+                    .with_context(|| format!("parent {} has no filename", self.parent))?,
             )
             .join(
                 Path::new(&self.path)
                     .file_name()
-                    .chain_err(|| format!("path {} has no filename", self.path))?,
+                    .with_context(|| format!("path {} has no filename", self.path))?,
             );
         if devdir.exists() {
             return Ok(devdir);
@@ -364,16 +368,16 @@ impl Partition {
         // an unpartitioned DM device node.
         // /sys/block/dm-1
         let is_link = symlink_metadata(&self.path)
-            .chain_err(|| format!("reading metadata for {}", self.path))?
+            .with_context(|| format!("reading metadata for {}", self.path))?
             .file_type()
             .is_symlink();
         if is_link {
             let target = canonicalize(&self.path)
-                .chain_err(|| format!("getting absolute path to {}", self.path))?;
+                .with_context(|| format!("getting absolute path to {}", self.path))?;
             let devdir = basedir.join(
                 target
                     .file_name()
-                    .chain_err(|| format!("target {} has no filename", target.display()))?,
+                    .with_context(|| format!("target {} has no filename", target.display()))?,
             );
             if devdir.exists() {
                 return Ok(devdir);
@@ -402,13 +406,13 @@ impl Mount {
         let tempdir = tempfile::Builder::new()
             .prefix("coreos-installer-")
             .tempdir()
-            .chain_err(|| "creating temporary directory")?;
+            .context("creating temporary directory")?;
         // avoid auto-cleanup of tempdir, which could recursively remove
         // the partition contents if umount failed
         let mountpoint = tempdir.into_path();
 
         mount::mount::<str, Path, str, str>(Some(device), &mountpoint, Some(fstype), flags, None)
-            .chain_err(|| format!("mounting device {} on {}", device, mountpoint.display()))?;
+            .with_context(|| format!("mounting device {} on {}", device, mountpoint.display()))?;
 
         Ok(Mount {
             device: device.to_string(),
@@ -418,7 +422,7 @@ impl Mount {
     }
 
     pub fn from_existing(path: &str) -> Result<Mount> {
-        let mounts = read_to_string("/proc/self/mounts").chain_err(|| "reading mount table")?;
+        let mounts = read_to_string("/proc/self/mounts").context("reading mount table")?;
         for line in mounts.lines() {
             let mount: Vec<&str> = line.split_whitespace().collect();
             // see https://man7.org/linux/man-pages/man5/fstab.5.html
@@ -453,7 +457,7 @@ impl Mount {
         devinfo
             .get("UUID")
             .map(String::from)
-            .chain_err(|| format!("filesystem {} has no UUID", self.device))
+            .with_context(|| format!("filesystem {} has no UUID", self.device))
     }
 }
 
@@ -496,7 +500,7 @@ impl SavedPartitions {
     pub fn new_from_disk(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
         if !disk
             .metadata()
-            .chain_err(|| "getting disk metadata")?
+            .context("getting disk metadata")?
             .file_type()
             .is_block_device()
         {
@@ -515,7 +519,7 @@ impl SavedPartitions {
     ) -> Result<Self> {
         if disk
             .metadata()
-            .chain_err(|| "getting disk metadata")?
+            .context("getting disk metadata")?
             .file_type()
             .is_block_device()
         {
@@ -539,7 +543,7 @@ impl SavedPartitions {
                     partitions: Vec::new(),
                 });
             }
-            Err(e) => return Err(e).chain_err(|| "reading partition table"),
+            Err(e) => return Err(e).context("reading partition table"),
         };
 
         // cross-check GPT sector size
@@ -566,15 +570,13 @@ impl SavedPartitions {
         // restore, clear the table, and fail to restore _again_ to the
         // empty table.
         if !result.partitions.is_empty() {
-            let len = disk
-                .seek(SeekFrom::End(0))
-                .chain_err(|| "getting disk size")?;
-            let mut temp = tempfile::tempfile().chain_err(|| "creating dry run image")?;
+            let len = disk.seek(SeekFrom::End(0)).context("getting disk size")?;
+            let mut temp = tempfile::tempfile().context("creating dry run image")?;
             temp.set_len(len)
-                .chain_err(|| format!("setting test image size to {}", len))?;
-            result.overwrite(&mut temp).chain_err(|| {
-                "failed dry run restoring saved partitions; input partition table may be invalid"
-            })?;
+                .with_context(|| format!("setting test image size to {}", len))?;
+            result.overwrite(&mut temp).context(
+                "failed dry run restoring saved partitions; input partition table may be invalid",
+            )?;
         }
 
         Ok(result)
@@ -583,7 +585,7 @@ impl SavedPartitions {
     fn verify_disk_sector_size(&self, disk: &File) -> Result<()> {
         if !disk
             .metadata()
-            .chain_err(|| "getting disk metadata")?
+            .context("getting disk metadata")?
             .file_type()
             .is_block_device()
         {
@@ -633,7 +635,7 @@ impl SavedPartitions {
         // create GPT
         self.verify_disk_sector_size(disk)?;
         let mut gpt = GPT::new_from(disk, self.sector_size, *Uuid::new_v4().as_bytes())
-            .chain_err(|| "creating new GPT")?;
+            .context("creating new GPT")?;
 
         // add partitions
         for (i, p) in &self.partitions {
@@ -641,24 +643,22 @@ impl SavedPartitions {
         }
 
         // write GPT
-        gpt.write_into(disk).chain_err(|| "writing new GPT")?;
+        gpt.write_into(disk).context("writing new GPT")?;
 
         // Overwrite only the parts of the MBR that don't contain the
         // partition table, then write protective MBR.  This ensures that
         // there's no time window without an MBR, during which the kernel
         // would refuse to read the GPT.
-        disk.seek(SeekFrom::Start(0))
-            .chain_err(|| "seeking to MBR")?;
+        disk.seek(SeekFrom::Start(0)).context("seeking to MBR")?;
         disk.write(&[0u8; 446])
-            .chain_err(|| "overwriting MBR boot code")?;
+            .context("overwriting MBR boot code")?;
         if self.sector_size > 512 {
             disk.seek(SeekFrom::Start(512))
-                .chain_err(|| "seeking to end of MBR")?;
+                .context("seeking to end of MBR")?;
             disk.write(&vec![0u8; self.sector_size as usize - 512])
-                .chain_err(|| "overwriting end of MBR")?;
+                .context("overwriting end of MBR")?;
         }
-        GPT::write_protective_mbr_into(disk, self.sector_size)
-            .chain_err(|| "writing protective MBR")?;
+        GPT::write_protective_mbr_into(disk, self.sector_size).context("writing protective MBR")?;
 
         Ok(())
     }
@@ -675,13 +675,13 @@ impl SavedPartitions {
         // read GPT
         self.verify_disk_sector_size(disk)?;
         let mut gpt =
-            GPT::find_from(source).chain_err(|| "couldn't read partition table from source")?;
+            GPT::find_from(source).context("couldn't read partition table from source")?;
         Self::verify_gpt_sector_size(&gpt, self.sector_size)?;
         // The GPT thinks the disk is the size of the install image.
         // Update sizing.
         gpt.header
             .update_from(disk, self.sector_size)
-            .chain_err(|| "updating GPT header")?;
+            .context("updating GPT header")?;
 
         // merge saved partitions into partition table
         // find partition number one larger than the largest used one
@@ -701,11 +701,10 @@ impl SavedPartitions {
         }
 
         // write
-        gpt.write_into(disk).chain_err(|| "writing updated GPT")?;
+        gpt.write_into(disk).context("writing updated GPT")?;
 
         // update protective partition size
-        GPT::write_protective_mbr_into(disk, self.sector_size)
-            .chain_err(|| "writing protective MBR")?;
+        GPT::write_protective_mbr_into(disk, self.sector_size).context("writing protective MBR")?;
 
         Ok(())
     }
@@ -723,7 +722,7 @@ impl SavedPartitions {
             Some((i, p)) => Ok(Some((
                 p.starting_lba
                     .checked_mul(self.sector_size)
-                    .chain_err(|| "overflow calculating partition start")?,
+                    .context("overflow calculating partition start")?,
                 format!("partition {} (\"{}\")", i, p.partition_name.as_str()),
             ))),
         }
@@ -735,13 +734,13 @@ impl SavedPartitions {
 }
 
 fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64> {
-    let s = read_sysfs_dev_block_value(maj, min, field).chain_err(|| {
+    let s = read_sysfs_dev_block_value(maj, min, field).with_context(|| {
         format!(
             "reading partition {}:{} {} value from sysfs",
             maj, min, field
         )
     })?;
-    Ok(s.parse().chain_err(|| {
+    Ok(s.parse().with_context(|| {
         format!(
             "parsing partition {}:{} {} value \"{}\" as u64",
             maj, min, field, &s
@@ -800,9 +799,9 @@ pub fn get_blkdev_deps(device: &Path) -> Result<Vec<PathBuf>> {
         p.push(
             device
                 .canonicalize()
-                .chain_err(|| format!("canonicalizing {}", device.display()))?
+                .with_context(|| format!("canonicalizing {}", device.display()))?
                 .file_name()
-                .chain_err(|| format!("path {} has no filename", device.display()))?,
+                .with_context(|| format!("path {} has no filename", device.display()))?,
         );
         p.push("slaves");
         p
@@ -810,11 +809,11 @@ pub fn get_blkdev_deps(device: &Path) -> Result<Vec<PathBuf>> {
     let mut ret: Vec<PathBuf> = Vec::new();
     let dir_iter = match read_dir(&deps) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ret),
-        Err(e) => return Err(e).chain_err(|| format!("reading dir {}", &deps.display())),
+        Err(e) => return Err(e).with_context(|| format!("reading dir {}", &deps.display())),
         Ok(it) => it,
     };
     for ent in dir_iter {
-        let ent = ent.chain_err(|| format!("reading {} entry", &deps.display()))?;
+        let ent = ent.with_context(|| format!("reading {} entry", &deps.display()))?;
         ret.push(Path::new("/dev").join(ent.file_name()));
     }
     Ok(ret)
@@ -840,14 +839,14 @@ fn reread_partition_table(file: &mut File) -> Result<()> {
             Err(err) => {
                 if retries == 0 {
                     if err == nix::Error::from_errno(Errno::EINVAL) {
-                        return Err(err).chain_err(|| {
-                            "couldn't reread partition table: device may not support partitions"
-                        });
+                        return Err(err).context(
+                            "couldn't reread partition table: device may not support partitions",
+                        );
                     } else if err == nix::Error::from_errno(Errno::EBUSY) {
                         return Err(err)
-                            .chain_err(|| "couldn't reread partition table: device is in use");
+                            .context("couldn't reread partition table: device is in use");
                     } else {
-                        return Err(err).chain_err(|| "couldn't reread partition table");
+                        return Err(err).context("couldn't reread partition table");
                     }
                 } else {
                     sleep(Duration::from_millis(100));
@@ -863,11 +862,11 @@ pub fn get_sector_size_for_path(device: &Path) -> Result<NonZeroU32> {
     let dev = OpenOptions::new()
         .read(true)
         .open(device)
-        .chain_err(|| format!("opening {:?}", device))?;
+        .with_context(|| format!("opening {:?}", device))?;
 
     if !dev
         .metadata()
-        .chain_err(|| format!("getting metadata for {:?}", device))?
+        .with_context(|| format!("getting metadata for {:?}", device))?
         .file_type()
         .is_block_device()
     {
@@ -885,10 +884,10 @@ pub fn get_sector_size(file: &File) -> Result<NonZeroU32> {
         Ok(_) => {
             let size_u32: u32 = size
                 .try_into()
-                .chain_err(|| format!("sector size {} doesn't fit in u32", size))?;
-            NonZeroU32::new(size_u32).ok_or_else(|| "found sector size of zero".into())
+                .with_context(|| format!("sector size {} doesn't fit in u32", size))?;
+            NonZeroU32::new(size_u32).ok_or_else(|| anyhow!("found sector size of zero"))
         }
-        Err(e) => Err(Error::with_chain(e, "getting sector size")),
+        Err(e) => Err(anyhow!(e).context("getting sector size")),
     }
 }
 
@@ -898,14 +897,14 @@ pub fn get_block_device_size(file: &File) -> Result<NonZeroU64> {
     let mut size: libc::size_t = 0;
     match unsafe { ioctl::blkgetsize64(fd, &mut size) } {
         // just cast using `as`: there is no platform we care about today where size_t > 64bits
-        Ok(_) => NonZeroU64::new(size as u64).ok_or_else(|| "found block size of zero".into()),
-        Err(e) => Err(Error::with_chain(e, "getting block size")),
+        Ok(_) => NonZeroU64::new(size as u64).ok_or_else(|| anyhow!("found block size of zero")),
+        Err(e) => Err(anyhow!(e).context("getting block size")),
     }
 }
 
 /// Get the size of the GPT metadata at the start of the disk.
 pub fn get_gpt_size(file: &mut (impl Read + Seek)) -> Result<u64> {
-    let gpt = GPT::find_from(file).chain_err(|| "reading GPT")?;
+    let gpt = GPT::find_from(file).context("reading GPT")?;
     Ok(gpt.header.first_usable_lba * gpt.sector_size)
 }
 
@@ -913,9 +912,7 @@ pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
     if !Path::new("/run/udev/control").exists() {
-        return Err(
-            "udevd socket missing; are we running in a container without /run/udev mounted?".into(),
-        );
+        bail!("udevd socket missing; are we running in a container without /run/udev mounted?");
     }
 
     // There's a potential window after rereading the partition table where
@@ -948,7 +945,7 @@ pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
 /// Checks if underlying device is IBM DASD disk
 pub fn is_dasd(device: &str) -> Result<bool> {
     let target =
-        canonicalize(device).chain_err(|| format!("getting absolute path to {}", device))?;
+        canonicalize(device).with_context(|| format!("getting absolute path to {}", device))?;
     Ok(target.to_string_lossy().starts_with("/dev/dasd"))
 }
 
@@ -965,7 +962,6 @@ mod ioctl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use error_chain::ChainedError;
     use maplit::hashmap;
     use std::io::copy;
     use tempfile::tempfile;
@@ -1281,15 +1277,11 @@ mod tests {
             SavedPartitions::new_from_file(&mut base, 512, &vec![Index(index(1), index(1))])
                 .unwrap();
         let mut disk = make_disk(512, &merge_base_parts);
-        let err_str = saved
-            .merge(&mut image, &mut disk)
-            .unwrap_err()
-            .display_chain()
-            .to_string();
+        let err = saved.merge(&mut image, &mut disk).unwrap_err();
         assert!(
-            err_str.contains(&gptman::Error::InvalidPartitionBoundaries.to_string()),
-            "incorrect error: {}",
-            err_str
+            format!("{:#}", err).contains(&gptman::Error::InvalidPartitionBoundaries.to_string()),
+            "incorrect error: {:#}",
+            err
         );
 
         // test sector size mismatch

@@ -20,7 +20,7 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::thread;
 
-use error_chain::bail;
+use anyhow::{bail, Context, Error, Result};
 use openssl::hash::{Hasher, MessageDigest};
 use xz2::read::XzDecoder;
 
@@ -99,7 +99,7 @@ pub(super) fn get_unpacked_image_digest(
     partitions: &[OsmetPartition],
     root: &Mount,
 ) -> Result<(Sha256Digest, u64)> {
-    let mut hasher = Hasher::new(MessageDigest::sha256()).chain_err(|| "creating SHA256 hasher")?;
+    let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
     let repo = root.mountpoint().join("ostree/repo");
     let mut packed_image = XzDecoder::new(xzpacked_image);
     let n = write_unpacked_image(&mut packed_image, &mut hasher, &partitions, &repo)?;
@@ -144,7 +144,7 @@ fn osmet_unpack_to_writer(
     repo: PathBuf,
     writer: impl Write,
 ) -> Result<()> {
-    let hasher = Hasher::new(MessageDigest::sha256()).chain_err(|| "creating SHA256 hasher")?;
+    let hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
 
     let mut w = WriteHasher { writer, hasher };
 
@@ -242,11 +242,11 @@ fn write_partition_mapping(
     let mut object = OpenOptions::new()
         .read(true)
         .open(object)
-        .chain_err(|| format!("opening {:?}", object))?;
+        .with_context(|| format!("opening {:?}", object))?;
 
     let mut objlen = object
         .metadata()
-        .chain_err(|| format!("getting metadata for {:?}", object))?
+        .with_context(|| format!("getting metadata for {:?}", object))?
         .len();
 
     if extent.logical > 0 {

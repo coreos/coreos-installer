@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::{bail, ChainedError};
+use anyhow::{bail, Context, Result};
 use lazy_static::lazy_static;
 use nix::mount;
 use regex::Regex;
@@ -24,7 +24,6 @@ use std::path::{Path, PathBuf};
 use crate::blockdev::*;
 use crate::cmdline::*;
 use crate::download::*;
-use crate::errors::*;
 use crate::io::*;
 #[cfg(target_arch = "s390x")]
 use crate::s390x;
@@ -34,7 +33,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // set up image source
     // we only support installing from a single artifact
     let mut sources = config.location.sources()?;
-    let mut source = sources.pop().chain_err(|| "no artifacts found")?;
+    let mut source = sources.pop().context("no artifacts found")?;
     if !sources.is_empty() {
         bail!("found multiple artifacts");
     }
@@ -64,38 +63,38 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         .read(true)
         .write(true)
         .open(&config.device)
-        .chain_err(|| format!("opening {}", &config.device))?;
+        .with_context(|| format!("opening {}", &config.device))?;
     if !dest
         .metadata()
-        .chain_err(|| format!("getting metadata for {}", &config.device))?
+        .with_context(|| format!("getting metadata for {}", &config.device))?
         .file_type()
         .is_block_device()
     {
         bail!("{} is not a block device", &config.device);
     }
     ensure_exclusive_access(&config.device)
-        .chain_err(|| format!("checking for exclusive access to {}", &config.device))?;
+        .with_context(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // save partitions that we plan to keep
     let saved = SavedPartitions::new_from_disk(&mut dest, &config.save_partitions)
-        .chain_err(|| format!("saving partitions from {}", config.device))?;
+        .with_context(|| format!("saving partitions from {}", config.device))?;
 
     // get reference to partition table
     // For kpartx partitioning, this will conditionally call kpartx -d
     // when dropped
     let mut table = Disk::new(&config.device)
         .get_partition_table()
-        .chain_err(|| format!("getting partition table for {}", &config.device))?;
+        .with_context(|| format!("getting partition table for {}", &config.device))?;
 
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
     dest.seek(SeekFrom::Start(0))
-        .chain_err(|| format!("seeking {}", config.device))?;
+        .with_context(|| format!("seeking {}", config.device))?;
     if let Err(err) = write_disk(&config, &mut source, &mut dest, &mut *table, &saved) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
-        eprint!("{}", ChainedError::display_chain(&err));
+        eprintln!("\nError: {:?}\n", err);
 
         // clean up
         if config.preserve_on_error {
@@ -189,11 +188,11 @@ fn write_disk(
         )?;
         if let Some(ignition) = config.ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
-                .chain_err(|| "writing Ignition configuration")?;
+                .context("writing Ignition configuration")?;
         }
         if let Some(firstboot_kargs) = config.firstboot_kargs.as_ref() {
             write_firstboot_kargs(mount.mountpoint(), firstboot_kargs)
-                .chain_err(|| "writing firstboot kargs")?;
+                .context("writing firstboot kargs")?;
         }
         if !config.append_kargs.is_empty() || !config.delete_kargs.is_empty() {
             eprintln!("Modifying kernel arguments");
@@ -205,10 +204,10 @@ fn write_disk(
                     config.append_kargs.as_slice(),
                 )
             })
-            .chain_err(|| "deleting and appending kargs")?;
+            .context("deleting and appending kargs")?;
         }
         if let Some(platform) = config.platform.as_ref() {
-            write_platform(mount.mountpoint(), platform).chain_err(|| "writing platform ID")?;
+            write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
         }
         if let Some(network_config) = config.network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
@@ -222,7 +221,7 @@ fn write_disk(
     }
 
     // detect any latent write errors
-    dest.sync_all().chain_err(|| "syncing data to disk")?;
+    dest.sync_all().context("syncing data to disk")?;
 
     Ok(())
 }
@@ -239,16 +238,16 @@ fn write_ignition(
     if let Some(ref digest) = digest_in {
         digest
             .validate(&mut config_in)
-            .chain_err(|| "failed to validate Ignition configuration digest")?;
+            .context("failed to validate Ignition configuration digest")?;
         config_in
             .seek(SeekFrom::Start(0))
-            .chain_err(|| "rewinding Ignition configuration file")?;
+            .context("rewinding Ignition configuration file")?;
     };
 
     // make parent directory
     let mut config_dest = mountpoint.to_path_buf();
     config_dest.push("ignition");
-    create_dir_all(&config_dest).chain_err(|| "creating Ignition config directory")?;
+    create_dir_all(&config_dest).context("creating Ignition config directory")?;
 
     // do the copy
     config_dest.push("config.ign");
@@ -256,13 +255,13 @@ fn write_ignition(
         .write(true)
         .create_new(true)
         .open(&config_dest)
-        .chain_err(|| {
+        .with_context(|| {
             format!(
                 "opening destination Ignition config {}",
                 config_dest.display()
             )
         })?;
-    copy(&mut config_in, &mut config_out).chain_err(|| "writing Ignition config")?;
+    copy(&mut config_in, &mut config_out).context("writing Ignition config")?;
 
     Ok(())
 }
@@ -279,11 +278,11 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     let mut config_out = OpenOptions::new()
         .append(true)
         .open(&config_dest)
-        .chain_err(|| format!("opening first-boot file {}", config_dest.display()))?;
+        .with_context(|| format!("opening first-boot file {}", config_dest.display()))?;
     let contents = format!("set ignition_network_kcmdline=\"{}\"\n", args);
     config_out
         .write_all(contents.as_bytes())
-        .chain_err(|| "writing first-boot kernel arguments")?;
+        .context("writing first-boot kernel arguments")?;
 
     Ok(())
 }
@@ -389,10 +388,10 @@ pub fn visit_bls_entry(
     // sort them before picking the last one.
     let mut entries: Vec<PathBuf> = Vec::new();
     for entry in read_dir(&config_path)
-        .chain_err(|| format!("reading directory {}", config_path.display()))?
+        .with_context(|| format!("reading directory {}", config_path.display()))?
     {
         let path = entry
-            .chain_err(|| format!("reading directory {}", config_path.display()))?
+            .with_context(|| format!("reading directory {}", config_path.display()))?
             .path();
         if path.extension().unwrap_or_default() != "conf" {
             continue;
@@ -407,28 +406,28 @@ pub fn visit_bls_entry(
             .read(true)
             .write(true)
             .open(&path)
-            .chain_err(|| format!("opening bootloader config {}", path.display()))?;
+            .with_context(|| format!("opening bootloader config {}", path.display()))?;
         let orig_contents = {
             let mut s = String::new();
             config
                 .read_to_string(&mut s)
-                .chain_err(|| format!("reading {}", path.display()))?;
+                .with_context(|| format!("reading {}", path.display()))?;
             s
         };
 
-        let r = f(&orig_contents).chain_err(|| format!("visiting {}", path.display()))?;
+        let r = f(&orig_contents).with_context(|| format!("visiting {}", path.display()))?;
 
         if let Some(new_contents) = r {
             // write out the modified data
             config
                 .seek(SeekFrom::Start(0))
-                .chain_err(|| format!("seeking {}", path.display()))?;
+                .with_context(|| format!("seeking {}", path.display()))?;
             config
                 .set_len(0)
-                .chain_err(|| format!("truncating {}", path.display()))?;
+                .with_context(|| format!("truncating {}", path.display()))?;
             config
                 .write(new_contents.as_bytes())
-                .chain_err(|| format!("writing {}", path.display()))?;
+                .with_context(|| format!("writing {}", path.display()))?;
         }
     } else {
         bail!("Found no BLS entries in {}", config_path.display());
@@ -454,7 +453,7 @@ pub fn visit_bls_entry_options(
             } else if found_options {
                 bail!("Multiple 'options' lines found");
             } else {
-                let r = f(line["options ".len()..].trim()).chain_err(|| "visiting options")?;
+                let r = f(line["options ".len()..].trim()).context("visiting options")?;
                 if let Some(new_options) = r {
                     new_contents.push_str("options ");
                     new_contents.push_str(new_options.trim());
@@ -483,7 +482,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     let net_config_dest = mountpoint.join("coreos-firstboot-network");
 
     // make the directory if it doesn't exist
-    create_dir_all(&net_config_dest).chain_err(|| {
+    create_dir_all(&net_config_dest).with_context(|| {
         format!(
             "creating destination networking config directory {}",
             net_config_dest.display()
@@ -491,15 +490,15 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     })?;
 
     // copy files from source to destination directories
-    for entry in
-        read_dir(&net_config_src).chain_err(|| format!("reading directory {}", net_config_src))?
+    for entry in read_dir(&net_config_src)
+        .with_context(|| format!("reading directory {}", net_config_src))?
     {
-        let entry = entry.chain_err(|| format!("reading directory {}", net_config_src))?;
+        let entry = entry.with_context(|| format!("reading directory {}", net_config_src))?;
         let srcpath = entry.path();
         let destpath = net_config_dest.join(entry.file_name());
         if srcpath.is_file() {
             eprintln!("Copying {} to installed system", srcpath.display());
-            fscopy(&srcpath, &destpath).chain_err(|| "Copying networking config")?;
+            fscopy(&srcpath, &destpath).context("Copying networking config")?;
         }
     }
 
@@ -521,20 +520,19 @@ fn reset_partition_table(
         // something we're not allowed to touch.  Just clear the first MiB
         // of disk.
         dest.seek(SeekFrom::Start(0))
-            .chain_err(|| "seeking to start of disk")?;
+            .context("seeking to start of disk")?;
         let zeroes = [0u8; 1024 * 1024];
         dest.write_all(&zeroes)
-            .chain_err(|| "clearing primary partition table")?;
+            .context("clearing primary partition table")?;
     } else {
         // Write a new GPT including any saved partitions.
         saved
             .overwrite(dest)
-            .chain_err(|| "restoring saved partitions")?;
+            .context("restoring saved partitions")?;
     }
 
     // Finish writeback and reread the partition table.
-    dest.sync_all()
-        .chain_err(|| "syncing partition table to disk")?;
+    dest.sync_all().context("syncing partition table to disk")?;
     table.reread()?;
 
     Ok(())
@@ -546,20 +544,20 @@ fn stash_saved_partitions(disk: &mut File, saved: &SavedPartitions) -> Result<()
     let mut stash = tempfile::Builder::new()
         .prefix("coreos-installer-partitions.")
         .tempfile()
-        .chain_err(|| "creating partition stash file")?;
+        .context("creating partition stash file")?;
     let path = stash.path().to_owned();
     eprintln!("Storing saved partition entries to {}", path.display());
-    let len = disk.seek(SeekFrom::End(0)).chain_err(|| "seeking disk")?;
+    let len = disk.seek(SeekFrom::End(0)).context("seeking disk")?;
     stash
         .as_file()
         .set_len(len)
-        .chain_err(|| format!("extending partition stash file {}", path.display()))?;
+        .with_context(|| format!("extending partition stash file {}", path.display()))?;
     saved
         .overwrite(stash.as_file_mut())
-        .chain_err(|| format!("stashing saved partitions to {}", path.display()))?;
+        .with_context(|| format!("stashing saved partitions to {}", path.display()))?;
     stash
         .keep()
-        .chain_err(|| format!("retaining saved partition stash in {}", path.display()))?;
+        .with_context(|| format!("retaining saved partition stash in {}", path.display()))?;
     Ok(())
 }
 

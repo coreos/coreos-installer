@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use error_chain::bail;
+use anyhow::{anyhow, bail, Context, Result};
 use reqwest::{blocking, StatusCode, Url};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -23,7 +23,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::cmdline::*;
-use crate::errors::*;
 use crate::osmet::*;
 
 /// Completion timeout for HTTP requests (4 hours).
@@ -112,21 +111,21 @@ impl ImageLocation for FileLocation {
         let mut out = OpenOptions::new()
             .read(true)
             .open(&self.image_path)
-            .chain_err(|| "opening source image file")?;
+            .context("opening source image file")?;
 
         // get size
         let length = out
             .seek(SeekFrom::End(0))
-            .chain_err(|| "seeking source image file")?;
+            .context("seeking source image file")?;
         out.seek(SeekFrom::Start(0))
-            .chain_err(|| "seeking source image file")?;
+            .context("seeking source image file")?;
 
         // load signature file if present
         let signature = match OpenOptions::new().read(true).open(&self.sig_path) {
             Ok(mut file) => {
                 let mut sig_vec = Vec::new();
                 file.read_to_end(&mut sig_vec)
-                    .chain_err(|| "reading signature file")?;
+                    .context("reading signature file")?;
                 Some(sig_vec)
             }
             Err(err) => {
@@ -136,7 +135,7 @@ impl ImageLocation for FileLocation {
         };
         let filename = Path::new(&self.image_path)
             .file_name()
-            .chain_err(|| "extracting filename")?
+            .context("extracting filename")?
             .to_string_lossy()
             .to_string();
 
@@ -171,13 +170,13 @@ impl UrlLocation {
         let mut resp = client
             .get(sig_url.clone())
             .send()
-            .chain_err(|| "sending signature request")?
+            .context("sending signature request")?
             .error_for_status()
-            .chain_err(|| "fetching signature URL")?;
+            .context("fetching signature URL")?;
 
         let mut sig_bytes = Vec::new();
         resp.read_to_end(&mut sig_bytes)
-            .chain_err(|| "reading signature content")?;
+            .context("reading signature content")?;
         Ok(sig_bytes)
     }
 }
@@ -203,7 +202,7 @@ impl ImageLocation for UrlLocation {
         let resp = client
             .get(self.image_url.clone())
             .send()
-            .chain_err(|| "fetching image URL")?;
+            .context("fetching image URL")?;
         match resp.status() {
             StatusCode::OK => (),
             s => bail!("image fetch failed: {}", s),
@@ -213,9 +212,9 @@ impl ImageLocation for UrlLocation {
         let filename = resp
             .url()
             .path_segments()
-            .chain_err(|| "splitting image URL")?
+            .context("splitting image URL")?
             .next_back()
-            .chain_err(|| "walking image URL")?
+            .context("walking image URL")?
             .to_string();
 
         Ok(vec![ImageSource {
@@ -279,7 +278,7 @@ impl ImageLocation for StreamLocation {
             .unwrap_or(None)
             .map(|platform| platform.formats.get(&self.format))
             .unwrap_or(None)
-            .chain_err(|| {
+            .with_context(|| {
                 format!(
                     "couldn't find architecture {}, platform {}, format {} in stream metadata",
                     self.architecture, self.platform, self.format
@@ -290,9 +289,9 @@ impl ImageLocation for StreamLocation {
         let mut sources: Vec<ImageSource> = Vec::new();
         for (artifact_type, artifact) in artifacts.iter() {
             let artifact_url = Url::parse(&artifact.location)
-                .chain_err(|| "parsing artifact URL from stream metadata")?;
+                .context("parsing artifact URL from stream metadata")?;
             let signature_url = Url::parse(&artifact.signature)
-                .chain_err(|| "parsing signature URL from stream metadata")?;
+                .context("parsing signature URL from stream metadata")?;
             let mut artifact_sources =
                 UrlLocation::new_with_sig_and_type(&artifact_url, &signature_url, &artifact_type)
                     .sources()?;
@@ -344,7 +343,7 @@ impl ImageLocation for OsmetLocation {
                 // This really should never happen since for us to get here, we must've found a
                 // valid osmet file... But let's still just error out instead of assert in case
                 // somehow this doesn't hold true in the future and a user hits this.
-                format!(
+                anyhow!(
                     "can't create new .raw filename from osmet path {:?}",
                     &self.osmet_path
                 )
@@ -352,7 +351,7 @@ impl ImageLocation for OsmetLocation {
             // really we don't need to care about UTF-8 here, but ImageSource right now does
             let mut filename: String = stem
                 .to_str()
-                .ok_or_else(|| format!("non-UTF-8 osmet file stem: {:?}", stem))?
+                .ok_or_else(|| anyhow!("non-UTF-8 osmet file stem: {:?}", stem))?
                 .into();
             filename.push_str(".raw");
             filename
@@ -436,7 +435,7 @@ fn build_stream_url(stream: &str, base_url: Option<&Url>) -> Result<Url> {
     Ok(base_url
         .unwrap_or(&Url::parse(DEFAULT_STREAM_BASE_URL).unwrap())
         .join(&format!("{}.json", stream))
-        .chain_err(|| "building stream URL")?)
+        .context("building stream URL")?)
 }
 
 /// Fetch and parse stream metadata.
@@ -445,14 +444,14 @@ fn fetch_stream(client: blocking::Client, url: &Url) -> Result<Stream> {
     let resp = client
         .get(url.clone())
         .send()
-        .chain_err(|| "fetching stream metadata")?;
+        .context("fetching stream metadata")?;
     match resp.status() {
         StatusCode::OK => (),
         s => bail!("stream metadata fetch from {} failed: {}", url, s),
     };
 
     // parse it
-    let stream: Stream = serde_json::from_reader(resp).chain_err(|| "decoding stream metadata")?;
+    let stream: Stream = serde_json::from_reader(resp).context("decoding stream metadata")?;
     Ok(stream)
 }
 
@@ -461,7 +460,7 @@ pub fn new_http_client() -> Result<blocking::Client> {
     blocking::ClientBuilder::new()
         .timeout(HTTP_COMPLETION_TIMEOUT)
         .build()
-        .chain_err(|| "building HTTP client")
+        .context("building HTTP client")
 }
 
 #[derive(Debug, Deserialize)]

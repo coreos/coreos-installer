@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use anyhow::{bail, Result};
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
-use error_chain::bail;
-
-use libcoreinst::errors::*;
 
 pub enum Config {
     Kargs(KargsConfig),

@@ -28,7 +28,7 @@ use std::io::{copy, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;
 use std::path::{Path, PathBuf};
 
-use error_chain::bail;
+use anyhow::{bail, Context, Result};
 use nix::mount;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -36,7 +36,6 @@ use xz2::write::XzEncoder;
 
 use crate::blockdev::*;
 use crate::cmdline::*;
-use crate::errors::*;
 use crate::io::*;
 
 mod fiemap;
@@ -111,7 +110,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
         get_unpacked_image_digest(&mut packed_image, &partitions, &root)?;
     packed_image
         .seek(SeekFrom::Start(0))
-        .chain_err(|| "seeking back to start of packed image")?;
+        .context("seeking back to start of packed image")?;
 
     if unpacked_size != size {
         bail!(
@@ -151,11 +150,11 @@ pub fn osmet_unpack(config: &OsmetUnpackConfig) -> Result<()> {
     let mut dev = OpenOptions::new()
         .write(true)
         .open(Path::new(&config.device))
-        .chain_err(|| format!("opening {:?}", &config.device))?;
+        .with_context(|| format!("opening {:?}", &config.device))?;
 
     if !dev
         .metadata()
-        .chain_err(|| format!("getting metadata for {:?}", &config.device))?
+        .with_context(|| format!("getting metadata for {:?}", &config.device))?
         .file_type()
         .is_block_device()
     {
@@ -164,7 +163,7 @@ pub fn osmet_unpack(config: &OsmetUnpackConfig) -> Result<()> {
 
     let mut unpacker = OsmetUnpacker::new(Path::new(&config.osmet), Path::new(&config.repo))?;
     copy(&mut unpacker, &mut dev)
-        .chain_err(|| format!("copying to block device {}", &config.device))?;
+        .with_context(|| format!("copying to block device {}", &config.device))?;
 
     Ok(())
 }
@@ -175,7 +174,7 @@ pub fn find_matching_osmet_in_dir(
     sector_size: u32,
 ) -> Result<Option<(PathBuf, String)>> {
     for entry in WalkDir::new(osmet_dir).max_depth(1) {
-        let entry = entry.chain_err(|| format!("walking {:?}", osmet_dir))?;
+        let entry = entry.with_context(|| format!("walking {:?}", osmet_dir))?;
 
         if !entry.file_type().is_file() {
             continue;
@@ -210,7 +209,7 @@ fn scan_root_partition(
     let mut mapped_file_count = 0;
     let mut empty_file_count = 0;
     for entry in WalkDir::new(objects_dir) {
-        let entry = entry.chain_err(|| "walking objects/ dir")?;
+        let entry = entry.context("walking objects/ dir")?;
 
         if !entry.file_type().is_file() {
             continue;
@@ -227,7 +226,7 @@ fn scan_root_partition(
         }
 
         let object = object_path_to_checksum(entry.path())
-            .chain_err(|| format!("invalid object path {:?}", entry.path()))?;
+            .with_context(|| format!("invalid object path {:?}", entry.path()))?;
 
         for extent in extents {
             mappings.push(Mapping {
@@ -239,7 +238,7 @@ fn scan_root_partition(
         // and check if this matches a boot file
         let len = entry
             .metadata()
-            .chain_err(|| format!("getting metadata for {:?}", entry.path()))?
+            .with_context(|| format!("getting metadata for {:?}", entry.path()))?
             .len();
         if let Entry::Occupied(boot_entry) = boot_files.entry(len) {
             // we can't use Entry::or_insert_with() here because get_path_digest() is fallible
@@ -286,7 +285,7 @@ fn prescan_boot_partition(boot: &Mount) -> Result<HashMap<u64, PathBuf>> {
     let mut files: HashMap<u64, PathBuf> = HashMap::new();
 
     for entry in WalkDir::new(boot.mountpoint()) {
-        let entry = entry.chain_err(|| "walking /boot")?;
+        let entry = entry.context("walking /boot")?;
 
         if !entry.file_type().is_file() {
             continue;
@@ -294,7 +293,7 @@ fn prescan_boot_partition(boot: &Mount) -> Result<HashMap<u64, PathBuf>> {
 
         let len = entry
             .metadata()
-            .chain_err(|| format!("getting metadata for {:?}", entry.path()))?
+            .with_context(|| format!("getting metadata for {:?}", entry.path()))?
             .len();
 
         // The 1024 is chosen semi-arbitrarily; really, as long as the file is larger than the size
@@ -351,7 +350,7 @@ fn write_packed_image_to_file(
             .prefix("coreos-installer-xzpacked")
             .suffix(".raw.xz")
             .tempfile()
-            .chain_err(|| "allocating packed image tempfile")?
+            .context("allocating packed image tempfile")?
             // and here we delete it on disk so we just have an fd to it
             .into_file(),
         if fast { 0 } else { 9 },
@@ -360,17 +359,15 @@ fn write_packed_image_to_file(
     let mut dev = OpenOptions::new()
         .read(true)
         .open(&block_device)
-        .chain_err(|| format!("opening {:?}", block_device))?;
+        .with_context(|| format!("opening {:?}", block_device))?;
 
     let total_bytes_skipped = write_packed_image(&mut dev, &mut xz_tmpf, partitions)?;
 
-    xz_tmpf
-        .try_finish()
-        .chain_err(|| "trying to finish xz stream")?;
+    xz_tmpf.try_finish().context("trying to finish xz stream")?;
 
     // sanity check that the number of bytes written + packed match up with block device size
     let blksize = get_block_device_size(&dev)
-        .chain_err(|| format!("querying block device size of {:?}", block_device))?;
+        .with_context(|| format!("querying block device size of {:?}", block_device))?;
     let total_bytes_written = xz_tmpf.total_in();
     if total_bytes_written + total_bytes_skipped != blksize.get() {
         bail!(
@@ -385,9 +382,9 @@ fn write_packed_image_to_file(
     eprintln!("Total bytes written: {}", total_bytes_written);
     eprintln!("Total bytes written (compressed): {}", xz_tmpf.total_out());
 
-    let mut tmpf = xz_tmpf.finish().chain_err(|| "finishing xz stream")?;
+    let mut tmpf = xz_tmpf.finish().context("finishing xz stream")?;
     tmpf.seek(SeekFrom::Start(0))
-        .chain_err(|| "seeking back to start of tempfile")?;
+        .context("seeking back to start of tempfile")?;
 
     Ok((tmpf, blksize.get()))
 }
@@ -406,12 +403,12 @@ fn write_packed_image(
         assert!(partition.start_offset >= cursor);
         copy_exactly_n(dev, w, partition.start_offset - cursor, &mut buf)?;
         total_bytes_skipped += write_packed_image_partition(dev, w, partition, &mut buf)
-            .chain_err(|| format!("packing partition {}", i))?;
+            .with_context(|| format!("packing partition {}", i))?;
         cursor = partition.end_offset;
     }
 
     // and finally write out the remainder of the disk
-    copy(dev, w).chain_err(|| "copying remainder of disk")?;
+    copy(dev, w).context("copying remainder of disk")?;
 
     Ok(total_bytes_skipped)
 }
@@ -432,12 +429,12 @@ fn write_packed_image_partition(
         assert!(extent_start >= cursor);
         if cursor < extent_start {
             cursor += copy_exactly_n(dev, w, extent_start - cursor, buf)
-                .chain_err(|| "while writing in between extents")?;
+                .context("while writing in between extents")?;
         }
 
         // this is the crucial space-saving step; we skip over the extent we have a mapping for
         dev.seek(SeekFrom::Current(mapping.extent.length.try_into().unwrap()))
-            .chain_err(|| format!("while skipping extent: {:?}", mapping.extent))?;
+            .with_context(|| format!("while skipping extent: {:?}", mapping.extent))?;
         total_bytes_skipped += mapping.extent.length;
         cursor += mapping.extent.length;
     }
@@ -446,7 +443,7 @@ fn write_packed_image_partition(
 
     // and now just transfer the rest of the partition
     copy_exactly_n(dev, w, partition.end_offset - cursor, buf)
-        .chain_err(|| "copying remainder of partition")?;
+        .context("copying remainder of partition")?;
 
     Ok(total_bytes_skipped)
 }
