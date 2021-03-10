@@ -5,7 +5,6 @@ nav_order: 1
 
 # CoreOS Installer
 
-[![Build status](https://travis-ci.org/coreos/coreos-installer.svg?branch=master)](https://travis-ci.org/coreos/coreos-installer)
 [![Container image](https://quay.io/repository/coreos/coreos-installer/status)](https://quay.io/repository/coreos/coreos-installer)
 [![crates.io](https://img.shields.io/crates/v/coreos-installer.svg)](https://crates.io/crates/coreos-installer)
 
