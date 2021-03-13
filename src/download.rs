@@ -195,7 +195,7 @@ where
         &mut verify_reader,
         source.length_hint,
         &source.artifact_type,
-    )?;
+    );
 
     // Wrap in a BufReader so DecompressReader can peek at the first few
     // bytes for format sniffing, and to amortize read overhead.  Don't
@@ -368,7 +368,7 @@ struct ProgressReader<'a, R: Read> {
 }
 
 impl<'a, R: Read> ProgressReader<'a, R> {
-    fn new(source: R, length: Option<u64>, artifact_type: &'a str) -> Result<Self> {
+    fn new(source: R, length: Option<u64>, artifact_type: &'a str) -> Self {
         let tty = isatty(stderr().as_raw_fd()).unwrap_or_else(|e| {
             eprintln!("checking if stderr is a TTY: {}", e);
             false
@@ -376,7 +376,7 @@ impl<'a, R: Read> ProgressReader<'a, R> {
         // disable percentage reporting for zero-length files to avoid
         // division by zero
         let length = length.map(NonZeroU64::new).flatten();
-        Ok(ProgressReader {
+        ProgressReader {
             source,
             length: length.map(|l| (l, Self::format_bytes(l.get()))),
             artifact_type,
@@ -396,7 +396,7 @@ impl<'a, R: Read> ProgressReader<'a, R> {
             // lines.
             prologue: if tty { "> " } else { "" },
             epilogue: if tty { "   \r" } else { "\n" },
-        })
+        }
     }
 
     /// Format a size in bytes.
