@@ -23,22 +23,26 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
     // the unwrap() here is safe because we checked in cmdline that one of them must be provided
     let mount = get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?.unwrap();
     visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-        let new_options = bls_entry_options_delete_and_append_kargs(
-            orig_options,
-            config.delete_kargs.as_slice(),
-            config.append_kargs.as_slice(),
-        )?;
-
-        // we always print the final kargs
-        if let Some(ref options) = new_options {
-            println!("{}", options);
-        } else {
-            println!("{}", orig_options);
-        }
-
-        Ok(new_options)
+        modify_and_print(config, orig_options)
     })
     .context("visiting BLS options")?;
 
     Ok(())
+}
+
+fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<String>> {
+    let new_options = bls_entry_options_delete_and_append_kargs(
+        orig_options,
+        config.delete_kargs.as_slice(),
+        config.append_kargs.as_slice(),
+    )?;
+
+    // we always print the final kargs
+    if let Some(ref options) = new_options {
+        println!("{}", options);
+    } else {
+        println!("{}", orig_options);
+    }
+
+    Ok(new_options)
 }
