@@ -126,6 +126,7 @@ pub fn parse_args() -> Result<Config> {
                 .arg(
                     Arg::with_name("delete")
                         .long("delete")
+                        .alias("should-not-exist")
                         .value_name("ARG")
                         .help("Delete kernel arg")
                         .takes_value(true)

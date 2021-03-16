@@ -605,6 +605,10 @@ mod tests {
         let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo bar");
 
+        let delete_kargs = vec!["foo bar".into()];
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        assert_eq!(new_kargs, "foobar");
+
         let delete_kargs = vec!["bar".into(), "foo".into()];
         let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foobar");
