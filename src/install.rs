@@ -202,6 +202,7 @@ fn write_disk(
                     orig_options,
                     config.delete_kargs.as_slice(),
                     config.append_kargs.as_slice(),
+                    &[],
                 )
             })
             .context("deleting and appending kargs")?;
@@ -293,13 +294,15 @@ pub fn bls_entry_options_delete_and_append_kargs(
     orig_options: &str,
     delete_args: &[String],
     append_args: &[String],
+    append_args_if_missing: &[String],
 ) -> Result<Option<String>> {
-    if delete_args.is_empty() && append_args.is_empty() {
+    if delete_args.is_empty() && append_args.is_empty() && append_args_if_missing.is_empty() {
         return Ok(None);
     }
     Ok(Some(modify_kargs(
         orig_options,
         append_args,
+        append_args_if_missing,
         &[],
         delete_args,
     )?))
@@ -312,6 +315,7 @@ pub fn bls_entry_options_delete_and_append_kargs(
 pub fn modify_kargs(
     current_kargs: &str,
     kargs_append: &[String],
+    kargs_append_if_missing: &[String],
     kargs_replace: &[String],
     kargs_delete: &[String],
 ) -> Result<String> {
@@ -326,6 +330,13 @@ pub fn modify_kargs(
     for karg in kargs_append {
         new_kargs.push_str(karg);
         new_kargs.push(' ');
+    }
+    for karg in kargs_append_if_missing {
+        let s = format!(" {} ", karg);
+        if !new_kargs.contains(&s) {
+            new_kargs.push_str(karg);
+            new_kargs.push(' ');
+        }
     }
     for karg in kargs_replace {
         let caps = match RE.captures(karg) {
@@ -594,33 +605,33 @@ mod tests {
         let orig_kargs = "foo bar foobar";
 
         let delete_kargs = vec!["foo".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo bar");
 
         let delete_kargs = vec!["foo bar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foobar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foobar");
 
         let orig_kargs = "foo=val bar baz=val";
 
         let delete_kargs = vec!["foo=val".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "bar baz=val");
 
         let delete_kargs = vec!["baz=val".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo=val bar");
 
         let orig_kargs = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
@@ -630,16 +641,35 @@ mod tests {
             "console=ttyS0,115200n8".into(),
         ];
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
-        let new_kargs = modify_kargs(orig_kargs, &append_kargs, &[], &delete_kargs).unwrap();
-        assert_eq!(new_kargs, "foo console=tty0 bar baz console=ttyS1,115200n8");
+        let append_kargs_if_missing =
+                 // base       // append_kargs dupe             // missing
+            vec!["bar".into(), "console=ttyS1,115200n8".into(), "boo".into()];
+        let new_kargs = modify_kargs(
+            orig_kargs,
+            &append_kargs,
+            &append_kargs_if_missing,
+            &[],
+            &delete_kargs,
+        )
+        .unwrap();
+        assert_eq!(
+            new_kargs,
+            "foo console=tty0 bar baz console=ttyS1,115200n8 boo"
+        );
 
         let orig_kargs = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
 
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
         let replace_kargs = vec!["mitigations=auto,nosmt=auto".into()];
         let delete_kargs = vec!["console=ttyS0,115200n8".into()];
-        let new_kargs =
-            modify_kargs(orig_kargs, &append_kargs, &replace_kargs, &delete_kargs).unwrap();
+        let new_kargs = modify_kargs(
+            orig_kargs,
+            &append_kargs,
+            &[],
+            &replace_kargs,
+            &delete_kargs,
+        )
+        .unwrap();
         assert_eq!(
             new_kargs,
             "foo mitigations=auto console=tty0 bar baz console=ttyS1,115200n8"

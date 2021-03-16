@@ -185,6 +185,7 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     let new_kargs = modify_kargs(
         &current_kargs,
         &config.append,
+        &[],
         &config.replace,
         &config.delete,
     )?;

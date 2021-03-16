@@ -29,6 +29,7 @@ pub struct KargsConfig {
     pub boot_mount: Option<String>,
     pub override_options: Option<String>,
     pub append_kargs: Vec<String>,
+    pub append_kargs_if_missing: Vec<String>,
     pub delete_kargs: Vec<String>,
 }
 
@@ -124,6 +125,16 @@ pub fn parse_args() -> Result<Config> {
                         .multiple(true),
                 )
                 .arg(
+                    Arg::with_name("append-if-missing")
+                        .long("append-if-missing")
+                        .alias("should-exist")
+                        .value_name("ARG")
+                        .help("Append kernel arg if missing")
+                        .takes_value(true)
+                        .number_of_values(1)
+                        .multiple(true),
+                )
+                .arg(
                     Arg::with_name("delete")
                         .long("delete")
                         .alias("should-not-exist")
@@ -170,6 +181,10 @@ fn parse_kargs(matches: &ArgMatches) -> Result<Config> {
         override_options: matches.value_of("override-options").map(String::from),
         append_kargs: matches
             .values_of("append")
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
+        append_kargs_if_missing: matches
+            .values_of("append-if-missing")
             .map(|v| v.map(String::from).collect())
             .unwrap_or_else(Vec::new),
         delete_kargs: matches
