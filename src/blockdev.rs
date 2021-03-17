@@ -157,7 +157,7 @@ impl Disk {
         // Our investigation found nothing.  If the device is expected to be
         // partitionable but reread failed, we evidently missed something,
         // so error out for safety
-        if !self.is_dm_device() {
+        if !self.is_dm_device()? {
             return rereadpt_result;
         }
 
@@ -167,15 +167,22 @@ impl Disk {
     /// Get a handle to the set of device nodes for individual partitions
     /// of the device.
     pub fn get_partition_table(&self) -> Result<Box<dyn PartTable>> {
-        if self.is_dm_device() {
+        if self.is_dm_device()? {
             Ok(Box::new(PartTableKpartx::new(&self.path)?))
         } else {
             Ok(Box::new(PartTableKernel::new(&self.path)?))
         }
     }
 
-    fn is_dm_device(&self) -> bool {
-        self.path.starts_with("/dev/mapper/") || self.path.starts_with("/dev/dm-")
+    fn is_dm_device(&self) -> Result<bool> {
+        let canon_path = Path::new(&self.path)
+            .canonicalize()
+            .with_context(|| format!("canonicalizing {}", &self.path))?;
+        // convert back to &str because .starts_with on a Path doesn't mean the same thing
+        let canon_path = canon_path
+            .to_str()
+            .with_context(|| format!("path {} is not UTF-8", canon_path.display()))?;
+        Ok(canon_path.starts_with("/dev/dm-"))
     }
 }
 
