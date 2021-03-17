@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// For consistency, have all parse_*() functions return Result.
+#![allow(clippy::unnecessary_wraps)]
+
 use anyhow::{bail, Context, Result};
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use reqwest::Url;

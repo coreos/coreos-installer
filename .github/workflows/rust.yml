@@ -8,8 +8,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Minimum and linting toolchain
-  ACTIONS_PINNED_TOOLCHAIN: 1.44.1
+  # Minimum supported Rust version (MSRV)
+  ACTIONS_MSRV_TOOLCHAIN: 1.44.1
+  # Pinned toolchain for linting
+  ACTIONS_LINTS_TOOLCHAIN: 1.50.0
 
 jobs:
   tests-stable:
@@ -31,6 +33,25 @@ jobs:
         run: cargo build --features rdcore
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
+  tests-msrv:
+    name: "Tests, minimum supported toolchain"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env['ACTIONS_MSRV_TOOLCHAIN']  }}
+          default: true
+      - name: cargo build
+        run: cargo build
+      - name: cargo test
+        run: cargo test
+      - name: cargo build (rdcore)
+        run: cargo build --features rdcore
+      - name: cargo test (rdcore)
+        run: cargo test --features rdcore
   lints:
     name: "Lints, pinned toolchain"
     runs-on: ubuntu-latest
@@ -40,7 +61,7 @@ jobs:
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: ${{ env['ACTIONS_PINNED_TOOLCHAIN']  }}
+          toolchain: ${{ env['ACTIONS_LINTS_TOOLCHAIN']  }}
           default: true
           components: rustfmt, clippy
       - name: cargo fmt (check)

@@ -38,19 +38,19 @@ pub struct OsmetUnpacker {
 impl OsmetUnpacker {
     pub fn new(osmet: &Path, repo: &Path) -> Result<Self> {
         let (_, osmet, xzpacked_image) = osmet_file_read(&osmet)?;
-        Self::new_impl(osmet, xzpacked_image, repo)
+        Ok(Self::new_impl(osmet, xzpacked_image, repo))
     }
 
     pub fn new_from_sysroot(osmet: &Path) -> Result<Self> {
         let (_, osmet, xzpacked_image) = osmet_file_read(&osmet)?;
-        Self::new_impl(osmet, xzpacked_image, Path::new(SYSROOT_OSTREE_REPO))
+        Ok(Self::new_impl(
+            osmet,
+            xzpacked_image,
+            Path::new(SYSROOT_OSTREE_REPO),
+        ))
     }
 
-    fn new_impl(
-        osmet: Osmet,
-        packed_image: impl Read + Send + 'static,
-        repo: &Path,
-    ) -> Result<Self> {
+    fn new_impl(osmet: Osmet, packed_image: impl Read + Send + 'static, repo: &Path) -> Self {
         let (reader, writer) = pipe::pipe();
 
         let length = osmet.size;
@@ -59,11 +59,11 @@ impl OsmetUnpacker {
             osmet_unpack_to_writer(osmet, packed_image, repo, writer)
         }));
 
-        Ok(Self {
+        Self {
             thread_handle,
             reader,
             length,
-        })
+        }
     }
 
     pub fn length(&self) -> u64 {
