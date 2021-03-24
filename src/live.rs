@@ -178,10 +178,9 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
 
 pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
-    if content.is_stdout() {
-        bail!("Writing to stdout is not supported");
-    }
+    let use_stdout = content.is_stdout();
     let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
+
     let current_kargs = embed.get_current_kargs()?;
     let new_kargs = modify_kargs(
         &current_kargs,
@@ -189,19 +188,26 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
         &config.replace,
         &config.delete,
     )?;
-    embed.write_kargs(&new_kargs)?;
+    if use_stdout {
+        embed.stream(&new_kargs, &mut stdout())?;
+    } else {
+        embed.write_kargs(&new_kargs)?;
+    }
     content.complete()?;
     Ok(())
 }
 
 pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
     let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
-    if content.is_stdout() {
-        bail!("Writing to stdout is not supported");
-    }
+    let use_stdout = content.is_stdout();
     let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
+
     let default_kargs = embed.get_default_kargs()?;
-    embed.write_kargs(&default_kargs)?;
+    if use_stdout {
+        embed.stream(&default_kargs, &mut stdout())?;
+    } else {
+        embed.write_kargs(&default_kargs)?;
+    }
     content.complete()?;
     Ok(())
 }
@@ -304,6 +310,9 @@ impl<'a> KargEmbedAreas<'a> {
             kargs_offsets.push(offset);
         }
 
+        // we need ordered offsets when streaming
+        kargs_offsets.sort_unstable();
+
         // we expect at least one
         if kargs_offsets.is_empty() {
             bail!("No karg embed areas found; corrupted CoreOS ISO image.");
@@ -343,7 +352,7 @@ impl<'a> KargEmbedAreas<'a> {
         get_kargs_at_offset(self.file, self.length, self.default_kargs_offset)
     }
 
-    fn write_kargs(&mut self, kargs: &str) -> Result<()> {
+    fn format_embed_area(&mut self, kargs: &str) -> Result<Vec<u8>> {
         let kargs: String = kargs.trim().to_string() + "\n";
         if kargs.len() > self.length {
             bail!(
@@ -352,9 +361,45 @@ impl<'a> KargEmbedAreas<'a> {
                 self.length
             );
         }
-
         let mut new_area = vec![b'#'; self.length];
         new_area[..kargs.len()].copy_from_slice(kargs.as_bytes());
+        Ok(new_area)
+    }
+
+    fn stream(&mut self, kargs: &str, writer: &mut (impl Write + ?Sized)) -> Result<()> {
+        let mut buf = [0u8; BUFFER_SIZE];
+        let new_area = self.format_embed_area(&kargs)?;
+
+        self.file
+            .seek(SeekFrom::Start(0))
+            .context("seeking to start")?;
+        let mut cursor: u64 = 0;
+
+        for offset in &self.kargs_offsets {
+            copy_exactly_n(&mut self.file, writer, *offset - cursor, &mut buf)
+                .with_context(|| format!("copying bytes from {} to {}", cursor, *offset))?;
+            writer
+                .write_all(&new_area)
+                .with_context(|| format!("writing karg embed area at offset {}", *offset))?;
+            cursor = self
+                .file
+                .seek(SeekFrom::Current(self.length as i64))
+                .with_context(|| format!("seeking length of karg embed area {}", self.length))?;
+        }
+
+        // write the remainder
+        let mut write_buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
+        copy(
+            &mut BufReader::with_capacity(BUFFER_SIZE, &mut self.file),
+            &mut write_buf,
+        )
+        .context("copying file")?;
+        write_buf.flush().context("flushing output")?;
+        Ok(())
+    }
+
+    fn write_kargs(&mut self, kargs: &str) -> Result<()> {
+        let new_area = self.format_embed_area(&kargs)?;
 
         for offset in &self.kargs_offsets {
             self.file
