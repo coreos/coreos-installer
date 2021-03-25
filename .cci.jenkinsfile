@@ -1,79 +1,84 @@
 // Documentation: https://github.com/coreos/coreos-ci/blob/master/README-upstream-ci.md
 
+buildPod {
+    checkout scm
+
+    stage("Build") {
+        shwrap("make && make install DESTDIR=install")
+        stash name: 'build', includes: 'install/**'
+    }
+
+    stage("Lint") {
+        // Check help text maximum line length
+        shwrap('''
+            fail=0
+            checklen() {
+                local length
+                length=$(target/debug/coreos-installer $* --help | wc -L)
+                if [ "${length}" -gt 80 ] ; then
+                    echo "$* --help line length ${length} > 80"
+                    fail=1
+                fi
+            }
+            checklen
+            checklen install
+            checklen download
+            checklen list-stream
+            checklen iso
+            checklen iso embed
+            checklen iso show
+            checklen iso remove
+            checklen iso ignition
+            checklen iso ignition embed
+            checklen iso ignition show
+            checklen iso ignition remove
+            checklen iso kargs modify
+            checklen iso kargs reset
+            checklen iso kargs show
+            checklen pxe
+            checklen pxe ignition
+            checklen pxe ignition wrap
+            checklen pxe ignition unwrap
+            if [ "${fail}" = 1 ]; then
+                exit 1
+            fi
+        ''')
+    }
+}
+
 cosaPod(buildroot: true, runAsUser: 0) {
     checkout scm
 
+    unstash name: 'build'
+
     // Make sure cosa is using the binary we just built.
-    shwrap("make && make install")
+    shwrap("rsync -rlv install/usr/ /usr/")
 
-    parallel(
-        lint: {
-            stage("Lint") {
-                // Check help text maximum line length
-                shwrap('''
-                    fail=0
-                    checklen() {
-                        local length
-                        length=$(target/debug/coreos-installer $* --help | wc -L)
-                        if [ "${length}" -gt 80 ] ; then
-                            echo "$* --help line length ${length} > 80"
-                            fail=1
-                        fi
-                    }
-                    checklen
-                    checklen install
-                    checklen download
-                    checklen list-stream
-                    checklen iso
-                    checklen iso embed
-                    checklen iso show
-                    checklen iso remove
-                    checklen iso ignition
-                    checklen iso ignition embed
-                    checklen iso ignition show
-                    checklen iso ignition remove
-                    checklen iso kargs modify
-                    checklen iso kargs reset
-                    checklen iso kargs show
-                    checklen pxe
-                    checklen pxe ignition
-                    checklen pxe ignition wrap
-                    checklen pxe ignition unwrap
-                    if [ "${fail}" = 1 ]; then
-                        exit 1
-                    fi
-                ''')
-            }
-        },
-        fcos: {
-            // we don't need the qemu image to test coreos-installer; just the OSTree
-            // make: true for install
-            fcosBuild(make: true, skipKola: true, extraArgs: 'ostree')
+    // we don't need the qemu image to test coreos-installer; just the OSTree
+    fcosBuild(overlays: ["install"], skipKola: true, extraArgs: 'ostree')
 
-            stage("Build metal+live") {
-                shwrap("cd /srv/fcos && cosa buildextend-metal")
-                shwrap("cd /srv/fcos && cosa buildextend-metal4k")
-                shwrap("cd /srv/fcos && cosa buildextend-live --fast")
-                // Test metal with an uncompressed image and metal4k with a
-                // compressed one
-                shwrap("cd /srv/fcos && cosa compress --fast --artifact=metal4k")
+    stage("Build metal+live") {
+        shwrap("cd /srv/fcos && cosa buildextend-metal")
+        shwrap("cd /srv/fcos && cosa buildextend-metal4k")
+        shwrap("cd /srv/fcos && cosa buildextend-live --fast")
+        // Test metal with an uncompressed image and metal4k with a
+        // compressed one
+        shwrap("cd /srv/fcos && cosa compress --fast --artifact=metal4k")
+    }
+    stage("Test ISO") {
+        // No need to run the iso-live-login scenario (in theory, and also right
+        // now it's buggy)
+        try {
+            parallel metal: {
+                shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,pxe-offline-install,iso-install,iso-offline-install --output-dir tmp/kola-testiso-metal")
+            }, metal4k: {
+                shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install,iso-offline-install --qemu-native-4k --output-dir tmp/kola-testiso-metal4k")
             }
-            stage("Test ISO") {
-                // No need to run the iso-live-login scenario (in theory, and also right
-                // now it's buggy)
-                try {
-                    parallel metal: {
-                        shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,pxe-offline-install,iso-install,iso-offline-install --output-dir tmp/kola-testiso-metal")
-                    }, metal4k: {
-                        shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install,iso-offline-install --qemu-native-4k --output-dir tmp/kola-testiso-metal4k")
-                    }
-                } finally {
-                    shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal.tar.xz")
-                    shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal4k/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal4k.tar.xz")
-                    archiveArtifacts allowEmptyArchive: true, artifacts: 'kola-testiso*.tar.xz'
-                }
-                shwrap("tests/test-iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
-            }
+        } finally {
+            shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal.tar.xz")
+            shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal4k/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal4k.tar.xz")
+            archiveArtifacts allowEmptyArchive: true, artifacts: 'kola-testiso*.tar.xz'
         }
-    )
+        shwrap("tests/test-iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
+    }
 }
