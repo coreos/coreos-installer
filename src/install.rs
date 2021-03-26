@@ -117,7 +117,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     }
 
     eprintln!("Install complete.");
-    Ok(())
+    bail!("CI failure");
 }
 
 fn ensure_exclusive_access(device: &str) -> Result<()> {
