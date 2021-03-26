@@ -27,6 +27,7 @@ pub enum Config {
 pub struct KargsConfig {
     pub boot_device: Option<String>,
     pub boot_mount: Option<String>,
+    pub override_options: Option<String>,
     pub append_kargs: Vec<String>,
     pub delete_kargs: Vec<String>,
 }
@@ -104,6 +105,15 @@ pub fn parse_args() -> Result<Config> {
                         .value_name("BOOT_MOUNT")
                         .takes_value(true),
                 )
+                // this is purely for dev testing
+                .arg(
+                    Arg::with_name("override-options")
+                        .hidden(true)
+                        .long("override-options")
+                        .help("Modify this option string instead of fetching from BLS entry")
+                        .value_name("OPTIONS")
+                        .takes_value(true),
+                )
                 .arg(
                     Arg::with_name("append")
                         .long("append")
@@ -146,12 +156,17 @@ pub fn parse_args() -> Result<Config> {
 
 fn parse_kargs(matches: &ArgMatches) -> Result<Config> {
     // we could enforce these via clap's ArgGroup, but I don't like how the --help text looks
-    if !(matches.is_present("boot-device") || matches.is_present("boot-mount")) {
+    if !(matches.is_present("boot-device")
+        || matches.is_present("boot-mount")
+        || matches.is_present("override-options"))
+    {
+        // --override-options is undocumented on purpose
         bail!("at least one of --boot-device or --boot-mount required");
     }
     Ok(Config::Kargs(KargsConfig {
         boot_device: matches.value_of("boot-device").map(String::from),
         boot_mount: matches.value_of("boot-mount").map(String::from),
+        override_options: matches.value_of("override-options").map(String::from),
         append_kargs: matches
             .values_of("append")
             .map(|v| v.map(String::from).collect())
