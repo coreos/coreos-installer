@@ -21,7 +21,7 @@ use crate::rootmap::get_boot_mount_from_cmdline_args;
 
 pub fn kargs(config: &KargsConfig) -> Result<()> {
     if let Some(ref orig_options) = config.override_options {
-        modify_and_print(config, orig_options).context("modifying options")?;
+        modify_and_print(config, orig_options.trim()).context("modifying options")?;
     } else {
         // the unwrap() here is safe because we checked in cmdline that one of them must be provided
         let mount =

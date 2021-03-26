@@ -324,14 +324,15 @@ pub fn modify_kargs(
     }
     let mut new_kargs: String = format!(" {} ", current_kargs);
     for karg in kargs_delete {
-        let s = format!(" {} ", karg);
+        let s = format!(" {} ", karg.trim());
         new_kargs = new_kargs.replace(&s, " ");
     }
     for karg in kargs_append {
-        new_kargs.push_str(karg);
+        new_kargs.push_str(karg.trim());
         new_kargs.push(' ');
     }
     for karg in kargs_append_if_missing {
+        let karg = karg.trim();
         let s = format!(" {} ", karg);
         if !new_kargs.contains(&s) {
             new_kargs.push_str(karg);
@@ -626,11 +627,11 @@ mod tests {
 
         let orig_kargs = "foo=val bar baz=val";
 
-        let delete_kargs = vec!["foo=val".into()];
+        let delete_kargs = vec!["   foo=val".into()];
         let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "bar baz=val");
 
-        let delete_kargs = vec!["baz=val".into()];
+        let delete_kargs = vec!["baz=val  ".into()];
         let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
         assert_eq!(new_kargs, "foo=val bar");
 
@@ -640,7 +641,7 @@ mod tests {
             "mitigations=auto,nosmt".into(),
             "console=ttyS0,115200n8".into(),
         ];
-        let append_kargs = vec!["console=ttyS1,115200n8".into()];
+        let append_kargs = vec!["console=ttyS1,115200n8  ".into()];
         let append_kargs_if_missing =
                  // base       // append_kargs dupe             // missing
             vec!["bar".into(), "console=ttyS1,115200n8".into(), "boo".into()];
