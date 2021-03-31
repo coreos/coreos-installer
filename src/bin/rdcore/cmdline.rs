@@ -29,7 +29,9 @@ pub struct KargsConfig {
     pub boot_mount: Option<String>,
     pub override_options: Option<String>,
     pub append_kargs: Vec<String>,
+    pub append_kargs_if_missing: Vec<String>,
     pub delete_kargs: Vec<String>,
+    pub create_if_changed: Option<String>,
 }
 
 pub struct RootMapConfig {
@@ -115,6 +117,13 @@ pub fn parse_args() -> Result<Config> {
                         .takes_value(true),
                 )
                 .arg(
+                    Arg::with_name("create-if-changed")
+                        .long("create-if-changed")
+                        .help("File to create if BLS entry was modified")
+                        .value_name("PATH")
+                        .takes_value(true),
+                )
+                .arg(
                     Arg::with_name("append")
                         .long("append")
                         .value_name("ARG")
@@ -124,8 +133,19 @@ pub fn parse_args() -> Result<Config> {
                         .multiple(true),
                 )
                 .arg(
+                    Arg::with_name("append-if-missing")
+                        .long("append-if-missing")
+                        .alias("should-exist")
+                        .value_name("ARG")
+                        .help("Append kernel arg if missing")
+                        .takes_value(true)
+                        .number_of_values(1)
+                        .multiple(true),
+                )
+                .arg(
                     Arg::with_name("delete")
                         .long("delete")
+                        .alias("should-not-exist")
                         .value_name("ARG")
                         .help("Delete kernel arg")
                         .takes_value(true)
@@ -171,10 +191,15 @@ fn parse_kargs(matches: &ArgMatches) -> Result<Config> {
             .values_of("append")
             .map(|v| v.map(String::from).collect())
             .unwrap_or_else(Vec::new),
+        append_kargs_if_missing: matches
+            .values_of("append-if-missing")
+            .map(|v| v.map(String::from).collect())
+            .unwrap_or_else(Vec::new),
         delete_kargs: matches
             .values_of("delete")
             .map(|v| v.map(String::from).collect())
             .unwrap_or_else(Vec::new),
+        create_if_changed: matches.value_of("create-if-changed").map(String::from),
     }))
 }
 

@@ -21,7 +21,7 @@ use crate::rootmap::get_boot_mount_from_cmdline_args;
 
 pub fn kargs(config: &KargsConfig) -> Result<()> {
     if let Some(ref orig_options) = config.override_options {
-        modify_and_print(config, orig_options).context("modifying options")?;
+        modify_and_print(config, orig_options.trim()).context("modifying options")?;
     } else {
         // the unwrap() here is safe because we checked in cmdline that one of them must be provided
         let mount =
@@ -40,11 +40,21 @@ fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<S
         orig_options,
         config.delete_kargs.as_slice(),
         config.append_kargs.as_slice(),
+        config.append_kargs_if_missing.as_slice(),
     )?;
 
     // we always print the final kargs
     if let Some(ref options) = new_options {
         println!("{}", options);
+        if options != orig_options {
+            if let Some(ref path) = config.create_if_changed {
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)
+                    .with_context(|| format!("creating {}", path))?;
+            }
+        }
     } else {
         println!("{}", orig_options);
     }
