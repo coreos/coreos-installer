@@ -46,10 +46,23 @@ pub struct Disk {
 }
 
 impl Disk {
-    pub fn new(path: &str) -> Self {
-        Disk {
-            path: path.to_string(),
-        }
+    pub fn new(path: &str) -> Result<Self> {
+        let canon_path = Path::new(path)
+            .canonicalize()
+            .with_context(|| format!("canonicalizing {}", path))?;
+
+        let canon_path = canon_path
+            .to_str()
+            .with_context(|| {
+                format!(
+                    "path {} canonicalized from {} is not UTF-8",
+                    canon_path.display(),
+                    path
+                )
+            })?
+            .to_string();
+
+        Ok(Disk { path: canon_path })
     }
 
     pub fn mount_partition_by_label(
