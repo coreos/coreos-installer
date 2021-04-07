@@ -171,7 +171,7 @@ checksum = "ea221b5284a47e40033bf9b66f35f984ec0ea2931eb03505246cd27a963f981b"
 
 [[package]]
 name = "coreos-installer"
-version = "0.8.1-alpha.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -186,11 +186,11 @@ dependencies = [
  "libc",
  "maplit",
  "mbrman",
- "nix 0.20.0",
+ "nix",
  "openat-ext",
  "openssl",
  "pipe",
- "rand 0.8.3",
+ "rand 0.7.3",
  "regex",
  "reqwest",
  "serde",
@@ -394,7 +394,7 @@ checksum = "4c233b4ec813e8abe466be2ce5d350cdffe348ab99d1333e6d2b9fdfa3a71656"
 dependencies = [
  "bincode",
  "crc",
- "nix 0.18.0",
+ "nix",
  "serde",
  "thiserror",
 ]
@@ -676,18 +676,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nix"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa9b4819da1bc61c0ea48b63b7bc8604064dd43013e7cc325df098d49cd7c18a"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if 1.0.0",
- "libc",
-]
-
-[[package]]
 name = "ntapi"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -729,7 +717,7 @@ checksum = "b4c55e17c28995df7ff51cc9b2a9a4e548dde9ffa46efdd2750d22fe4ac64499"
 dependencies = [
  "drop_bomb",
  "libc",
- "nix 0.18.0",
+ "nix",
  "openat",
  "rand 0.7.3",
 ]
