@@ -84,7 +84,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
     // MS_RDONLY; this also ensures that the partition isn't already mounted rw elsewhere.
     // Allow the root partition to be in a child holder device to allow for the RHCOS
     // crypto_LUKS partition.
-    let disk = Disk::new(&config.device);
+    let disk = Disk::new(&config.device)?;
     let boot = disk.mount_partition_by_label("boot", false, mount::MsFlags::MS_RDONLY)?;
     let root = disk.mount_partition_by_label("root", true, mount::MsFlags::MS_RDONLY)?;
 

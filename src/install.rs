@@ -82,7 +82,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // get reference to partition table
     // For kpartx partitioning, this will conditionally call kpartx -d
     // when dropped
-    let mut table = Disk::new(&config.device)
+    let mut table = Disk::new(&config.device)?
         .get_partition_table()
         .with_context(|| format!("getting partition table for {}", &config.device))?;
 
@@ -121,7 +121,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 }
 
 fn ensure_exclusive_access(device: &str) -> Result<()> {
-    let mut parts = Disk::new(device).get_busy_partitions()?;
+    let mut parts = Disk::new(device)?.get_busy_partitions()?;
     if parts.is_empty() {
         return Ok(());
     }
@@ -181,7 +181,7 @@ fn write_disk(
         || config.network_config.is_some()
         || cfg!(target_arch = "s390x")
     {
-        let mount = Disk::new(&config.device).mount_partition_by_label(
+        let mount = Disk::new(&config.device)?.mount_partition_by_label(
             "boot",
             false,
             mount::MsFlags::empty(),
