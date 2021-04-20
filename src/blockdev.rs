@@ -553,6 +553,15 @@ impl SavedPartitions {
     }
 
     fn new(disk: &mut File, sector_size: u64, filters: &[PartitionFilter]) -> Result<Self> {
+        // if there are no filters, ignore existing GPT, since we're going to
+        // overwrite it
+        if filters.is_empty() {
+            return Ok(Self {
+                sector_size,
+                partitions: Vec::new(),
+            });
+        }
+
         // read GPT
         let gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
@@ -571,11 +580,9 @@ impl SavedPartitions {
 
         // save partitions accepted by filters
         let mut partitions = Vec::new();
-        if !filters.is_empty() {
-            for (i, p) in gpt.iter() {
-                if Self::matches_filters(i, p, filters) {
-                    partitions.push((i, p.clone()));
-                }
+        for (i, p) in gpt.iter() {
+            if Self::matches_filters(i, p, filters) {
+                partitions.push((i, p.clone()));
             }
         }
         let result = Self {
@@ -1333,6 +1340,36 @@ mod tests {
                 .to_string(),
             "failed dry run restoring saved partitions; input partition table may be invalid"
         );
+
+        // test corrupt input partition table
+        for sector_size in &[512, 4096] {
+            let sector_size: u64 = *sector_size;
+            // backup corrupt
+            let mut disk = make_damaged_disk(sector_size, &base_parts, false, true);
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![]).unwrap();
+            assert!(!saved.is_saved());
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![label("one")])
+                .unwrap();
+            assert!(saved.is_saved());
+            // primary corrupt
+            let mut disk = make_damaged_disk(sector_size, &base_parts, true, false);
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![]).unwrap();
+            assert!(!saved.is_saved());
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![label("one")])
+                .unwrap();
+            assert!(saved.is_saved());
+            // both corrupt
+            let mut disk = make_damaged_disk(sector_size, &base_parts, true, true);
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![]).unwrap();
+            assert!(!saved.is_saved());
+            let err = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![label("one")])
+                .unwrap_err();
+            assert!(
+                format!("{:#}", err).contains("could not read primary header"),
+                "incorrect error: {:#}",
+                err
+            );
+        }
     }
 
     // TODO: The partitions array assumes 512-byte sectors and we don't
@@ -1362,6 +1399,37 @@ mod tests {
     fn make_unformatted_disk() -> File {
         let disk = tempfile().unwrap();
         disk.set_len(10 * 1024 * 1024 * 1024).unwrap();
+        disk
+    }
+
+    fn make_damaged_disk(
+        sector_size: u64,
+        partitions: &Vec<(u32, GPTPartitionEntry)>,
+        damage_primary: bool,
+        damage_backup: bool,
+    ) -> File {
+        let mut disk = make_unformatted_disk();
+        // don't use make_disk() because it intentionally misaligns the
+        // backup GPT
+        let mut gpt = GPT::new_from(&mut disk, sector_size, make_guid("disk")).unwrap();
+        for (partnum, entry) in partitions {
+            gpt[*partnum] = entry.clone();
+            gpt[*partnum].starting_lba /= sector_size / 512;
+            gpt[*partnum].ending_lba /= sector_size / 512;
+        }
+        gpt.write_into(&mut disk).unwrap();
+        if damage_primary {
+            // write garbage to the HeaderCRC32
+            disk.seek(SeekFrom::Start(gpt.header.primary_lba * sector_size + 16))
+                .unwrap();
+            disk.write_all(&[0x15, 0xcd, 0x5b, 0x07]).unwrap();
+        }
+        if damage_backup {
+            // write garbage to the HeaderCRC32
+            disk.seek(SeekFrom::Start(gpt.header.backup_lba * sector_size + 16))
+                .unwrap();
+            disk.write_all(&[0xb1, 0x68, 0xde, 0x3a]).unwrap();
+        }
         disk
     }
 
