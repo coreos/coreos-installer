@@ -403,10 +403,13 @@ fn bls_entry_options_write_platform(orig_options: &str, platform: &str) -> Resul
 
 /// Calls a function on the latest (default) BLS entry and optionally updates it if the function
 /// returns new content. Errors out if no BLS entry was found.
+///
+/// Note that on s390x, this does not handle the call to `zipl`. We expect it to be done at a
+/// higher level if needed for batching purposes.
 pub fn visit_bls_entry(
     mountpoint: &Path,
     f: impl Fn(&str) -> Result<Option<String>>,
-) -> Result<()> {
+) -> Result<bool> {
     // walk /boot/loader/entries/*.conf
     let mut config_path = mountpoint.to_path_buf();
     config_path.push("loader/entries");
@@ -431,6 +434,7 @@ pub fn visit_bls_entry(
     }
     entries.sort();
 
+    let mut changed = false;
     if let Some(path) = entries.pop() {
         // slurp in the file
         let mut config = OpenOptions::new()
@@ -459,12 +463,13 @@ pub fn visit_bls_entry(
             config
                 .write(new_contents.as_bytes())
                 .with_context(|| format!("writing {}", path.display()))?;
+            changed = true;
         }
     } else {
         bail!("Found no BLS entries in {}", config_path.display());
     }
 
-    Ok(())
+    Ok(changed)
 }
 
 /// Wrapper around `visit_bls_entry` to specifically visit just the BLS entry's `options` line and
@@ -473,7 +478,7 @@ pub fn visit_bls_entry(
 pub fn visit_bls_entry_options(
     mountpoint: &Path,
     f: impl Fn(&str) -> Result<Option<String>>,
-) -> Result<()> {
+) -> Result<bool> {
     visit_bls_entry(mountpoint, |orig_contents: &str| {
         let mut new_contents = String::with_capacity(orig_contents.len());
         let mut found_options = false;

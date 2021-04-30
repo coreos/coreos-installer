@@ -44,7 +44,7 @@ pub fn install_bootloader<P: AsRef<Path>>(boot: P, disk: Option<&str>) -> Result
     Ok(())
 }
 
-fn run_zipl<P: AsRef<Path>>(boot: P) -> Result<()> {
+pub fn run_zipl<P: AsRef<Path>>(boot: P) -> Result<()> {
     let boot = boot.as_ref();
 
     // create dummy config for zipl
