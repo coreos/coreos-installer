@@ -70,8 +70,8 @@ Push access to the upstream repository is required in order to publish the new t
 
 - clean up:
   - [ ] `cargo clean`
-  - [ ] `git checkout master`
-  - [ ] `git pull ${UPSTREAM_REMOTE} master`
+  - [ ] `git checkout main`
+  - [ ] `git pull ${UPSTREAM_REMOTE} main`
   - [ ] `git push ${UPSTREAM_REMOTE} :release-${RELEASE_VER}`
   - [ ] `git branch -d release-${RELEASE_VER}`
 
