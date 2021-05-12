@@ -105,7 +105,7 @@ fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>>
         Ok(Some(get_raid_kargs(&device)?))
     } else if blktype == "crypt" {
         Ok(Some(get_luks_kargs(root, &device)?))
-    } else if blktype == "part" || blktype == "disk" {
+    } else if blktype == "part" || blktype == "disk" || blktype == "mpath" {
         Ok(None)
     } else {
         bail!("unknown block device type {}", blktype)
