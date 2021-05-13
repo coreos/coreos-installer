@@ -164,7 +164,7 @@ checksum = "ea221b5284a47e40033bf9b66f35f984ec0ea2931eb03505246cd27a963f981b"
 
 [[package]]
 name = "coreos-installer"
-version = "0.9.1-alpha.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -179,7 +179,7 @@ dependencies = [
  "libc",
  "maplit",
  "mbrman",
- "nix 0.20.0",
+ "nix 0.18.0",
  "openat-ext",
  "openssl",
  "pipe",
