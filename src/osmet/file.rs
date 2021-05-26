@@ -127,7 +127,7 @@ pub(super) fn osmet_file_read_header(path: &Path) -> Result<OsmetFileHeader> {
             .with_context(|| format!("opening {:?}", path))?,
     );
 
-    Ok(read_and_check_header(&mut f)?)
+    read_and_check_header(&mut f)
 }
 
 pub(super) fn osmet_file_read(path: &Path) -> Result<(OsmetFileHeader, Osmet, impl Read + Send)> {

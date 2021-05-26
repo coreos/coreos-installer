@@ -432,10 +432,10 @@ pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
 /// Generate a stream URL from a stream name and base URL, or the default
 /// base URL if none is specified.
 fn build_stream_url(stream: &str, base_url: Option<&Url>) -> Result<Url> {
-    Ok(base_url
+    base_url
         .unwrap_or(&Url::parse(DEFAULT_STREAM_BASE_URL).unwrap())
         .join(&format!("{}.json", stream))
-        .context("building stream URL")?)
+        .context("building stream URL")
 }
 
 /// Fetch and parse stream metadata.

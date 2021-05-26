@@ -99,7 +99,7 @@ pub fn get_path_digest(path: &Path) -> Result<Sha256Digest> {
 
     let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
     copy(&mut f, &mut hasher)?;
-    Ok(hasher.try_into()?)
+    hasher.try_into()
 }
 
 #[cfg(test)]

@@ -767,12 +767,12 @@ fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64
             maj, min, field
         )
     })?;
-    Ok(s.parse().with_context(|| {
+    s.parse().with_context(|| {
         format!(
             "parsing partition {}:{} {} value \"{}\" as u64",
             maj, min, field, &s
         )
-    })?)
+    })
 }
 
 fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String> {
@@ -1036,7 +1036,7 @@ mod tests {
             data: &'static [u8],
             compressed: bool,
             result: Option<NonZeroU32>,
-        };
+        }
         let tests = vec![
             Test {
                 name: "zero-length",
