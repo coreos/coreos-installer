@@ -43,6 +43,7 @@ pub fn copy_n(
         let bufn = if n < (buf.len() as u64) {
             &mut buf[..n as usize]
         } else {
+            #[allow(clippy::redundant_slicing)]
             &mut buf[..]
         };
         let len = match reader.read(bufn) {
