@@ -1036,7 +1036,7 @@ mod tests {
             data: &'static [u8],
             compressed: bool,
             result: Option<NonZeroU32>,
-        };
+        }
         let tests = vec![
             Test {
                 name: "zero-length",
