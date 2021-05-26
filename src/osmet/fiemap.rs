@@ -34,7 +34,7 @@ pub(super) fn fiemap_path(path: &OsStr) -> Result<Vec<Extent>> {
         .with_context(|| format!("opening {:?}", path))?;
 
     let fd = file.as_raw_fd();
-    Ok(fiemap(fd).with_context(|| format!("mapping {:?}", path))?)
+    fiemap(fd).with_context(|| format!("mapping {:?}", path))
 }
 
 /// Returns the `Extent`s associated with the given file. Note that the physical offsets are
