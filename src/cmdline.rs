@@ -439,6 +439,7 @@ pub fn parse_args() -> Result<Config> {
         .subcommand(
             SubCommand::with_name("iso")
                 .about("Commands to manage a CoreOS live ISO image")
+                .setting(AppSettings::SubcommandRequiredElseHelp)
                 .subcommand(
                     SubCommand::with_name("embed")
                         .setting(AppSettings::Hidden)
@@ -508,6 +509,7 @@ pub fn parse_args() -> Result<Config> {
                 .subcommand(
                     SubCommand::with_name("ignition")
                         .about("Embed an Ignition config in a CoreOS live ISO image")
+                        .setting(AppSettings::SubcommandRequiredElseHelp)
                         .subcommand(
                             SubCommand::with_name("embed")
                                 .about("Embed an Ignition config in an ISO image")
@@ -577,6 +579,7 @@ pub fn parse_args() -> Result<Config> {
                 .subcommand(
                     SubCommand::with_name("kargs")
                         .about("Modify kernel args in a CoreOS live ISO image")
+                        .setting(AppSettings::SubcommandRequiredElseHelp)
                         .subcommand(
                             SubCommand::with_name("modify")
                                 .about("Modify kernel args in an ISO image")
@@ -673,9 +676,11 @@ pub fn parse_args() -> Result<Config> {
         .subcommand(
             SubCommand::with_name("pxe")
                 .about("Commands to manage a CoreOS live PXE image")
+                .setting(AppSettings::SubcommandRequiredElseHelp)
                 .subcommand(
                     SubCommand::with_name("ignition")
                         .about("Commands to manage a live PXE Ignition config")
+                        .setting(AppSettings::SubcommandRequiredElseHelp)
                         .subcommand(
                             SubCommand::with_name("wrap")
                                 .about("Wrap an Ignition config in an initrd image")
@@ -714,6 +719,7 @@ pub fn parse_args() -> Result<Config> {
                 .about("Efficient CoreOS metal disk image packing using OSTree commits")
                 // users shouldn't be interacting with this command normally
                 .setting(AppSettings::Hidden)
+                .setting(AppSettings::SubcommandRequiredElseHelp)
                 .subcommand(
                     SubCommand::with_name("pack")
                         .about("Create osmet file from CoreOS block device")
