@@ -28,5 +28,5 @@ information regarding how to download and use `coreos-installer`.
 ## Contact
 
 - Mailing list: [coreos@lists.fedoraproject.org](https://lists.fedoraproject.org/archives/list/coreos@lists.fedoraproject.org/)
-- IRC: #[fedora-coreos](irc://irc.freenode.org:6697/#fedora-coreos) on freenode.org
+- IRC: #[fedora-coreos](ircs://irc.libera.chat:6697/#fedora-coreos) on Libera.Chat
 - Reporting bugs: [issues](https://github.com/coreos/coreos-installer/issues/new/choose)
