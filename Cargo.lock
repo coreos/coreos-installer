@@ -179,7 +179,7 @@ dependencies = [
  "libc",
  "maplit",
  "mbrman",
- "nix 0.20.0",
+ "nix 0.21.0",
  "openat-ext",
  "openssl",
  "pipe",
@@ -584,6 +584,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b16bd47d9e329435e309c58469fe0791c2d0d1ba96ec0954152a5ae2b04387dc"
 
 [[package]]
+name = "memoffset"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59accc507f1338036a0477ef61afdae33cde60840f4dfe481319ce3ad116ddf9"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -653,14 +662,15 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.20.0"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa9b4819da1bc61c0ea48b63b7bc8604064dd43013e7cc325df098d49cd7c18a"
+checksum = "5c3728fec49d363a50a8828a190b379a446cc5cf085c06259bbbeb34447e4ec7"
 dependencies = [
  "bitflags",
  "cc",
  "cfg-if 1.0.0",
  "libc",
+ "memoffset",
 ]
 
 [[package]]
@@ -704,7 +714,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64d8c39f87cebbf893a221d307e578da316157c6c65aa1c1518c573be0cd8c11"
 dependencies = [
  "libc",
- "nix 0.20.0",
+ "nix 0.18.0",
  "openat",
  "rand",
 ]
