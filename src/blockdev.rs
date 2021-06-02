@@ -976,6 +976,28 @@ pub fn is_dasd(device: &str) -> Result<bool> {
     Ok(target.to_string_lossy().starts_with("/dev/dasd"))
 }
 
+/// Checks if virtio-blk device is backed by an IBM DASD disk
+#[cfg(target_arch = "s390x")]
+pub fn is_vda_dasd(device: &str) -> Result<bool> {
+    let target =
+        canonicalize(device).with_context(|| format!("getting absolute path to {}", device))?;
+    let valid;
+    let cmd = Command::new("fdasd").arg("-i").arg(target).output()?;
+    if cmd.status.success() {
+        valid = true;
+        eprintln!("{} is backed by /dev/dasd", device)
+    }
+    else {
+        valid = false;
+        eprintln!("{} is NOT backed by /dev/dasd", device)
+    }
+    Ok(valid)
+}
+
+#[cfg(not(target_arch = "s390x"))]
+pub fn is_vda_dasd(device: &str) -> Result<bool> {
+    Ok(false)
+}
 // create unsafe ioctl wrappers
 #[allow(clippy::missing_safety_doc)]
 mod ioctl {

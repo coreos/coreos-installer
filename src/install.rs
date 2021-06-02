@@ -159,7 +159,11 @@ fn write_disk(
     let image_copy = match is_dasd(&config.device)? {
         #[cfg(target_arch = "s390x")]
         true => s390x::image_copy_s390x,
-        _ => image_copy_default,
+        _ => match is_vda_dasd(&config.device)? {
+                #[cfg(target_arch = "s390x")]
+                true => s390x::image_copy_s390x,
+                _ => image_copy_default,
+            },
     };
     write_image(
         source,

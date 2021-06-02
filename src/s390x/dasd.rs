@@ -53,6 +53,10 @@ fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
         .with_context(|| format!("getting name of {}", device.display()))?
         .to_string_lossy()
         .to_string();
+    if device.starts_with("vda") {
+        let dev_type = DasdType::Eckd;  /* FBA is not supported by virtio-blk */
+        return Ok(dev_type);
+    }
     let devtype_path = format!("/sys/class/block/{}/device/devtype", device);
     let devtype_str = std::fs::read_to_string(&devtype_path)
         .with_context(|| format!("reading {}", devtype_path))?;
