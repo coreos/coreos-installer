@@ -35,13 +35,15 @@ pub(crate) struct Range {
     pub length: u64,
 }
 
-/// There are 2 types of DASD devices:
+/// There are 3 types of DASD devices:
 ///   - ECKD (Extended Count Key Data) - is regular DASD of type 3390
 ///   - FBA (Fixed Block Access) - is used for emulated device that represents a real SCSI device
+///   - Virt - ECKD on LPAR/zKVM as virtio-device
 /// Only ECKD disks require `dasdfmt, fdasd` linux tools to be configured.
 enum DasdType {
     Eckd,
     Fba,
+    Virt,
 }
 
 fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
@@ -53,6 +55,9 @@ fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
         .with_context(|| format!("getting name of {}", device.display()))?
         .to_string_lossy()
         .to_string();
+    if device.starts_with("vd") {
+        return Ok(DasdType::Virt);
+    }
     let devtype_path = format!("/sys/class/block/{}/device/devtype", device);
     let devtype_str = std::fs::read_to_string(&devtype_path)
         .with_context(|| format!("reading {}", devtype_path))?;
@@ -66,7 +71,7 @@ fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
 pub fn prepare_dasd(dasd: &str) -> Result<()> {
     match get_dasd_type(dasd)? {
         DasdType::Eckd => eckd_prepare(dasd),
-        DasdType::Fba => Ok(()),
+        DasdType::Fba | DasdType::Virt => Ok(()),
     }
 }
 
@@ -75,7 +80,7 @@ pub fn prepare_dasd(dasd: &str) -> Result<()> {
 pub fn dasd_try_get_sector_size(dasd: &str) -> Result<Option<NonZeroU32>> {
     match get_dasd_type(dasd)? {
         DasdType::Eckd => eckd_try_get_sector_size(dasd),
-        DasdType::Fba => Ok(None),
+        DasdType::Fba | DasdType::Virt => Ok(None),
     }
 }
 
@@ -87,8 +92,10 @@ pub fn image_copy_s390x(
     _saved: Option<&SavedPartitions>,
 ) -> Result<()> {
     let ranges = match get_dasd_type(dest_path)? {
-        DasdType::Eckd => eckd_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?,
         DasdType::Fba => fba_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?,
+        DasdType::Eckd | DasdType::Virt => {
+            eckd_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?
+        }
     };
 
     // copy each partition

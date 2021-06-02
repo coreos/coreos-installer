@@ -47,7 +47,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 
     #[cfg(target_arch = "s390x")]
     {
-        if is_dasd(&config.device)? {
+        if is_dasd(&config.device, None)? {
             if !config.save_partitions.is_empty() {
                 // The user requested partition saving, but SavedPartitions
                 // doesn't understand DASD VTOCs and won't find any partitions
@@ -156,7 +156,7 @@ fn write_disk(
 
     // copy the image
     #[allow(clippy::match_bool, clippy::match_single_binding)]
-    let image_copy = match is_dasd(&config.device)? {
+    let image_copy = match is_dasd(&config.device, Some(dest))? {
         #[cfg(target_arch = "s390x")]
         true => s390x::image_copy_s390x,
         _ => image_copy_default,
@@ -527,7 +527,7 @@ fn reset_partition_table(
 ) -> Result<()> {
     eprintln!("Resetting partition table");
 
-    if is_dasd(&config.device)? {
+    if is_dasd(&config.device, Some(dest))? {
         // Don't write out a GPT, since the backup GPT may overwrite
         // something we're not allowed to touch.  Just clear the first MiB
         // of disk.

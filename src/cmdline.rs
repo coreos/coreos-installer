@@ -853,7 +853,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
     // it changes to the recommended 4096
     // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
     #[allow(clippy::match_bool, clippy::match_single_binding)]
-    let sector_size = match is_dasd(&device)
+    let sector_size = match is_dasd(&device, None)
         .with_context(|| format!("checking whether {} is an IBM DASD disk", device))?
     {
         #[cfg(target_arch = "s390x")]
