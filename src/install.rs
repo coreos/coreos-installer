@@ -216,7 +216,8 @@ fn write_disk(
         #[cfg(target_arch = "s390x")]
         s390x::install_bootloader(
             mount.mountpoint(),
-            &config.device,
+            Some(&config.device),
+            true,
             config.firstboot_kargs.as_ref().map(|s| s.as_str()),
         )?;
     }
