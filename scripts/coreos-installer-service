@@ -8,7 +8,7 @@ PERSIST_KERNEL_NET_PARAMS=("ipv6.disable" "net.ifnames" "net.naming-scheme")
 # Dracut networking params to persist
 # Everything other than rd.neednet.
 # List from https://www.mankier.com/7/dracut.cmdline#Description-Network
-PERSIST_DRACUT_NET_PARAMS=("ip" "ifname" "rd.route" "bootdev" "BOOTIF" "rd.bootif" "nameserver" "rd.peerdns" "biosdevname" "vlan" "bond" "team" "bridge" "rd.net.timeout.carrier" "coreos.no_persist_ip")
+PERSIST_DRACUT_NET_PARAMS=("ip" "ifname" "rd.route" "bootdev" "BOOTIF" "rd.bootif" "nameserver" "rd.peerdns" "biosdevname" "vlan" "bond" "team" "bridge" "rd.net.timeout.carrier" "coreos.no_persist_ip" "coreos.force_persist_ip")
 
 # IBM S390X params to persist
 PERSIST_S390X_PARAMS=("rd.dasd" "rd.zfcp" "rd.znet" "zfcp.allow_lun_scan" "cio_ignore")
