@@ -994,10 +994,36 @@ pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
 }
 
 /// Checks if underlying device is IBM DASD disk
-pub fn is_dasd(device: &str) -> Result<bool> {
+pub fn is_dasd(device: &str, fd: Option<&mut File>) -> Result<bool> {
     let target =
         canonicalize(device).with_context(|| format!("getting absolute path to {}", device))?;
-    Ok(target.to_string_lossy().starts_with("/dev/dasd"))
+    if target.to_string_lossy().starts_with("/dev/dasd") {
+        return Ok(true);
+    }
+    let read_magic = |device: &str, disk: &mut File| -> Result<[u8; 4]> {
+        let offset = disk
+            .seek(SeekFrom::Current(0))
+            .with_context(|| format!("saving offset {}", device))?;
+        disk.seek(SeekFrom::Start(8194))
+            .with_context(|| format!("seeking {}", device))?;
+        let mut lbl = [0u8; 4];
+        disk.read_exact(&mut lbl)
+            .with_context(|| format!("reading label {}", device))?;
+        disk.seek(SeekFrom::Start(offset))
+            .with_context(|| format!("restoring offset {}", device))?;
+        Ok(lbl)
+    };
+    if target.to_string_lossy().starts_with("/dev/vd") {
+        let cdl_magic = [0xd3, 0xf1, 0xe5, 0xd6];
+        let lbl = if let Some(t) = fd {
+            read_magic(device, t)?
+        } else {
+            let mut disk = File::open(device).with_context(|| format!("opening {}", device))?;
+            read_magic(device, &mut disk)?
+        };
+        return Ok(cdl_magic == lbl);
+    }
+    Ok(false)
 }
 
 // create unsafe ioctl wrappers
