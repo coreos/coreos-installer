@@ -300,6 +300,15 @@ impl PartTableKpartx {
 
 impl PartTable for PartTableKpartx {
     fn reread(&mut self) -> Result<()> {
+        let delay = 1;
+        for _ in 0..4 {
+            match self.run_kpartx("-u") {
+                Ok(()) => return Ok(()),
+                Err(e) => eprintln!("Error: {}", e),
+            }
+            eprintln!("Retrying in {} second", delay);
+            sleep(Duration::from_secs(delay));
+        }
         self.run_kpartx("-u")
     }
 }
