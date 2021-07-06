@@ -9,7 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # Minimum supported Rust version (MSRV)
-  ACTIONS_MSRV_TOOLCHAIN: 1.44.1
+  ACTIONS_MSRV_TOOLCHAIN: 1.46.0
   # Pinned toolchain for linting
   ACTIONS_LINTS_TOOLCHAIN: 1.52.0
 
