@@ -16,9 +16,11 @@ use anyhow::{bail, Context, Result};
 use lazy_static::lazy_static;
 use nix::mount;
 use regex::Regex;
-use std::fs::{copy as fscopy, create_dir_all, read_dir, File, OpenOptions};
+use std::fs::{
+    copy as fscopy, create_dir_all, read_dir, set_permissions, File, OpenOptions, Permissions,
+};
 use std::io::{copy, Read, Seek, SeekFrom, Write};
-use std::os::unix::fs::FileTypeExt;
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use crate::blockdev::*;
@@ -248,7 +250,21 @@ fn write_ignition(
     // make parent directory
     let mut config_dest = mountpoint.to_path_buf();
     config_dest.push("ignition");
-    create_dir_all(&config_dest).context("creating Ignition config directory")?;
+    if !config_dest.is_dir() {
+        create_dir_all(&config_dest).with_context(|| {
+            format!(
+                "creating Ignition config directory {}",
+                config_dest.display()
+            )
+        })?;
+        // Ignition data may contain secrets; restrict to root
+        set_permissions(&config_dest, Permissions::from_mode(0o700)).with_context(|| {
+            format!(
+                "setting file mode for Ignition directory {}",
+                config_dest.display()
+            )
+        })?;
+    }
 
     // do the copy
     config_dest.push("config.ign");
@@ -262,6 +278,13 @@ fn write_ignition(
                 config_dest.display()
             )
         })?;
+    // Ignition config may contain secrets; restrict to root
+    set_permissions(&config_dest, Permissions::from_mode(0o600)).with_context(|| {
+        format!(
+            "setting file mode for destination Ignition config {}",
+            config_dest.display()
+        )
+    })?;
     copy(&mut config_in, &mut config_out).context("writing Ignition config")?;
 
     Ok(())
