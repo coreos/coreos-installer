@@ -97,6 +97,10 @@ if karg_bool coreos.inst.insecure; then
     args+=("--insecure")
 fi
 
+if karg_bool coreos.inst.mpath; then
+   args+=("--append-karg" "rd.multipath=default" "--append-karg" "root=/dev/disk/by-label/dm-mpath-root" "--append-karg" "rw")
+fi
+
 # Ensure device nodes have been created
 udevadm settle
 
