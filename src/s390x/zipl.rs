@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, Context, Result};
-use regex::RegexBuilder;
-use std::fs::read_to_string;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use walkdir::WalkDir;
+use crate::install::{bls_entry_options_delete_and_append_kargs, visit_bls_entry_options};
+use crate::runcmd;
+use anyhow::{anyhow, Context, Result};
+use std::fs::{copy, create_dir_all, read_dir};
+use std::io::Write;
+use std::path::Path;
+use std::process::Command;
+use tempfile::Builder;
 
 /////////////////////////////////////////////////////////////////////////////
 // IBM Z Bootloader Support
@@ -27,110 +29,75 @@ use walkdir::WalkDir;
 ///
 /// # Arguments
 /// * `boot` - path to boot partition mountpoint, i.e. smth like /boot
-/// * `disk` - smth like /dev/dasda
+/// * `disk` - optional device path on which to run chreipl
+/// * `firstboot` - adds ignition.firstboot karg
+/// * `firstboot_kargs` - enables ignition firstboot and adds provided kargs
 pub fn install_bootloader<P: AsRef<Path>>(
     boot: P,
-    disk: &str,
-    extra_kargs: Option<&str>,
+    disk: Option<&str>,
+    firstboot: bool,
+    firstboot_kargs: Option<&str>,
 ) -> Result<()> {
     eprintln!("Installing bootloader");
+    let boot = boot.as_ref();
 
-    let bls_config_path = get_bls_config_path(&boot)?;
-    let kernel_path = get_kernel_path(&boot)?;
-    let initramfs_path = get_initramfs_path(&boot)?;
-
-    let kargs = format!(
-        "{} ignition.firstboot {}",
-        get_boot_kargs(bls_config_path)?,
-        extra_kargs.unwrap_or("")
+    // create dummy config for zipl
+    let mut conffile = Builder::new()
+        .prefix("coreos-installer-zipl.")
+        .tempfile()
+        .context("creating zipl config")?;
+    let data = format!(
+        "[defaultboot]\ndefaultauto\nprompt=1\ntimeout=5\nsecure=auto\ntarget={}\n",
+        boot.to_str().unwrap()
     );
+    conffile
+        .write_all(data.as_bytes())
+        .context("writing zipl config")?;
 
-    let status = Command::new("zipl")
-        .arg("-P")
-        .arg(kargs)
-        .arg("-i")
-        .arg(kernel_path.as_os_str())
-        .arg("-r")
-        .arg(initramfs_path.as_os_str())
-        .arg("--target")
-        .arg(boot.as_ref().as_os_str())
-        .arg("-n")
-        .stdout(Stdio::null())
-        .status()
-        .with_context(|| format!("failed to execute zipl on {}", disk))?;
-    if !status.success() {
-        bail!("couldn't install bootloader on {}", disk);
-    }
+    // we have to copy bls config files for further modification
+    let tempdir = Builder::new()
+        .prefix("coreos-installer-zipl-bls-")
+        .tempdir()
+        .context("creating temporary directory")?;
+    let blsdir = if firstboot || firstboot_kargs.is_some() {
+        let blsdir = tempdir.path().join("loader/entries");
+        create_dir_all(&blsdir).with_context(|| format!("creating {}", blsdir.display()))?;
+        read_dir(boot.join("loader/entries"))
+            .with_context(|| format!("reading {}", boot.display()))?
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|p| p.file_type().unwrap().is_file())
+            .for_each(|src| {
+                copy(src.path(), blsdir.join(src.file_name())).unwrap();
+            });
+        let mut extra = if firstboot {
+            vec!["ignition.firstboot".to_string()]
+        } else {
+            Vec::new()
+        };
+        if let Some(kargs) = firstboot_kargs {
+            extra.extend_from_slice(
+                &kargs
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>(),
+            );
+        }
+        visit_bls_entry_options(tempdir.path(), |orig_options: &str| {
+            bls_entry_options_delete_and_append_kargs(orig_options, &[], &[], extra.as_slice())
+        })
+        .with_context(|| format!("appending {:?}", extra))?;
 
-    eprintln!("Updating re-IPL device");
-    let status = Command::new("chreipl")
-        .arg(disk)
-        .stdout(Stdio::null())
-        .status()
-        .with_context(|| format!("failed to execute chreipl on {}", disk))?;
-    if !status.success() {
-        bail!("couldn't set {} as boot device", disk);
+        blsdir
+    } else {
+        boot.join("loader/entries")
+    };
+
+    runcmd!("zipl", "--blsdir", blsdir, "--config", conffile.path())?;
+
+    if let Some(disk) = disk {
+        eprintln!("Updating re-IPL device");
+        runcmd!("chreipl", disk)?;
     }
     Ok(())
-}
-
-fn find_file<P: AsRef<Path>>(root: P, pat: &str) -> Result<PathBuf> {
-    for entry in WalkDir::new(root.as_ref())
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy();
-        if pat.starts_with('.') {
-            if !name.ends_with(pat) {
-                continue;
-            }
-        } else if !name.starts_with(pat) {
-            continue;
-        }
-
-        return Ok(entry.path().to_path_buf());
-    }
-    bail!(
-        "Cannot find file with mask: {} in {}",
-        pat,
-        root.as_ref().display()
-    )
-}
-
-fn get_bls_config_path<P: AsRef<Path>>(boot: P) -> Result<PathBuf> {
-    find_file(boot.as_ref().join("loader").join("entries"), ".conf")
-}
-
-fn get_kernel_path<P: AsRef<Path>>(boot: P) -> Result<PathBuf> {
-    find_file(boot.as_ref().join("ostree"), "vmlinuz")
-}
-
-fn get_initramfs_path<P: AsRef<Path>>(boot: P) -> Result<PathBuf> {
-    find_file(boot.as_ref().join("ostree"), "initram")
-}
-
-fn get_boot_kargs<P: AsRef<Path>>(bls_config: P) -> Result<String> {
-    let contents = read_to_string(&bls_config)
-        .with_context(|| format!("reading {}", bls_config.as_ref().display()))?;
-    // read kargs from options line
-    let pt = r"^options (?P<v>.+)$";
-    let opts = RegexBuilder::new(pt)
-        .multi_line(true)
-        .build()
-        .unwrap()
-        .captures(&contents)
-        .with_context(|| format!("capturing {:?}", pt))?
-        .name("v")
-        .map(|v| v.as_str())
-        .with_context(|| format!("matching {:?}", pt))?;
-    // filter out variable substitutions such as $ignition_firstboot
-    let opts = RegexBuilder::new(r"(^| )\$[a-zA-Z0-9_]+")
-        .build()
-        .unwrap()
-        .replace_all(opts, "")
-        .to_string();
-    Ok(opts)
 }
