@@ -42,6 +42,8 @@ pub enum Config {
     IsoKargsModify(IsoKargsModifyConfig),
     IsoKargsReset(IsoKargsResetConfig),
     IsoKargsShow(IsoKargsShowConfig),
+    IsoUproot(IsoUprootConfig),
+    IsoUprootPack(IsoUprootPackConfig),
     OsmetFiemap(OsmetFiemapConfig),
     OsmetPack(OsmetPackConfig),
     OsmetUnpack(OsmetUnpackConfig),
@@ -115,6 +117,18 @@ pub struct IsoKargsShowConfig {
     pub input: String,
     pub default: bool,
     pub header: bool,
+}
+
+pub struct IsoUprootConfig {
+    pub input: String,
+    pub output: Option<String>,
+    pub save_rootfs: Option<String>,
+}
+
+pub struct IsoUprootPackConfig {
+    pub full: String,
+    pub minimal: String,
+    pub consume: bool,
 }
 
 pub struct OsmetFiemapConfig {
@@ -671,6 +685,56 @@ pub fn parse_args() -> Result<Config> {
                                         .hidden(true),
                                 ),
                         ),
+                )
+                .subcommand(
+                    SubCommand::with_name("uproot")
+                        .about("Remove the root filesystem from an ISO image")
+                        .arg(
+                            Arg::with_name("output")
+                                .short("o")
+                                .long("output")
+                                .value_name("path")
+                                .help("Write ISO to a new output file")
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("rootfs")
+                                .long("save-rootfs")
+                                .value_name("path")
+                                .help("Save rootfs CPIO when uprooting")
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("input")
+                                .value_name("ISO")
+                                .help("ISO image")
+                                .required(true)
+                                .takes_value(true),
+                        ),
+                )
+                .subcommand(
+                    SubCommand::with_name("uproot-pack")
+                        .about("Pack minimal ISO into full ISO")
+                        .setting(AppSettings::Hidden)
+                        .arg(
+                            Arg::with_name("full")
+                                .value_name("FULL_ISO")
+                                .help("Full ISO image")
+                                .required(true)
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("minimal")
+                                .value_name("MINIMAL_ISO")
+                                .help("Minimal ISO image")
+                                .required(true)
+                                .takes_value(true),
+                        )
+                        .arg(
+                            Arg::with_name("consume")
+                                .long("consume")
+                                .help("Delete minimal ISO after successful packing"),
+                        ),
                 ),
         )
         .subcommand(
@@ -826,6 +890,8 @@ pub fn parse_args() -> Result<Config> {
                 ("show", Some(matches)) => parse_iso_kargs_show(&matches),
                 _ => bail!("unrecognized 'kargs' subcommand"),
             },
+            ("uproot", Some(matches)) => parse_iso_uproot(&matches),
+            ("uproot-pack", Some(matches)) => parse_iso_uproot_pack(&matches),
             _ => bail!("unrecognized 'iso' subcommand"),
         },
         ("osmet", Some(osmet_matches)) => match osmet_matches.subcommand() {
@@ -1194,6 +1260,31 @@ fn parse_iso_kargs_show(matches: &ArgMatches) -> Result<Config> {
             .expect("input missing"),
         default: matches.is_present("default"),
         header: matches.is_present("header"),
+    }))
+}
+
+fn parse_iso_uproot(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoUproot(IsoUprootConfig {
+        input: matches
+            .value_of("input")
+            .map(String::from)
+            .expect("input missing"),
+        output: matches.value_of("output").map(String::from),
+        save_rootfs: matches.value_of("rootfs").map(String::from),
+    }))
+}
+
+fn parse_iso_uproot_pack(matches: &ArgMatches) -> Result<Config> {
+    Ok(Config::IsoUprootPack(IsoUprootPackConfig {
+        full: matches
+            .value_of("full")
+            .map(String::from)
+            .expect("input missing"),
+        minimal: matches
+            .value_of("minimal")
+            .map(String::from)
+            .expect("input missing"),
+        consume: matches.is_present("consume"),
     }))
 }
 

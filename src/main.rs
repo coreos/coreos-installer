@@ -34,6 +34,8 @@ fn main() -> Result<()> {
         Config::IsoKargsModify(c) => live::iso_kargs_modify(&c),
         Config::IsoKargsReset(c) => live::iso_kargs_reset(&c),
         Config::IsoKargsShow(c) => live::iso_kargs_show(&c),
+        Config::IsoUproot(c) => live::iso_uproot(&c),
+        Config::IsoUprootPack(c) => live::iso_uproot_pack(&c),
         Config::OsmetFiemap(c) => osmet::osmet_fiemap(&c),
         Config::OsmetPack(c) => osmet::osmet_pack(&c),
         Config::OsmetUnpack(c) => osmet::osmet_unpack(&c),

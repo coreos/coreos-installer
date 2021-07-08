@@ -12,10 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Error, Result};
 use flate2::read::GzDecoder;
+use openssl::hash::{Hasher, MessageDigest};
 use openssl::sha;
+use serde::{Deserialize, Serialize};
+use std::convert::{TryFrom, TryInto};
+use std::fs::OpenOptions;
 use std::io::{self, BufRead, ErrorKind, Read, Write};
+use std::os::unix::io::AsRawFd;
+use std::path::Path;
 use std::result;
 use xz2::read::XzDecoder;
 
@@ -243,6 +249,100 @@ impl<R: Read> Read for LimitReader<R> {
             .checked_sub(count as u64)
             .expect("read more bytes than allowed");
         Ok(count)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+pub struct Sha256Digest(pub [u8; 32]);
+
+impl TryFrom<Hasher> for Sha256Digest {
+    type Error = Error;
+
+    fn try_from(mut hasher: Hasher) -> std::result::Result<Self, Self::Error> {
+        let digest = hasher.finish().context("finishing hash")?;
+        Ok(Sha256Digest(
+            digest.as_ref().try_into().context("converting to SHA256")?,
+        ))
+    }
+}
+
+impl Sha256Digest {
+    pub fn from_path(path: &Path) -> Result<Self> {
+        let mut f = OpenOptions::new()
+            .read(true)
+            .open(path)
+            .with_context(|| format!("opening {:?}", path))?;
+
+        Self::from_file(&mut f)
+    }
+
+    pub fn from_file(f: &mut std::fs::File) -> Result<Self> {
+        // tell kernel to optimize for sequential reading
+        if unsafe { libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL) } < 0 {
+            eprintln!(
+                "posix_fadvise(SEQUENTIAL) failed (errno {}) -- ignoring...",
+                nix::errno::errno()
+            );
+        }
+
+        Self::from_reader(f)
+    }
+
+    pub fn from_reader(r: &mut impl Read) -> Result<Self> {
+        let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
+        std::io::copy(r, &mut hasher)?;
+        hasher.try_into()
+    }
+
+    pub fn to_hex_string(&self) -> Result<String> {
+        let mut buf: Vec<u8> = Vec::with_capacity(64);
+        for i in 0..32 {
+            write!(buf, "{:02x}", self.0[i])?;
+        }
+        Ok(String::from_utf8(buf)?)
+    }
+}
+
+pub struct WriteHasher<W: Write> {
+    writer: W,
+    hasher: Hasher,
+}
+
+impl<W: Write> WriteHasher<W> {
+    pub fn new(writer: W, hasher: Hasher) -> Self {
+        WriteHasher { writer, hasher }
+    }
+
+    pub fn new_sha256(writer: W) -> Result<Self> {
+        let hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
+        Ok(WriteHasher { writer, hasher })
+    }
+}
+
+impl<W: Write> Write for WriteHasher<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let n = self.writer.write(buf)?;
+        self.hasher.write_all(&buf[..n])?;
+
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush()?;
+        self.hasher.flush()?;
+        Ok(())
+    }
+}
+
+impl<W: Write> TryFrom<WriteHasher<W>> for Sha256Digest {
+    type Error = Error;
+
+    fn try_from(wrapper: WriteHasher<W>) -> std::result::Result<Self, Self::Error> {
+        Sha256Digest::try_from(wrapper.hasher)
     }
 }
 

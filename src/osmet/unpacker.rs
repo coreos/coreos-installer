@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{self, copy, ErrorKind, Read, Seek, SeekFrom, Write};
@@ -20,11 +20,12 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::thread;
 
-use anyhow::{bail, Context, Error, Result};
+use anyhow::{bail, Context, Result};
 use openssl::hash::{Hasher, MessageDigest};
 use xz2::read::XzDecoder;
 
 use super::*;
+use crate::io::WriteHasher;
 
 /// Path to OSTree repo of sysroot.
 const SYSROOT_OSTREE_REPO: &str = "/sysroot/ostree/repo";
@@ -106,48 +107,13 @@ pub(super) fn get_unpacked_image_digest(
     Ok((hasher.try_into()?, n))
 }
 
-struct WriteHasher<W: Write> {
-    writer: W,
-    hasher: Hasher,
-}
-
-impl<W: Write> Write for WriteHasher<W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if buf.is_empty() {
-            return Ok(0);
-        }
-
-        let n = self.writer.write(buf)?;
-        self.hasher.write_all(&buf[..n])?;
-
-        Ok(n)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.writer.flush()?;
-        self.hasher.flush()?;
-        Ok(())
-    }
-}
-
-impl<W: Write> TryFrom<WriteHasher<W>> for Sha256Digest {
-    type Error = Error;
-
-    fn try_from(wrapper: WriteHasher<W>) -> std::result::Result<Self, Self::Error> {
-        Sha256Digest::try_from(wrapper.hasher)
-    }
-}
-
 fn osmet_unpack_to_writer(
     osmet: Osmet,
     mut packed_image: impl Read,
     repo: PathBuf,
     writer: impl Write,
 ) -> Result<()> {
-    let hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
-
-    let mut w = WriteHasher { writer, hasher };
-
+    let mut w = WriteHasher::new_sha256(writer)?;
     let n = write_unpacked_image(&mut packed_image, &mut w, &osmet.partitions, &repo)?;
     if n != osmet.size {
         bail!("wrote {} bytes but expected {}", n, osmet.size);

@@ -120,7 +120,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
         );
     }
 
-    let checksum_str = checksum_to_string(&checksum)?;
+    let checksum_str = checksum.to_hex_string()?;
     if checksum_str != config.checksum {
         bail!(
             "unpacking test: got checksum {} but expected {}",
@@ -241,12 +241,12 @@ fn scan_root_partition(
             .with_context(|| format!("getting metadata for {:?}", entry.path()))?
             .len();
         if let Entry::Occupied(boot_entry) = boot_files.entry(len) {
-            // we can't use Entry::or_insert_with() here because get_path_digest() is fallible
+            // we can't use Entry::or_insert_with() here because from_path() is fallible
             let boot_file_digest = match cached_boot_files_digests.entry(len) {
-                Entry::Vacant(e) => e.insert(get_path_digest(boot_entry.get())?),
+                Entry::Vacant(e) => e.insert(Sha256Digest::from_path(boot_entry.get())?),
                 Entry::Occupied(e) => e.into_mut(),
             };
-            if get_path_digest(entry.path())? == *boot_file_digest {
+            if Sha256Digest::from_path(entry.path())? == *boot_file_digest {
                 mapped_boot_files.insert(boot_entry.remove(), object.clone());
             }
         }
