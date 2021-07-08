@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use std::process::Command;
 
 use libcoreinst::install::*;
+use libcoreinst::runcmd;
 
 use crate::cmdline::*;
 use crate::rootmap::get_boot_mount_from_cmdline_args;
@@ -26,10 +28,14 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
         // the unwrap() here is safe because we checked in cmdline that one of them must be provided
         let mount =
             get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?.unwrap();
-        visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
+        let changed = visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
             modify_and_print(config, orig_options)
         })
         .context("visiting BLS options")?;
+
+        if changed && cfg!(target_arch = "s390x") {
+            runcmd!("zipl", "--target", mount.mountpoint())?;
+        }
     }
 
     Ok(())

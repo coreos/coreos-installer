@@ -65,6 +65,8 @@ pub fn rootmap(config: &RootMapConfig) -> Result<()> {
         })
         .context("appending rootmap kargs")?;
         eprintln!("Injected kernel arguments into BLS: {}", kargs.join(" "));
+        // Note here we're not calling `zipl` on s390x; `ignition-firstboot-complete.service` will
+        // call it anyway on firstboot, so might as well batch them.
     } else {
         // without /boot options, we just print the kargs; note we output to stdout here
         println!("{}", kargs.join(" "));
