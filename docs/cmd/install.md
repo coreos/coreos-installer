@@ -39,3 +39,4 @@ Install Fedora CoreOS or RHEL CoreOS
 | **--stream-base-url** *URL* | Base URL for Fedora CoreOS stream metadata |
 | **--architecture** *name* | Target CPU architecture [default: x86_64] |
 | **--preserve-on-error** | Don't clear partition table on error |
+| **--http-retries** *N* | HTTP retries, or string "infinite" |

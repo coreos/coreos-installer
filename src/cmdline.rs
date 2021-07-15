@@ -62,6 +62,13 @@ pub struct InstallConfig {
     pub preserve_on_error: bool,
     pub network_config: Option<String>,
     pub save_partitions: Vec<PartitionFilter>,
+    pub http_retries: Option<HttpRetries>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum HttpRetries {
+    Infinite,
+    Limited(NonZeroU32),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -334,6 +341,13 @@ pub fn parse_args() -> Result<Config> {
                         .long("preserve-on-error")
                         .help("Don't clear partition table on error"),
                 )
+                .arg(
+                    Arg::with_name("http-retries")
+                        .long("http-retries")
+                        .value_name("N")
+                        .help("HTTP retries, or string \"infinite\"")
+                        .takes_value(true),
+                )
                 // positional args
                 .arg(
                     Arg::with_name("device")
@@ -413,6 +427,13 @@ pub fn parse_args() -> Result<Config> {
                         .long("stream-base-url")
                         .value_name("URL")
                         .help("Base URL for Fedora CoreOS stream metadata")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("http-retries")
+                        .long("http-retries")
+                        .value_name("N")
+                        .help("HTTP retries, or string \"infinite\"")
                         .takes_value(true),
                 ),
         )
@@ -855,6 +876,20 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         .value_of("architecture")
         .expect("architecture missing");
 
+    let http_retries: Option<HttpRetries> = matches
+        .value_of("http-retries")
+        .map(|s| match s {
+            "infinite" => Ok(Some(HttpRetries::Infinite)),
+            num => num.parse::<u32>().map(|num| {
+                NonZeroU32::new(num)
+                    .map(|nz| Some(HttpRetries::Limited(nz)))
+                    .unwrap_or(None)
+            }),
+        })
+        .transpose()
+        .context("parsing --http-retries")?
+        .flatten();
+
     // Uninitialized ECKD DASD's blocksize is 512, but after formatting
     // it changes to the recommended 4096
     // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
@@ -878,7 +913,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
     } else if matches.is_present("image-url") {
         let image_url = Url::parse(matches.value_of("image-url").expect("image-url missing"))
             .context("parsing image URL")?;
-        Box::new(UrlLocation::new(&image_url))
+        Box::new(UrlLocation::new(&image_url, http_retries))
     } else if matches.is_present("offline") {
         match OsmetLocation::new(architecture, sector_size)? {
             Some(osmet) => Box::new(osmet),
@@ -921,6 +956,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
                 "metal",
                 format,
                 base_url.as_ref(),
+                http_retries,
             )?)
         }
     };
@@ -944,7 +980,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
             } else if !url.starts_with("https://") {
                 bail!("unknown protocol for URL '{}'", url);
             }
-            download_to_tempfile(url)
+            download_to_tempfile(url, http_retries)
                 .with_context(|| format!("downloading source Ignition config {}", url))
         }).transpose()?
     } else {
@@ -968,6 +1004,7 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         device,
         location,
         ignition,
+        http_retries,
         ignition_hash: matches
             .value_of("ignition-hash")
             .map(IgnitionHash::try_parse)
@@ -1051,10 +1088,24 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
     // Build image location.  Ideally we'd use conflicts_with (and an
     // ArgGroup for streams), but that doesn't play well with default
     // arguments, so we manually prioritize modes.
+    let http_retries: Option<HttpRetries> = matches
+        .value_of("http-retries")
+        .map(|s| match s {
+            "infinite" => Ok(Some(HttpRetries::Infinite)),
+            num => num.parse::<u32>().map(|num| {
+                NonZeroU32::new(num)
+                    .map(|nz| Some(HttpRetries::Limited(nz)))
+                    .unwrap_or(None)
+            }),
+        })
+        .transpose()
+        .context("parsing --http-retries")?
+        .flatten();
+
     let location: Box<dyn ImageLocation> = if matches.is_present("image-url") {
         let image_url = Url::parse(matches.value_of("image-url").expect("image-url missing"))
             .context("parsing image URL")?;
-        Box::new(UrlLocation::new(&image_url))
+        Box::new(UrlLocation::new(&image_url, http_retries))
     } else {
         let base_url = if let Some(stream_base_url) = matches.value_of("stream-base-url") {
             Some(Url::parse(stream_base_url).context("parsing stream base URL")?)
@@ -1069,6 +1120,7 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
             matches.value_of("platform").expect("platform missing"),
             matches.value_of("format").expect("format missing"),
             base_url.as_ref(),
+            http_retries,
         )?)
     };
 

@@ -97,6 +97,9 @@ if karg_bool coreos.inst.insecure; then
     args+=("--insecure")
 fi
 
+# Always retry HTTP requests; we've got nothing to lose since we fail anyway.
+args+=("--http-retries" "infinite")
+
 # Ensure device nodes have been created
 udevadm settle
 

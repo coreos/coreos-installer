@@ -327,16 +327,11 @@ pub fn image_copy_default(
     Ok(())
 }
 
-pub fn download_to_tempfile(url: &str) -> Result<File> {
+pub fn download_to_tempfile(url: &str, retries: Option<HttpRetries>) -> Result<File> {
     let mut f = tempfile::tempfile()?;
 
     let client = new_http_client()?;
-    let mut resp = client
-        .get(url)
-        .send()
-        .with_context(|| format!("sending request for '{}'", url))?
-        .error_for_status()
-        .with_context(|| format!("fetching '{}'", url))?;
+    let mut resp = http_get(client, url, retries)?;
 
     let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &mut f);
     copy(

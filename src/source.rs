@@ -20,6 +20,7 @@ use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::thread::sleep;
 use std::time::Duration;
 
 use crate::cmdline::*;
@@ -65,6 +66,7 @@ pub struct UrlLocation {
     image_url: Url,
     sig_url: Url,
     artifact_type: String,
+    retries: Option<HttpRetries>,
 }
 
 // Remote image source specified by Fedora CoreOS stream metadata
@@ -76,6 +78,7 @@ pub struct StreamLocation {
     architecture: String,
     platform: String,
     format: String,
+    retries: Option<HttpRetries>,
 }
 
 pub struct ImageSource {
@@ -150,28 +153,30 @@ impl ImageLocation for FileLocation {
 }
 
 impl UrlLocation {
-    pub fn new(url: &Url) -> Self {
+    pub fn new(url: &Url, retries: Option<HttpRetries>) -> Self {
         let mut sig_url = url.clone();
         sig_url.set_path(&format!("{}.sig", sig_url.path()));
-        Self::new_with_sig_and_type(url, &sig_url, "disk")
+        Self::new_full(url, &sig_url, "disk", retries)
     }
 
-    fn new_with_sig_and_type(url: &Url, sig_url: &Url, artifact_type: &str) -> Self {
+    fn new_full(
+        url: &Url,
+        sig_url: &Url,
+        artifact_type: &str,
+        retries: Option<HttpRetries>,
+    ) -> Self {
         Self {
             image_url: url.clone(),
             sig_url: sig_url.clone(),
             artifact_type: artifact_type.to_string(),
+            retries,
         }
     }
 
     /// Fetch signature content from URL.
-    fn fetch_signature(sig_url: &Url) -> Result<Vec<u8>> {
+    fn fetch_signature(&self) -> Result<Vec<u8>> {
         let client = new_http_client()?;
-        let mut resp = client
-            .get(sig_url.clone())
-            .send()
-            .context("sending signature request")?
-            .error_for_status()
+        let mut resp = http_get(client, self.sig_url.as_str(), self.retries)
             .context("fetching signature URL")?;
 
         let mut sig_bytes = Vec::new();
@@ -193,15 +198,14 @@ impl Display for UrlLocation {
 
 impl ImageLocation for UrlLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
-        let signature = Self::fetch_signature(&self.sig_url)
+        let signature = self
+            .fetch_signature()
             .map_err(|e| eprintln!("Failed to fetch signature: {}", e))
             .ok();
 
         // start fetch, get length
         let client = new_http_client()?;
-        let resp = client
-            .get(self.image_url.clone())
-            .send()
+        let resp = http_get(client, self.image_url.as_str(), self.retries)
             .context("fetching image URL")?;
         match resp.status() {
             StatusCode::OK => (),
@@ -234,6 +238,7 @@ impl StreamLocation {
         platform: &str,
         format: &str,
         base_url: Option<&Url>,
+        retries: Option<HttpRetries>,
     ) -> Result<Self> {
         Ok(Self {
             stream_base_url: base_url.cloned(),
@@ -242,6 +247,7 @@ impl StreamLocation {
             architecture: architecture.to_string(),
             platform: platform.to_string(),
             format: format.to_string(),
+            retries,
         })
     }
 }
@@ -268,7 +274,7 @@ impl ImageLocation for StreamLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
         // fetch and parse stream metadata
         let client = new_http_client()?;
-        let stream = fetch_stream(client, &self.stream_url)?;
+        let stream = fetch_stream(client, &self.stream_url, self.retries)?;
 
         // descend it
         let artifacts = stream
@@ -293,7 +299,7 @@ impl ImageLocation for StreamLocation {
             let signature_url = Url::parse(&artifact.signature)
                 .context("parsing signature URL from stream metadata")?;
             let mut artifact_sources =
-                UrlLocation::new_with_sig_and_type(&artifact_url, &signature_url, &artifact_type)
+                UrlLocation::new_full(&artifact_url, &signature_url, &artifact_type, self.retries)
                     .sources()?;
             sources.append(&mut artifact_sources);
         }
@@ -385,7 +391,7 @@ pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
     // fetch stream metadata
     let client = new_http_client()?;
     let stream_url = build_stream_url(&config.stream, config.stream_base_url.as_ref())?;
-    let stream = fetch_stream(client, &stream_url)?;
+    let stream = fetch_stream(client, &stream_url, None)?;
 
     // walk formats
     let mut rows: Vec<Row> = Vec::new();
@@ -439,12 +445,13 @@ fn build_stream_url(stream: &str, base_url: Option<&Url>) -> Result<Url> {
 }
 
 /// Fetch and parse stream metadata.
-fn fetch_stream(client: blocking::Client, url: &Url) -> Result<Stream> {
+fn fetch_stream(
+    client: blocking::Client,
+    url: &Url,
+    retries: Option<HttpRetries>,
+) -> Result<Stream> {
     // fetch stream metadata
-    let resp = client
-        .get(url.clone())
-        .send()
-        .context("fetching stream metadata")?;
+    let resp = http_get(client, url.as_str(), retries).context("fetching stream metadata")?;
     match resp.status() {
         StatusCode::OK => (),
         s => bail!("stream metadata fetch from {} failed: {}", url, s),
@@ -461,6 +468,54 @@ pub fn new_http_client() -> Result<blocking::Client> {
         .timeout(HTTP_COMPLETION_TIMEOUT)
         .build()
         .context("building HTTP client")
+}
+
+/// Wrapper around Client::get() with error handling based on HTTP return code and optionally basic
+/// exponential backoff retries for transient errors.
+pub fn http_get(
+    client: blocking::Client,
+    url: &str,
+    retries: Option<HttpRetries>,
+) -> Result<blocking::Response> {
+    // this matches `curl --retry` semantics -- see list in `curl(1)`
+    const RETRY_STATUS_CODES: [u16; 6] = [408, 429, 500, 502, 503, 504];
+
+    let mut delay = 1;
+    let (infinite, mut tries) = match retries {
+        Some(HttpRetries::Infinite) => (true, 0),
+        Some(HttpRetries::Limited(n)) => (false, n.get() + 1),
+        None => (false, 1),
+    };
+
+    loop {
+        let err: anyhow::Error = match client.get(url).send() {
+            Err(err) => err.into(),
+            Ok(resp) => match resp.status().as_u16() {
+                code if RETRY_STATUS_CODES.contains(&code) => anyhow!(
+                    "HTTP {} {}",
+                    code,
+                    resp.status().canonical_reason().unwrap_or("")
+                ),
+                _ => {
+                    break resp
+                        .error_for_status()
+                        .with_context(|| format!("fetching '{}'", url));
+                }
+            },
+        };
+
+        if !infinite {
+            tries -= 1;
+            if tries == 0 {
+                break Err(err).with_context(|| format!("fetching '{}'", url));
+            }
+        }
+
+        eprintln!("Error fetching '{}': {}", url, err);
+        eprintln!("Sleeping {}s and retrying...", delay);
+        sleep(Duration::from_secs(delay));
+        delay = std::cmp::min(delay * 2, 10 * 60); // cap to 10 mins; matches curl
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -25,3 +25,4 @@ Download a CoreOS image
 | **--decompress**, **-d** | Decompress image and don't save signature |
 | **--insecure** | Skip signature verification |
 | **--stream-base-url** *URL* | Base URL for Fedora CoreOS stream metadata |
+| **--http-retries** *N* | HTTP retries, or string "infinite" |
