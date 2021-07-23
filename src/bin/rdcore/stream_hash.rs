@@ -152,7 +152,7 @@ mod tests {
             hash_file: &'static str,
             input: &'static str,
             err: Option<&'static str>,
-        };
+        }
         let tests = vec![
             Test {
                 hash_file: "",
