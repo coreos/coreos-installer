@@ -4,11 +4,12 @@ buildPod {
     checkout scm
 
     stage("Build") {
-        shwrap("make && make install DESTDIR=install")
+        shwrap("make RELEASE=1 && make install RELEASE=1 DESTDIR=install")
         stash name: 'build', includes: 'install/**'
     }
 }
 
+//, image: "quay.io/benjamin_gilbert/coreos-assembler:iso4k") {
 cosaPod(buildroot: true, runAsUser: 0) {
     checkout scm
 
