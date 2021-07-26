@@ -11,14 +11,11 @@ nav_order: 2
 
 ## On Fedora CoreOS or RHEL CoreOS
 
-coreos-installer is included in Fedora CoreOS.  Just run
+coreos-installer is included in Fedora CoreOS and RHEL CoreOS.  Just run
 `coreos-installer` from the command line.  Fedora CoreOS provides
 [live CD and network boot images](https://getfedora.org/coreos/download/)
 you can run from RAM; you can use these to run coreos-installer to install
 Fedora CoreOS or RHEL CoreOS to disk.
-
-RHEL CoreOS also includes this, but note that versions &le; 4.6 contain
-the `legacy` branch of this software.
 
 ## Run from a container
 
