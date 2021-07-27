@@ -50,7 +50,7 @@ fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<S
             if let Some(ref path) = config.create_if_changed {
                 std::fs::OpenOptions::new()
                     .write(true)
-                    .create_new(true)
+                    .create(true)
                     .open(path)
                     .with_context(|| format!("creating {}", path))?;
             }
