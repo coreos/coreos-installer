@@ -666,18 +666,6 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa9b4819da1bc61c0ea48b63b7bc8604064dd43013e7cc325df098d49cd7c18a"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if 1.0.0",
- "libc",
-]
-
-[[package]]
-name = "nix"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3728fec49d363a50a8828a190b379a446cc5cf085c06259bbbeb34447e4ec7"
@@ -725,12 +713,12 @@ dependencies = [
 
 [[package]]
 name = "openat-ext"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d8c39f87cebbf893a221d307e578da316157c6c65aa1c1518c573be0cd8c11"
+checksum = "08ebe55c8d6ada962ca7ddaef14f020dae1af91748bea3d36e8c941036b5d85b"
 dependencies = [
  "libc",
- "nix 0.20.0",
+ "nix 0.21.0",
  "openat",
  "rand",
 ]
