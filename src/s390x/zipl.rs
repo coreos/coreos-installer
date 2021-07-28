@@ -41,6 +41,22 @@ pub fn install_bootloader<P: AsRef<Path>>(
     eprintln!("Installing bootloader");
     let boot = boot.as_ref();
 
+    run_zipl(boot, firstboot, firstboot_kargs)?;
+
+    if let Some(disk) = disk {
+        eprintln!("Updating re-IPL device");
+        runcmd!("chreipl", disk)?;
+    }
+    Ok(())
+}
+
+fn run_zipl<P: AsRef<Path>>(
+    boot: P,
+    firstboot: bool,
+    firstboot_kargs: Option<&str>,
+) -> Result<()> {
+    let boot = boot.as_ref();
+
     // create dummy config for zipl
     let mut conffile = Builder::new()
         .prefix("coreos-installer-zipl.")
@@ -95,9 +111,5 @@ pub fn install_bootloader<P: AsRef<Path>>(
 
     runcmd!("zipl", "--blsdir", blsdir, "--config", conffile.path())?;
 
-    if let Some(disk) = disk {
-        eprintln!("Updating re-IPL device");
-        runcmd!("chreipl", disk)?;
-    }
     Ok(())
 }
