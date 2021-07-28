@@ -86,11 +86,7 @@ fn run_zipl<P: AsRef<Path>>(
             .for_each(|src| {
                 copy(src.path(), blsdir.join(src.file_name())).unwrap();
             });
-        let mut extra = if firstboot {
-            vec!["ignition.firstboot".to_string()]
-        } else {
-            Vec::new()
-        };
+        let mut extra = vec!["ignition.firstboot".to_string()];
         if let Some(kargs) = firstboot_kargs {
             extra.extend_from_slice(
                 &kargs
