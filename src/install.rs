@@ -216,11 +216,7 @@ fn write_disk(
             copy_network_config(mount.mountpoint(), network_config)?;
         }
         #[cfg(target_arch = "s390x")]
-        s390x::install_bootloader(
-            mount.mountpoint(),
-            Some(&config.device),
-            config.firstboot_kargs.as_ref().map(|s| s.as_str()),
-        )?;
+        s390x::install_bootloader(mount.mountpoint(), Some(&config.device))?;
     }
 
     // detect any latent write errors
