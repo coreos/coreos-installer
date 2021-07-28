@@ -30,18 +30,16 @@ use tempfile::Builder;
 /// # Arguments
 /// * `boot` - path to boot partition mountpoint, i.e. smth like /boot
 /// * `disk` - optional device path on which to run chreipl
-/// * `firstboot` - adds ignition.firstboot karg
 /// * `firstboot_kargs` - enables ignition firstboot and adds provided kargs
 pub fn install_bootloader<P: AsRef<Path>>(
     boot: P,
     disk: Option<&str>,
-    firstboot: bool,
     firstboot_kargs: Option<&str>,
 ) -> Result<()> {
     eprintln!("Installing bootloader");
     let boot = boot.as_ref();
 
-    run_zipl(boot, firstboot, firstboot_kargs)?;
+    run_zipl(boot, firstboot_kargs)?;
 
     if let Some(disk) = disk {
         eprintln!("Updating re-IPL device");
@@ -52,7 +50,6 @@ pub fn install_bootloader<P: AsRef<Path>>(
 
 fn run_zipl<P: AsRef<Path>>(
     boot: P,
-    firstboot: bool,
     firstboot_kargs: Option<&str>,
 ) -> Result<()> {
     let boot = boot.as_ref();
@@ -75,7 +72,8 @@ fn run_zipl<P: AsRef<Path>>(
         .prefix("coreos-installer-zipl-bls-")
         .tempdir()
         .context("creating temporary directory")?;
-    let blsdir = if firstboot {
+    let firstboot_file = boot.join("ignition.firstboot");
+    let blsdir = if firstboot_file.exists() {
         let blsdir = tempdir.path().join("loader/entries");
         create_dir_all(&blsdir).with_context(|| format!("creating {}", blsdir.display()))?;
         read_dir(boot.join("loader/entries"))
