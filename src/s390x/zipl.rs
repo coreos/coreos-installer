@@ -75,7 +75,7 @@ fn run_zipl<P: AsRef<Path>>(
         .prefix("coreos-installer-zipl-bls-")
         .tempdir()
         .context("creating temporary directory")?;
-    let blsdir = if firstboot || firstboot_kargs.is_some() {
+    let blsdir = if firstboot {
         let blsdir = tempdir.path().join("loader/entries");
         create_dir_all(&blsdir).with_context(|| format!("creating {}", blsdir.display()))?;
         read_dir(boot.join("loader/entries"))
