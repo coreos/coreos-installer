@@ -17,8 +17,8 @@ This guide requires:
  * A verified account on crates.io
  * An account on quay.io
  * Write access to this GitHub project
- * Upload access to this project on GitHub, crates.io, and quay.io
- * Membership in the [Fedora CoreOS Crates Owners group](https://github.com/orgs/coreos/teams/fedora-coreos-crates-owners/members)
+ * Upload access to this project on GitHub and and quay.io
+ * Membership in the [Fedora CoreOS Crates Owners group](https://github.com/orgs/coreos/teams/fedora-coreos-crates-owners/members), which will give you upload access to crates.io
 
 ## Release checklist
 
