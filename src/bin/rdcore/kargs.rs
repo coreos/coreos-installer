@@ -35,7 +35,7 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
 
         #[cfg(target_arch = "s390x")]
         if _changed {
-            s390x::run_zipl(mount.mountpoint())?;
+            s390x::zipl(mount.mountpoint())?;
         }
     }
 

@@ -22,29 +22,15 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::Builder;
 
-/////////////////////////////////////////////////////////////////////////////
-// IBM Z Bootloader Support
-/////////////////////////////////////////////////////////////////////////////
-
-/// Generate zipl config and set boot device
-///
-/// # Arguments
-/// * `boot` - path to boot partition mountpoint, i.e. smth like /boot
-/// * `disk` - optional device path on which to run chreipl
-pub fn install_bootloader<P: AsRef<Path>>(boot: P, disk: Option<&str>) -> Result<()> {
-    eprintln!("Installing bootloader");
-    let boot = boot.as_ref();
-
-    run_zipl(boot)?;
-
-    if let Some(disk) = disk {
-        eprintln!("Updating re-IPL device");
-        runcmd!("chreipl", disk)?;
-    }
+/// Sets the boot device to `dev` using `chreipl`.
+pub fn chreipl<P: AsRef<Path>>(dev: P) -> Result<()> {
+    eprintln!("Updating re-IPL device");
+    runcmd!("chreipl", dev.as_ref())?;
     Ok(())
 }
 
-pub fn run_zipl<P: AsRef<Path>>(boot: P) -> Result<()> {
+/// Runs `zipl` based on Ignition and BLS configuration in `boot`.
+pub fn zipl<P: AsRef<Path>>(boot: P) -> Result<()> {
     let boot = boot.as_ref();
 
     // create dummy config for zipl
