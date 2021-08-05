@@ -20,6 +20,7 @@ use serde::Serialize;
 use std::convert::TryInto;
 use std::fs::{read, write, File, OpenOptions};
 use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
@@ -74,66 +75,40 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
         }
     };
 
-    let content = ContentFile::new(&config.input, config.output.as_ref())?;
-    let use_stdout = content.is_stdout();
-    let mut embed = EmbedArea::for_file(content.file()?)?;
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+
+    if !config.force && iso.have_ignition() {
+        bail!("This ISO image already has an embedded Ignition config; use -f to force.");
+    }
 
     let cpio = make_cpio(&ignition)?;
-    if cpio.len() > embed.length {
-        bail!(
-            "Compressed Ignition config is too large: {} > {}",
-            cpio.len(),
-            embed.length
-        );
-    }
-    if !config.force {
-        // Ensure all zero bytes
-        embed.seek_to_start()?;
-        let mut buf = embed.new_buffer();
-        embed.read(&mut buf)?;
-        // compare to zeroed buffer
-        if buf != embed.new_buffer() {
-            bail!("This ISO image already has an embedded Ignition config; use -f to force.");
-        }
-    }
+    iso.set_ignition(&cpio)?;
 
-    if use_stdout {
-        embed.stream(&cpio, &mut stdout())?;
-    } else {
-        // delete any existing config
-        embed.clear()?;
-        // write new config
-        embed.seek_to_start()?;
-        embed.write(&cpio)?;
+    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+        iso.stream_ignition(&iso_file, &mut stdout())?;
     }
-    content.complete()?;
 
     Ok(())
 }
 
 pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
-    let file = OpenOptions::new()
-        .read(true)
-        .open(&config.input)
-        .with_context(|| format!("opening {}", &config.input))?;
-    let mut embed = EmbedArea::for_file(file)?;
-
+    let mut iso_file = open_live_iso(&config.input, None)?;
+    let iso = IsoConfig::for_file(&mut iso_file)?;
     if config.header {
+        // XXX
+        let embed = EmbedArea::for_file(iso_file.try_clone()?)?;
         serde_json::to_writer_pretty(std::io::stdout(), &embed)
             .context("failed to serialize header")?;
         std::io::stdout()
             .write_all("\n".as_bytes())
             .context("failed to write newline")?;
     } else {
-        embed.seek_to_start()?;
-        let mut buf = embed.new_buffer();
-        embed.read(&mut buf)?;
-        // compare to zeroed buffer
-        if buf == embed.new_buffer() {
+        if !iso.have_ignition() {
             bail!("No embedded Ignition config.");
         }
         stdout()
-            .write_all(&extract_cpio(&buf)?)
+            .write_all(&extract_cpio(iso.ignition())?)
             .context("writing output")?;
         stdout().flush().context("flushing output")?;
     }
@@ -141,16 +116,14 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
-    let content = ContentFile::new(&config.input, config.output.as_ref())?;
-    let use_stdout = content.is_stdout();
-    let mut embed = EmbedArea::for_file(content.file()?)?;
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
-    if use_stdout {
-        embed.stream(&[], &mut stdout())?;
-    } else {
-        embed.clear()?;
+    iso.set_ignition(&[])?;
+
+    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+        iso.stream_ignition(&iso_file, &mut stdout())?;
     }
-    content.complete()?;
     Ok(())
 }
 
@@ -196,63 +169,181 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
 }
 
 pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
-    let content = ContentFile::new(&config.input, config.output.as_ref())?;
-    let use_stdout = content.is_stdout();
-    let mut embed = KargEmbedAreas::for_file(content.file()?)?;
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
-    let current_kargs = embed.get_current_kargs()?;
-    let new_kargs = modify_kargs(
-        &current_kargs,
+    let kargs = modify_kargs(
+        iso.kargs().context("No karg embed areas found")?,
         &config.append,
         &[],
         &config.replace,
         &config.delete,
     )?;
-    if use_stdout {
-        embed.stream(&new_kargs, &mut stdout())?;
-    } else {
-        embed.write_kargs(&new_kargs)?;
+    iso.set_kargs(&kargs)?;
+
+    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+        iso.stream_kargs(&iso_file, &mut stdout())?;
     }
-    content.complete()?;
     Ok(())
 }
 
 pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
-    let content = ContentFile::new(&config.input, config.output.as_ref())?;
-    let use_stdout = content.is_stdout();
-    let mut embed = KargEmbedAreas::for_file(content.file()?)?;
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
-    let default_kargs = embed.get_default_kargs()?;
-    if use_stdout {
-        embed.stream(&default_kargs, &mut stdout())?;
-    } else {
-        embed.write_kargs(&default_kargs)?;
+    iso.set_kargs(
+        &iso.kargs_default()
+            .context("No karg embed areas found")?
+            .to_string(),
+    )?;
+    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+        iso.stream_kargs(&iso_file, &mut stdout())?;
     }
-    content.complete()?;
     Ok(())
 }
 
 pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
-    let file = OpenOptions::new()
-        .read(true)
-        .open(&config.input)
-        .with_context(|| format!("opening {}", &config.input))?;
-    let mut embed = KargEmbedAreas::for_file(file)?;
+    let mut iso_file = open_live_iso(&config.input, None)?;
+    let iso = IsoConfig::for_file(&mut iso_file)?;
     if config.header {
-        serde_json::to_writer_pretty(std::io::stdout(), &embed)
+        // XXX
+        let karg_areas = KargEmbedAreas::for_file(iso_file.try_clone()?)?;
+        serde_json::to_writer_pretty(std::io::stdout(), &karg_areas)
             .context("failed to serialize header")?;
         std::io::stdout()
             .write_all("\n".as_bytes())
             .context("failed to write newline")?;
     } else {
         let kargs = if config.default {
-            embed.get_default_kargs()?
+            iso.kargs_default().context("No karg embed areas found")?
         } else {
-            embed.get_current_kargs()?
+            iso.kargs().context("No karg embed areas found")?
         };
         println!("{}", kargs);
     }
     Ok(())
+}
+
+// output_path should be None if not outputting, or Some(output_path_argument)
+fn open_live_iso(input_path: &str, output_path: Option<Option<&String>>) -> Result<File> {
+    // if output_path is Some(None), we're modifying in place, so we need to
+    // open for writing
+    OpenOptions::new()
+        .read(true)
+        .write(matches!(output_path, Some(None)))
+        .open(&input_path)
+        .with_context(|| format!("opening {}", &input_path))
+}
+
+// Returns true if we need to stream to stdout
+fn write_live_iso(iso: &IsoConfig, input_path: &str, output_path: Option<&String>) -> Result<bool> {
+    let content = ContentFile::new(input_path, output_path)?;
+    if content.is_stdout() {
+        return Ok(true);
+    }
+    iso.write(&mut content.file()?)?;
+    content.complete()?;
+    Ok(false)
+}
+
+struct IsoConfig {
+    ignition_current: Vec<u8>,
+    kargs_current: Option<String>,
+    kargs_default: Option<String>,
+}
+
+impl IsoConfig {
+    pub fn for_file(file: &mut File) -> Result<Self> {
+        let mut ignition_area = EmbedArea::for_file(file.try_clone()?)?;
+        let mut ignition_current = ignition_area.new_buffer();
+        ignition_area.seek_to_start()?;
+        ignition_area.read(&mut ignition_current)?;
+
+        let (kargs_current, kargs_default) = match KargEmbedAreas::for_file(file.try_clone()?) {
+            Ok(mut karg_areas) => {
+                let current = karg_areas.get_current_kargs()?;
+                let default = karg_areas.get_default_kargs()?;
+                (Some(current), Some(default))
+            }
+            // XXX swallows errors
+            Err(_) => (None, None),
+        };
+
+        Ok(Self {
+            ignition_current,
+            kargs_current,
+            kargs_default,
+        })
+    }
+
+    pub fn have_ignition(&self) -> bool {
+        self.ignition().iter().any(|v| *v != 0)
+    }
+
+    pub fn ignition(&self) -> &[u8] {
+        &self.ignition_current[..]
+    }
+
+    pub fn set_ignition(&mut self, data: &[u8]) -> Result<()> {
+        let capacity = self.ignition_current.len();
+        if data.len() > capacity {
+            bail!(
+                "Compressed Ignition config is too large: {} > {}",
+                data.len(),
+                capacity
+            )
+        }
+        self.ignition_current.clear();
+        self.ignition_current.extend_from_slice(data);
+        self.ignition_current
+            .extend(repeat(0).take(capacity - data.len()));
+        Ok(())
+    }
+
+    pub fn kargs(&self) -> Option<&str> {
+        self.kargs_current.as_ref().map(|ref s| s.as_str())
+    }
+
+    pub fn kargs_default(&self) -> Option<&str> {
+        self.kargs_default.as_ref().map(|ref s| s.as_str())
+    }
+
+    pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
+        if self.kargs_current.is_none() {
+            bail!("cannot set karg areas in this image");
+        }
+        self.kargs_current = Some(kargs.to_string());
+        Ok(())
+    }
+
+    pub fn write(&self, file: &mut File) -> Result<()> {
+        let mut ignition_area = EmbedArea::for_file(file.try_clone()?)?;
+        ignition_area.seek_to_start()?;
+        ignition_area.write(&self.ignition_current)?;
+
+        if let Some(kargs_current) = &self.kargs_current {
+            let mut karg_areas = KargEmbedAreas::for_file(file.try_clone()?)?;
+            karg_areas.write_kargs(&kargs_current)?;
+        }
+        Ok(())
+    }
+
+    // XXX temporary API
+    pub fn stream_ignition(&self, input: &File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
+        let mut ignition_area = EmbedArea::for_file(input.try_clone()?)?;
+        ignition_area.stream(&self.ignition_current, writer)
+    }
+
+    // XXX temporary API
+    pub fn stream_kargs(&self, input: &File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
+        if let Some(kargs_current) = &self.kargs_current {
+            let mut karg_areas = KargEmbedAreas::for_file(input.try_clone()?)?;
+            karg_areas.stream(&kargs_current, writer)?;
+            Ok(())
+        } else {
+            bail!("no karg embed areas available");
+        }
+    }
 }
 
 #[derive(Serialize)]
