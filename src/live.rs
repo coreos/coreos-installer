@@ -73,9 +73,9 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
         }
     };
 
-    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let content = ContentFile::new(&config.input, config.output.as_ref())?;
     let use_stdout = content.is_stdout();
-    let mut embed = EmbedArea::for_file(content.as_file_mut())?;
+    let mut embed = EmbedArea::for_file(content.file()?)?;
 
     let cpio = make_cpio(&ignition)?;
     if cpio.len() > embed.length {
@@ -111,11 +111,11 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .open(&config.input)
         .with_context(|| format!("opening {}", &config.input))?;
-    let mut embed = EmbedArea::for_file(&mut file)?;
+    let mut embed = EmbedArea::for_file(file)?;
 
     embed.seek_to_start()?;
     let mut buf = embed.new_buffer();
@@ -132,9 +132,9 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
-    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let content = ContentFile::new(&config.input, config.output.as_ref())?;
     let use_stdout = content.is_stdout();
-    let mut embed = EmbedArea::for_file(content.as_file_mut())?;
+    let mut embed = EmbedArea::for_file(content.file()?)?;
 
     if use_stdout {
         embed.stream(&[], &mut stdout())?;
@@ -187,9 +187,9 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
 }
 
 pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
-    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let content = ContentFile::new(&config.input, config.output.as_ref())?;
     let use_stdout = content.is_stdout();
-    let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
+    let mut embed = KargEmbedAreas::for_file(content.file()?)?;
 
     let current_kargs = embed.get_current_kargs()?;
     let new_kargs = modify_kargs(
@@ -209,9 +209,9 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
 }
 
 pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
-    let mut content = ContentFile::new(&config.input, config.output.as_ref())?;
+    let content = ContentFile::new(&config.input, config.output.as_ref())?;
     let use_stdout = content.is_stdout();
-    let mut embed = KargEmbedAreas::for_file(content.as_file_mut())?;
+    let mut embed = KargEmbedAreas::for_file(content.file()?)?;
 
     let default_kargs = embed.get_default_kargs()?;
     if use_stdout {
@@ -224,11 +224,11 @@ pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
 }
 
 pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .open(&config.input)
         .with_context(|| format!("opening {}", &config.input))?;
-    let mut embed = KargEmbedAreas::for_file(&mut file)?;
+    let mut embed = KargEmbedAreas::for_file(file)?;
     if config.header {
         serde_json::to_writer_pretty(std::io::stdout(), &embed)
             .context("failed to serialize header")?;
@@ -244,16 +244,16 @@ pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
 }
 
 #[derive(Serialize)]
-struct KargEmbedAreas<'a> {
+struct KargEmbedAreas {
     #[serde(skip_serializing)]
-    file: &'a mut File,
+    file: File,
     length: usize,
     default_kargs_offset: u64,
     kargs_offsets: Vec<u64>,
 }
 
-impl<'a> KargEmbedAreas<'a> {
-    fn for_file(file: &'a mut File) -> Result<Self> {
+impl KargEmbedAreas {
+    fn for_file(mut file: File) -> Result<Self> {
         let mut buf: [u8; 8] = [0; 8];
         // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
         // before the initrd embed area (see EmbedArea below):
@@ -342,7 +342,7 @@ impl<'a> KargEmbedAreas<'a> {
         // the offsets have the same kargs
         let mut first_kargs: Option<String> = None;
         for offset in &self.kargs_offsets {
-            let kargs = get_kargs_at_offset(self.file, self.length, *offset)?;
+            let kargs = get_kargs_at_offset(&mut self.file, self.length, *offset)?;
             if let Some(ref first_kargs) = first_kargs {
                 if &kargs != first_kargs {
                     bail!(
@@ -360,7 +360,7 @@ impl<'a> KargEmbedAreas<'a> {
     }
 
     fn get_default_kargs(&mut self) -> Result<String> {
-        get_kargs_at_offset(self.file, self.length, self.default_kargs_offset)
+        get_kargs_at_offset(&mut self.file, self.length, self.default_kargs_offset)
     }
 
     fn format_embed_area(&mut self, kargs: &str) -> Result<Vec<u8>> {
@@ -502,11 +502,14 @@ impl ContentFile {
 
     // Return the output file for InPlace and Copied, and the input file
     // for ForStdout.
-    fn as_file_mut(&mut self) -> &mut File {
+    fn file(&self) -> Result<File> {
         match self {
-            Self::ForStdout(ref mut file) => file,
-            Self::InPlace(ref mut file) => file,
-            Self::Copied((temp, _)) => temp.as_file_mut(),
+            Self::ForStdout(ref file) => file.try_clone().context("cloning input file handle"),
+            Self::InPlace(ref file) => file.try_clone().context("cloning output file handle"),
+            Self::Copied((temp, _)) => temp
+                .as_file()
+                .try_clone()
+                .context("cloning temporary file handle"),
         }
     }
 
@@ -524,14 +527,14 @@ impl ContentFile {
     }
 }
 
-struct EmbedArea<'a> {
-    file: &'a File,
+struct EmbedArea {
+    file: File,
     offset: u64,
     length: usize,
 }
 
-impl<'a> EmbedArea<'a> {
-    fn for_file(file: &'a mut File) -> Result<Self> {
+impl EmbedArea {
+    fn for_file(mut file: File) -> Result<Self> {
         let mut buf: [u8; 8] = [0; 8];
         // The ISO 9660 System Area is 32 KiB.  The last 24 bytes should be:
         // 8 bytes: magic string "coreiso+"
@@ -601,7 +604,7 @@ impl<'a> EmbedArea<'a> {
             .context("seeking to end of embed area")?;
         let mut write_buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
         copy(
-            &mut BufReader::with_capacity(BUFFER_SIZE, self.file),
+            &mut BufReader::with_capacity(BUFFER_SIZE, &mut self.file),
             &mut write_buf,
         )
         .context("copying file")?;
