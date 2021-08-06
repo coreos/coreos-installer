@@ -85,11 +85,7 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     let cpio = make_cpio(&ignition)?;
     iso.set_ignition(&cpio)?;
 
-    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_ignition(&mut iso_file, &mut stdout())?;
-    }
-
-    Ok(())
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
 pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
@@ -119,10 +115,7 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 
     iso.set_ignition(&[])?;
 
-    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_ignition(&mut iso_file, &mut stdout())?;
-    }
-    Ok(())
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
 pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
@@ -179,10 +172,7 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     )?;
     iso.set_kargs(&kargs)?;
 
-    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_kargs(&mut iso_file, &mut stdout())?;
-    }
-    Ok(())
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
 pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
@@ -190,10 +180,8 @@ pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
     iso.set_kargs(&iso.kargs_default()?.to_string())?;
-    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_kargs(&mut iso_file, &mut stdout())?;
-    }
-    Ok(())
+
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
 pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
@@ -227,19 +215,17 @@ fn open_live_iso(input_path: &str, output_path: Option<Option<&String>>) -> Resu
         .with_context(|| format!("opening {}", &input_path))
 }
 
-// Returns true if we need to stream to stdout
-fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String>) -> Result<bool> {
+fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String>) -> Result<()> {
     match output_path.map(|v| v.as_str()) {
         None => {
             // open_live_iso() opened input for writing
             iso.write(input)?;
-            Ok(false)
         }
         Some("-") => {
             if isatty(stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
                 bail!("Refusing to write binary data to terminal");
             }
-            Ok(true)
+            iso.stream(input, &mut stdout())?;
         }
         Some(output_path) => {
             let output_dir = Path::new(output_path)
@@ -258,9 +244,9 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
                 .persist_noclobber(&output_path)
                 .map_err(|e| e.error)
                 .with_context(|| format!("persisting output file to {}", output_path))?;
-            Ok(false)
         }
     }
+    Ok(())
 }
 
 struct IsoConfig {
@@ -339,26 +325,12 @@ impl IsoConfig {
         Ok(())
     }
 
-    // XXX temporary API
-    pub fn stream_ignition(
-        &self,
-        input: &mut File,
-        writer: &mut (impl Write + ?Sized),
-    ) -> Result<()> {
-        vec![&self.ignition].stream(input, writer)
-    }
-
-    // XXX temporary API
-    pub fn stream_kargs(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
+    pub fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
+        let mut regions = vec![&self.ignition];
         if let Some(kargs) = &self.kargs {
-            kargs
-                .regions
-                .iter()
-                .collect::<Vec<&Region>>()
-                .stream(input, writer)
-        } else {
-            bail!("no karg embed areas available");
+            regions.extend(kargs.regions.iter())
         }
+        regions.stream(input, writer)
     }
 }
 
