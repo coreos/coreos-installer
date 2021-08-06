@@ -42,6 +42,7 @@ cosaPod(buildroot: true, runAsUser: 0) {
             shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal4k/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal4k.tar.xz")
             archiveArtifacts allowEmptyArchive: true, artifacts: 'kola-testiso*.tar.xz'
         }
+        shwrap("tests/iso-ignition.sh /srv/fcos/builds/latest/x86_64/*.iso")
         shwrap("tests/iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
     }
 }
