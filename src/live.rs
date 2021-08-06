@@ -284,6 +284,7 @@ impl IsoConfig {
         self.ignition
             .contents
             .extend(repeat(0).take(capacity - data.len()));
+        self.ignition.modified = true;
         Ok(())
     }
 
@@ -335,6 +336,8 @@ struct Region {
     pub length: usize,
     #[serde(skip_serializing)]
     pub contents: Vec<u8>,
+    #[serde(skip_serializing)]
+    pub modified: bool,
 }
 
 impl Region {
@@ -348,15 +351,19 @@ impl Region {
             offset,
             length,
             contents,
+            modified: false,
         })
     }
 
     pub fn write(&self, file: &mut File) -> Result<()> {
         self.validate()?;
-        file.seek(SeekFrom::Start(self.offset))
-            .with_context(|| format!("seeking to offset {}", self.offset))?;
-        file.write_all(&self.contents)
-            .with_context(|| format!("writing {} bytes at {}", self.length, self.offset))
+        if self.modified {
+            file.seek(SeekFrom::Start(self.offset))
+                .with_context(|| format!("seeking to offset {}", self.offset))?;
+            file.write_all(&self.contents)
+                .with_context(|| format!("writing {} bytes at {}", self.length, self.offset))?;
+        }
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -379,7 +386,7 @@ impl Stream for [&Region] {
     fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
         input.seek(SeekFrom::Start(0)).context("seeking to start")?;
 
-        let mut regions: Vec<&&Region> = self.iter().collect();
+        let mut regions: Vec<&&Region> = self.iter().filter(|r| r.modified).collect();
         regions.sort_unstable();
 
         let mut buf = [0u8; BUFFER_SIZE];
@@ -549,6 +556,7 @@ impl KargEmbedAreas {
         contents[..formatted.len()].copy_from_slice(formatted.as_bytes());
         for region in &mut self.regions {
             region.contents = contents.clone();
+            region.modified = true;
         }
         self.args = unformatted.to_string();
         Ok(())
