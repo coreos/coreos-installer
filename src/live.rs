@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bytes::Buf;
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
@@ -171,7 +171,7 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
     let kargs = modify_kargs(
-        iso.kargs().context("No karg embed areas found")?,
+        iso.kargs()?,
         &config.append,
         &[],
         &config.replace,
@@ -189,11 +189,7 @@ pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
-    iso.set_kargs(
-        &iso.kargs_default()
-            .context("No karg embed areas found")?
-            .to_string(),
-    )?;
+    iso.set_kargs(&iso.kargs_default()?.to_string())?;
     if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
         iso.stream_kargs(&iso_file, &mut stdout())?;
     }
@@ -213,9 +209,9 @@ pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
             .context("failed to write newline")?;
     } else {
         let kargs = if config.default {
-            iso.kargs_default().context("No karg embed areas found")?
+            iso.kargs_default()?
         } else {
-            iso.kargs().context("No karg embed areas found")?
+            iso.kargs()?
         };
         println!("{}", kargs);
     }
@@ -277,14 +273,13 @@ struct IsoConfig {
 
 impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
-        let (kargs_current, kargs_default) = match KargEmbedAreas::for_file(file.try_clone()?) {
-            Ok(mut karg_areas) => {
-                let current = karg_areas.get_current_kargs()?;
-                let default = karg_areas.get_default_kargs()?;
-                (Some(current), Some(default))
-            }
-            // XXX swallows errors
-            Err(_) => (None, None),
+        let (kargs_current, kargs_default) = if KargEmbedAreas::exists_in(file)? {
+            let mut karg_areas = KargEmbedAreas::for_file(file.try_clone()?)?;
+            let current = karg_areas.get_current_kargs()?;
+            let default = karg_areas.get_default_kargs()?;
+            (Some(current), Some(default))
+        } else {
+            (None, None)
         };
 
         Ok(Self {
@@ -319,20 +314,25 @@ impl IsoConfig {
         Ok(())
     }
 
-    pub fn kargs(&self) -> Option<&str> {
-        self.kargs_current.as_ref().map(|ref s| s.as_str())
+    pub fn kargs(&self) -> Result<&str> {
+        Self::unwrap_kargs(&self.kargs_current)
     }
 
-    pub fn kargs_default(&self) -> Option<&str> {
-        self.kargs_default.as_ref().map(|ref s| s.as_str())
+    pub fn kargs_default(&self) -> Result<&str> {
+        Self::unwrap_kargs(&self.kargs_default)
     }
 
     pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
-        if self.kargs_current.is_none() {
-            bail!("cannot set karg areas in this image");
-        }
+        Self::unwrap_kargs(&self.kargs_default)?;
         self.kargs_current = Some(kargs.to_string());
         Ok(())
+    }
+
+    fn unwrap_kargs(kargs: &Option<String>) -> Result<&str> {
+        kargs
+            .as_ref()
+            .map(|s| s.as_str())
+            .ok_or_else(|| anyhow!("No karg embed areas found; old or corrupted CoreOS ISO image."))
     }
 
     pub fn write(&self, file: &mut File) -> Result<()> {
@@ -474,6 +474,16 @@ struct KargEmbedAreas {
 }
 
 impl KargEmbedAreas {
+    pub fn exists_in(file: &mut File) -> Result<bool> {
+        let region = Region::read(
+            file,
+            32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
+            8,
+        )
+        .context("reading karg embed magic number")?;
+        Ok(region.contents == COREOS_KARG_EMBED_AREA_HEADER_MAGIC)
+    }
+
     fn for_file(mut file: File) -> Result<Self> {
         // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
         // before the initrd embed area (see EmbedArea below):
