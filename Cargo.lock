@@ -165,6 +165,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "byte-unit",
+ "bytes",
  "cpio",
  "flate2",
  "glob",

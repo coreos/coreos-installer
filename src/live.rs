@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use anyhow::{bail, Context, Result};
+use bytes::Buf;
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
 use openat_ext::FileExt;
@@ -370,6 +371,27 @@ impl IsoConfig {
     }
 }
 
+struct Region {
+    pub offset: u64,
+    pub length: usize,
+    pub contents: Vec<u8>,
+}
+
+impl Region {
+    pub fn read(file: &mut File, offset: u64, length: usize) -> Result<Self> {
+        let mut contents = vec![0; length];
+        file.seek(SeekFrom::Start(offset))
+            .with_context(|| format!("seeking to offset {}", offset))?;
+        file.read_exact(&mut contents)
+            .with_context(|| format!("reading {} bytes at {}", length, offset))?;
+        Ok(Self {
+            offset,
+            length,
+            contents,
+        })
+    }
+}
+
 #[derive(Serialize)]
 struct KargEmbedAreas {
     #[serde(skip_serializing)]
@@ -381,27 +403,26 @@ struct KargEmbedAreas {
 
 impl KargEmbedAreas {
     fn for_file(mut file: File) -> Result<Self> {
-        let mut buf: [u8; 8] = [0; 8];
         // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
         // before the initrd embed area (see EmbedArea below):
         // 8 bytes: magic string "coreKarg"
         // 8 bytes little-endian: length of karg embed areas
         // 8 bytes little-endian: offset to default kargs
         // 8 bytes little-endian x 6: offsets to karg embed areas
-        file.seek(SeekFrom::Start(
+        let region = Region::read(
+            &mut file,
             32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
-        ))
-        .context("seeking to karg embed header")?;
+            COREOS_KARG_EMBED_AREA_HEADER_SIZE as usize,
+        )
+        .context("reading karg embed header")?;
+        let mut header = &region.contents[..];
         // magic number
-        file.read_exact(&mut buf)
-            .context("reading karg embed header")?;
-        if buf != COREOS_KARG_EMBED_AREA_HEADER_MAGIC {
+        if header.copy_to_bytes(8) != COREOS_KARG_EMBED_AREA_HEADER_MAGIC {
             bail!("No karg embed areas found; old or corrupted CoreOS ISO image.");
         }
         // length
-        file.read_exact(&mut buf)
-            .context("reading karg embed header")?;
-        let length: usize = u64::from_le_bytes(buf)
+        let length: usize = header
+            .get_u64_le()
             .try_into()
             .context("karg embed area length too large to allocate")?;
         // sanity-check against a reasonable limit
@@ -417,9 +438,7 @@ impl KargEmbedAreas {
         let iso_size = metadata.len();
 
         // default kargs
-        file.read_exact(&mut buf)
-            .context("reading karg embed header")?;
-        let default_kargs_offset: u64 = u64::from_le_bytes(buf);
+        let default_kargs_offset = header.get_u64_le();
         if default_kargs_offset + (length as u64) > iso_size {
             bail!(
                 "Default kargs area end outside ISO ({}+{} vs {})",
@@ -432,9 +451,7 @@ impl KargEmbedAreas {
         // offsets
         let mut kargs_offsets: Vec<u64> = Vec::new();
         while kargs_offsets.len() < COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS {
-            file.read_exact(&mut buf)
-                .context("reading karg embed header")?;
-            let offset: u64 = u64::from_le_bytes(buf);
+            let offset = header.get_u64_le();
             if offset == 0 {
                 break;
             } else if offset + (length as u64) > iso_size {
@@ -575,24 +592,26 @@ struct EmbedArea {
 
 impl EmbedArea {
     fn for_file(mut file: File) -> Result<Self> {
-        let mut buf: [u8; 8] = [0; 8];
         // The ISO 9660 System Area is 32 KiB.  The last 24 bytes should be:
         // 8 bytes: magic string "coreiso+"
         // 8 bytes little-endian: offset of embed area from start of file
         // 8 bytes little-endian: length of embed area
-        file.seek(SeekFrom::Start(32768 - COREOS_IGNITION_HEADER_SIZE))
-            .context("seeking to embed header")?;
+        let region = Region::read(
+            &mut file,
+            32768 - COREOS_IGNITION_HEADER_SIZE,
+            COREOS_IGNITION_HEADER_SIZE as usize,
+        )
+        .context("reading Ignition embed header")?;
+        let mut header = &region.contents[..];
         // magic number
-        file.read_exact(&mut buf).context("reading embed header")?;
-        if buf != COREOS_IGNITION_HEADER_MAGIC {
+        if header.copy_to_bytes(8) != COREOS_IGNITION_HEADER_MAGIC {
             bail!("Unrecognized CoreOS ISO image.");
         }
         // offset
-        file.read_exact(&mut buf).context("reading embed header")?;
-        let offset = u64::from_le_bytes(buf);
+        let offset = header.get_u64_le();
         // length
-        file.read_exact(&mut buf).context("reading embed header")?;
-        let length: usize = u64::from_le_bytes(buf)
+        let length: usize = header
+            .get_u64_le()
             .try_into()
             .context("embed area too large to allocate")?;
         // check file size
