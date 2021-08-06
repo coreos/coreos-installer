@@ -112,16 +112,16 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
 
     // create a first tempfile to store the packed image
     eprintln!("Packing image");
-    let (mut packed_image, size) =
-        write_packed_image_to_file(Path::new(&config.device), &partitions, config.fast)?;
+    let (mut xzpacked_image, size) =
+        write_xzpacked_image_to_file(Path::new(&config.device), &partitions, config.fast)?;
 
     // verify that re-packing will yield the expected checksum
     eprintln!("Verifying that repacked image matches digest");
     let (checksum, unpacked_size) =
-        get_unpacked_image_digest(&mut packed_image, &partitions, &root)?;
-    packed_image
+        get_unpacked_image_digest(&mut xzpacked_image, &partitions, &root)?;
+    xzpacked_image
         .seek(SeekFrom::Start(0))
-        .context("seeking back to start of packed image")?;
+        .context("seeking back to start of xzpacked image")?;
 
     if unpacked_size != size {
         bail!(
@@ -150,7 +150,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
         size,
     };
 
-    osmet_file_write(Path::new(&config.output), header, osmet, packed_image)?;
+    osmet_file_write(Path::new(&config.output), header, osmet, xzpacked_image)?;
     eprintln!("Packing successful!");
 
     Ok(())
@@ -348,8 +348,8 @@ fn scan_boot_partition(
     })
 }
 
-/// Writes the disk image, with the extents for which we have mappings for skipped.
-fn write_packed_image_to_file(
+/// Writes the compressed disk image, with the extents for which we have mappings for skipped.
+fn write_xzpacked_image_to_file(
     block_device: &Path,
     partitions: &[OsmetPartition],
     fast: bool,
