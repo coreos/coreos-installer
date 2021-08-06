@@ -50,6 +50,7 @@ pub fn iso_show(config: &IsoShowConfig) -> Result<()> {
     eprintln!("`iso show` is deprecated; use `iso ignition show`.  Continuing.");
     iso_ignition_show(&IsoIgnitionShowConfig {
         input: config.input.clone(),
+        header: false,
     })
 }
 
@@ -117,17 +118,25 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
         .with_context(|| format!("opening {}", &config.input))?;
     let mut embed = EmbedArea::for_file(file)?;
 
-    embed.seek_to_start()?;
-    let mut buf = embed.new_buffer();
-    embed.read(&mut buf)?;
-    // compare to zeroed buffer
-    if buf == embed.new_buffer() {
-        bail!("No embedded Ignition config.");
+    if config.header {
+        serde_json::to_writer_pretty(std::io::stdout(), &embed)
+            .context("failed to serialize header")?;
+        std::io::stdout()
+            .write_all("\n".as_bytes())
+            .context("failed to write newline")?;
+    } else {
+        embed.seek_to_start()?;
+        let mut buf = embed.new_buffer();
+        embed.read(&mut buf)?;
+        // compare to zeroed buffer
+        if buf == embed.new_buffer() {
+            bail!("No embedded Ignition config.");
+        }
+        stdout()
+            .write_all(&extract_cpio(&buf)?)
+            .context("writing output")?;
+        stdout().flush().context("flushing output")?;
     }
-    stdout()
-        .write_all(&extract_cpio(&buf)?)
-        .context("writing output")?;
-    stdout().flush().context("flushing output")?;
     Ok(())
 }
 
@@ -530,7 +539,9 @@ impl ContentFile {
     }
 }
 
+#[derive(Serialize)]
 struct EmbedArea {
+    #[serde(skip_serializing)]
     file: File,
     offset: u64,
     length: usize,
