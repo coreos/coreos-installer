@@ -14,15 +14,13 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Error, Result};
 use openssl::hash::{Hasher, MessageDigest};
 use serde::{Deserialize, Serialize};
-
-use super::*;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct Sha256Digest([u8; 32]);
@@ -75,31 +73,41 @@ pub fn checksum_to_object_path(chksum: &Sha256Digest, buf: &mut Vec<u8>) -> Resu
     Ok(())
 }
 
-pub fn checksum_to_string(chksum: &Sha256Digest) -> Result<String> {
-    let mut buf: Vec<u8> = Vec::with_capacity(64);
-    for i in 0..32 {
-        write!(buf, "{:02x}", chksum.0[i])?;
-    }
-    Ok(String::from_utf8(buf).expect("valid utf-8"))
-}
+impl Sha256Digest {
+    pub fn from_path(path: &Path) -> Result<Self> {
+        let mut f = OpenOptions::new()
+            .read(true)
+            .open(path)
+            .with_context(|| format!("opening {:?}", path))?;
 
-pub fn get_path_digest(path: &Path) -> Result<Sha256Digest> {
-    let mut f = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .with_context(|| format!("opening {:?}", path))?;
-
-    // tell kernel to optimize for sequential reading
-    if unsafe { libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL) } < 0 {
-        eprintln!(
-            "posix_fadvise(SEQUENTIAL) failed (errno {}) -- ignoring...",
-            nix::errno::errno()
-        );
+        Self::from_file(&mut f)
     }
 
-    let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
-    copy(&mut f, &mut hasher)?;
-    hasher.try_into()
+    pub fn from_file(f: &mut std::fs::File) -> Result<Self> {
+        // tell kernel to optimize for sequential reading
+        if unsafe { libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL) } < 0 {
+            eprintln!(
+                "posix_fadvise(SEQUENTIAL) failed (errno {}) -- ignoring...",
+                nix::errno::errno()
+            );
+        }
+
+        Self::from_reader(f)
+    }
+
+    pub fn from_reader(r: &mut impl Read) -> Result<Self> {
+        let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
+        std::io::copy(r, &mut hasher)?;
+        hasher.try_into()
+    }
+
+    pub fn to_hex_string(&self) -> Result<String> {
+        let mut buf: Vec<u8> = Vec::with_capacity(64);
+        for i in 0..32 {
+            write!(buf, "{:02x}", self.0[i])?;
+        }
+        Ok(String::from_utf8(buf)?)
+    }
 }
 
 #[cfg(test)]
