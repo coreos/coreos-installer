@@ -22,8 +22,7 @@ use std::fs::{read, write, File, OpenOptions};
 use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
-use std::path::{Path, PathBuf};
-use tempfile::NamedTempFile;
+use std::path::Path;
 
 use crate::cmdline::*;
 use crate::install::*;
@@ -85,7 +84,7 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     let cpio = make_cpio(&ignition)?;
     iso.set_ignition(&cpio)?;
 
-    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
         iso.stream_ignition(&iso_file, &mut stdout())?;
     }
 
@@ -121,7 +120,7 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 
     iso.set_ignition(&[])?;
 
-    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
         iso.stream_ignition(&iso_file, &mut stdout())?;
     }
     Ok(())
@@ -181,7 +180,7 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     )?;
     iso.set_kargs(&kargs)?;
 
-    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
         iso.stream_kargs(&iso_file, &mut stdout())?;
     }
     Ok(())
@@ -196,7 +195,7 @@ pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
             .context("No karg embed areas found")?
             .to_string(),
     )?;
-    if write_live_iso(&iso, &config.input, config.output.as_ref())? {
+    if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
         iso.stream_kargs(&iso_file, &mut stdout())?;
     }
     Ok(())
@@ -236,14 +235,39 @@ fn open_live_iso(input_path: &str, output_path: Option<Option<&String>>) -> Resu
 }
 
 // Returns true if we need to stream to stdout
-fn write_live_iso(iso: &IsoConfig, input_path: &str, output_path: Option<&String>) -> Result<bool> {
-    let content = ContentFile::new(input_path, output_path)?;
-    if content.is_stdout() {
-        return Ok(true);
+fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String>) -> Result<bool> {
+    match output_path.map(|v| v.as_str()) {
+        None => {
+            // open_live_iso() opened input for writing
+            iso.write(input)?;
+            Ok(false)
+        }
+        Some("-") => {
+            if isatty(stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
+                bail!("Refusing to write binary data to terminal");
+            }
+            Ok(true)
+        }
+        Some(output_path) => {
+            let output_dir = Path::new(output_path)
+                .parent()
+                .with_context(|| format!("no parent directory of {}", output_path))?;
+            let mut output = tempfile::Builder::new()
+                .prefix(".coreos-installer-temp-")
+                .tempfile_in(output_dir)
+                .context("creating temporary file")?;
+            input.seek(SeekFrom::Start(0)).context("seeking input")?;
+            input
+                .copy_to(output.as_file_mut())
+                .context("copying input to temporary file")?;
+            iso.write(output.as_file_mut())?;
+            output
+                .persist_noclobber(&output_path)
+                .map_err(|e| e.error)
+                .with_context(|| format!("persisting output file to {}", output_path))?;
+            Ok(false)
+        }
     }
-    iso.write(&mut content.file()?)?;
-    content.complete()?;
-    Ok(false)
 }
 
 struct IsoConfig {
@@ -539,95 +563,6 @@ fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Resu
         String::from_utf8(buf).context("invalid UTF-8 in karg area")?
     };
     Ok(area.trim_end_matches('#').trim().into())
-}
-
-enum ContentFile {
-    ForStdout(File),
-    InPlace(File),
-    Copied((NamedTempFile, PathBuf)),
-}
-
-/// Wrapper for a file handle to the content being modified (for example, an
-/// ISO image).  Usually this is where we write our modifications, but if
-/// we're streaming to stdout, it's where we read the content from.  In the
-/// case of an output file, it can be modified in place or copied from
-/// another file.  If complete() is not called and the file was copied, the
-/// copy will be deleted on drop.
-impl ContentFile {
-    fn new(input_path: &str, output_path: Option<&String>) -> Result<Self> {
-        match output_path.map(|v| v.as_str()) {
-            None => Ok(Self::InPlace(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(&input_path)
-                    .with_context(|| format!("opening {}", &input_path))?,
-            )),
-            Some("-") => {
-                // check this here as a convenience to the caller
-                if isatty(stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
-                    bail!("Refusing to write binary data to terminal");
-                }
-                // read-only for safety
-                Ok(Self::ForStdout(
-                    OpenOptions::new()
-                        .read(true)
-                        .open(&input_path)
-                        .with_context(|| format!("opening {}", &input_path))?,
-                ))
-            }
-            Some(unwrapped_output_path) => {
-                let output_dir = Path::new(unwrapped_output_path)
-                    .parent()
-                    .with_context(|| format!("no parent directory of {}", unwrapped_output_path))?;
-                let input = OpenOptions::new()
-                    .read(true)
-                    .open(&input_path)
-                    .with_context(|| format!("opening {}", &input_path))?;
-                let mut output = tempfile::Builder::new()
-                    .prefix(".coreos-installer-temp-")
-                    .tempfile_in(output_dir)
-                    .context("creating temporary file")?;
-                input
-                    .copy_to(output.as_file_mut())
-                    .with_context(|| format!("copying {} to temporary file", input_path))?;
-                Ok(Self::Copied((
-                    output,
-                    Path::new(unwrapped_output_path).to_path_buf(),
-                )))
-            }
-        }
-    }
-
-    fn is_stdout(&self) -> bool {
-        matches!(self, Self::ForStdout(_))
-    }
-
-    // Return the output file for InPlace and Copied, and the input file
-    // for ForStdout.
-    fn file(&self) -> Result<File> {
-        match self {
-            Self::ForStdout(ref file) => file.try_clone().context("cloning input file handle"),
-            Self::InPlace(ref file) => file.try_clone().context("cloning output file handle"),
-            Self::Copied((temp, _)) => temp
-                .as_file()
-                .try_clone()
-                .context("cloning temporary file handle"),
-        }
-    }
-
-    fn complete(self) -> Result<()> {
-        match self {
-            Self::ForStdout(_) => (),
-            Self::InPlace(_) => (),
-            Self::Copied((temp, path)) => {
-                temp.persist_noclobber(&path)
-                    .map_err(|e| e.error)
-                    .with_context(|| format!("persisting output file to {}", path.display()))?;
-            }
-        }
-        Ok(())
-    }
 }
 
 #[derive(Serialize)]
