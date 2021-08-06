@@ -12,29 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::convert::{TryFrom, TryInto};
-use std::fs::OpenOptions;
-use std::io::{Read, Write};
-use std::os::unix::io::AsRawFd;
+use std::io::Write;
 use std::path::Path;
 
-use anyhow::{anyhow, bail, Context, Error, Result};
-use openssl::hash::{Hasher, MessageDigest};
-use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, bail, Result};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
-pub struct Sha256Digest([u8; 32]);
-
-impl TryFrom<Hasher> for Sha256Digest {
-    type Error = Error;
-
-    fn try_from(mut hasher: Hasher) -> std::result::Result<Self, Self::Error> {
-        let digest = hasher.finish().context("finishing hash")?;
-        Ok(Sha256Digest(
-            digest.as_ref().try_into().context("converting to SHA256")?,
-        ))
-    }
-}
+use crate::io::Sha256Digest;
 
 // ab/cdef....file --> 0xabcdef...
 pub fn object_path_to_checksum(path: &Path) -> Result<Sha256Digest> {
@@ -71,43 +54,6 @@ pub fn checksum_to_object_path(chksum: &Sha256Digest, buf: &mut Vec<u8>) -> Resu
     }
     write!(buf, ".file")?;
     Ok(())
-}
-
-impl Sha256Digest {
-    pub fn from_path(path: &Path) -> Result<Self> {
-        let mut f = OpenOptions::new()
-            .read(true)
-            .open(path)
-            .with_context(|| format!("opening {:?}", path))?;
-
-        Self::from_file(&mut f)
-    }
-
-    pub fn from_file(f: &mut std::fs::File) -> Result<Self> {
-        // tell kernel to optimize for sequential reading
-        if unsafe { libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL) } < 0 {
-            eprintln!(
-                "posix_fadvise(SEQUENTIAL) failed (errno {}) -- ignoring...",
-                nix::errno::errno()
-            );
-        }
-
-        Self::from_reader(f)
-    }
-
-    pub fn from_reader(r: &mut impl Read) -> Result<Self> {
-        let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
-        std::io::copy(r, &mut hasher)?;
-        hasher.try_into()
-    }
-
-    pub fn to_hex_string(&self) -> Result<String> {
-        let mut buf: Vec<u8> = Vec::with_capacity(64);
-        for i in 0..32 {
-            write!(buf, "{:02x}", self.0[i])?;
-        }
-        Ok(String::from_utf8(buf)?)
-    }
 }
 
 #[cfg(test)]
