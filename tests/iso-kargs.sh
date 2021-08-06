@@ -15,7 +15,7 @@ cd "${tmpd}"
 
 cp --reflink=auto "${iso}" "test.iso"
 iso=test.iso
-stdout_iso="${iso}.out"
+out_iso="${iso}.out"
 orig_hash=$(sha256sum "${iso}")
 
 # Sanity-check the ISO doesn't somehow already have the karg we're testing with.
@@ -24,9 +24,9 @@ if coreos-installer iso kargs show "${iso}" | grep -q foobar; then
 fi
 
 # Stream modification to stdout.
-stdout_hash=$(coreos-installer iso kargs modify -a foobar=oldval -a dodo -o - "${iso}" | tee "${stdout_iso}" | sha256sum)
-coreos-installer iso kargs show "${stdout_iso}" | grep -q 'foobar=oldval dodo'
-coreos-installer iso kargs modify -d foobar=oldval -d dodo -o - "${stdout_iso}" > "${iso}"
+stdout_hash=$(coreos-installer iso kargs modify -a foobar=oldval -a dodo -o - "${iso}" | tee "${out_iso}" | sha256sum)
+coreos-installer iso kargs show "${out_iso}" | grep -q 'foobar=oldval dodo'
+coreos-installer iso kargs modify -d foobar=oldval -d dodo -o - "${out_iso}" > "${iso}"
 if coreos-installer iso kargs show "${iso}" | grep -q 'foobar'; then
     fatal "Unexpected foobar karg in iso kargs"
 fi
