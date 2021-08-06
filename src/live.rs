@@ -232,6 +232,9 @@ pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
     if config.header {
         serde_json::to_writer_pretty(std::io::stdout(), &embed)
             .context("failed to serialize header")?;
+        std::io::stdout()
+            .write_all("\n".as_bytes())
+            .context("failed to write newline")?;
     } else {
         let kargs = if config.default {
             embed.get_default_kargs()?
