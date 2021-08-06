@@ -111,6 +111,13 @@ struct WriteHasher<W: Write> {
     hasher: Hasher,
 }
 
+impl<W: Write> WriteHasher<W> {
+    fn new_sha256(writer: W) -> Result<Self> {
+        let hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
+        Ok(WriteHasher { writer, hasher })
+    }
+}
+
 impl<W: Write> Write for WriteHasher<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.is_empty() {
@@ -144,10 +151,7 @@ fn osmet_unpack_to_writer(
     repo: PathBuf,
     writer: impl Write,
 ) -> Result<()> {
-    let hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
-
-    let mut w = WriteHasher { writer, hasher };
-
+    let mut w = WriteHasher::new_sha256(writer)?;
     let n = write_unpacked_image(&mut packed_image, &mut w, &osmet.partitions, &repo)?;
     if n != osmet.size {
         bail!("wrote {} bytes but expected {}", n, osmet.size);
