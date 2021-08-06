@@ -180,7 +180,7 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     iso.set_kargs(&kargs)?;
 
     if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_kargs(&iso_file, &mut stdout())?;
+        iso.stream_kargs(&mut iso_file, &mut stdout())?;
     }
     Ok(())
 }
@@ -191,7 +191,7 @@ pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
 
     iso.set_kargs(&iso.kargs_default()?.to_string())?;
     if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_kargs(&iso_file, &mut stdout())?;
+        iso.stream_kargs(&mut iso_file, &mut stdout())?;
     }
     Ok(())
 }
@@ -200,9 +200,7 @@ pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     if config.header {
-        // XXX
-        let karg_areas = KargEmbedAreas::for_file(iso_file.try_clone()?)?;
-        serde_json::to_writer_pretty(std::io::stdout(), &karg_areas)
+        serde_json::to_writer_pretty(std::io::stdout(), &iso.kargs)
             .context("failed to serialize header")?;
         std::io::stdout()
             .write_all("\n".as_bytes())
@@ -267,25 +265,20 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
 
 struct IsoConfig {
     ignition: Region,
-    kargs_current: Option<String>,
-    kargs_default: Option<String>,
+    kargs: Option<KargEmbedAreas>,
 }
 
 impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
-        let (kargs_current, kargs_default) = if KargEmbedAreas::exists_in(file)? {
-            let mut karg_areas = KargEmbedAreas::for_file(file.try_clone()?)?;
-            let current = karg_areas.get_current_kargs()?;
-            let default = karg_areas.get_default_kargs()?;
-            (Some(current), Some(default))
+        let kargs = if KargEmbedAreas::exists_in(file)? {
+            Some(KargEmbedAreas::for_file(file)?)
         } else {
-            (None, None)
+            None
         };
 
         Ok(Self {
             ignition: ignition_embed_area(file)?,
-            kargs_current,
-            kargs_default,
+            kargs,
         })
     }
 
@@ -315,31 +308,33 @@ impl IsoConfig {
     }
 
     pub fn kargs(&self) -> Result<&str> {
-        Self::unwrap_kargs(&self.kargs_current)
+        Ok(self.unwrap_kargs()?.kargs())
     }
 
     pub fn kargs_default(&self) -> Result<&str> {
-        Self::unwrap_kargs(&self.kargs_default)
+        Ok(self.unwrap_kargs()?.kargs_default())
     }
 
     pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
-        Self::unwrap_kargs(&self.kargs_default)?;
-        self.kargs_current = Some(kargs.to_string());
-        Ok(())
+        self.unwrap_kargs_mut()?.set_kargs(kargs)
     }
 
-    fn unwrap_kargs(kargs: &Option<String>) -> Result<&str> {
-        kargs
+    fn unwrap_kargs(&self) -> Result<&KargEmbedAreas> {
+        self.kargs
             .as_ref()
-            .map(|s| s.as_str())
+            .ok_or_else(|| anyhow!("No karg embed areas found; old or corrupted CoreOS ISO image."))
+    }
+
+    fn unwrap_kargs_mut(&mut self) -> Result<&mut KargEmbedAreas> {
+        self.kargs
+            .as_mut()
             .ok_or_else(|| anyhow!("No karg embed areas found; old or corrupted CoreOS ISO image."))
     }
 
     pub fn write(&self, file: &mut File) -> Result<()> {
         self.ignition.write(file)?;
-        if let Some(kargs_current) = &self.kargs_current {
-            let mut karg_areas = KargEmbedAreas::for_file(file.try_clone()?)?;
-            karg_areas.write_kargs(&kargs_current)?;
+        if let Some(kargs) = &self.kargs {
+            kargs.write(file)?;
         }
         Ok(())
     }
@@ -354,11 +349,13 @@ impl IsoConfig {
     }
 
     // XXX temporary API
-    pub fn stream_kargs(&self, input: &File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        if let Some(kargs_current) = &self.kargs_current {
-            let mut karg_areas = KargEmbedAreas::for_file(input.try_clone()?)?;
-            karg_areas.stream(&kargs_current, writer)?;
-            Ok(())
+    pub fn stream_kargs(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
+        if let Some(kargs) = &self.kargs {
+            kargs
+                .regions
+                .iter()
+                .collect::<Vec<&Region>>()
+                .stream(input, writer)
         } else {
             bail!("no karg embed areas available");
         }
@@ -466,11 +463,15 @@ impl Stream for [&Region] {
 
 #[derive(Serialize)]
 struct KargEmbedAreas {
+    #[serde(rename = "default_kargs")]
+    default_region: Region,
     #[serde(skip_serializing)]
-    file: File,
-    length: usize,
-    default_kargs_offset: u64,
-    kargs_offsets: Vec<u64>,
+    default_args: String,
+
+    #[serde(rename = "kargs")]
+    regions: Vec<Region>,
+    #[serde(skip_serializing)]
+    args: String,
 }
 
 impl KargEmbedAreas {
@@ -484,7 +485,7 @@ impl KargEmbedAreas {
         Ok(region.contents == COREOS_KARG_EMBED_AREA_HEADER_MAGIC)
     }
 
-    fn for_file(mut file: File) -> Result<Self> {
+    pub fn for_file(file: &mut File) -> Result<Self> {
         // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
         // before the initrd embed area (see EmbedArea below):
         // 8 bytes: magic string "coreKarg"
@@ -492,7 +493,7 @@ impl KargEmbedAreas {
         // 8 bytes little-endian: offset to default kargs
         // 8 bytes little-endian x 6: offsets to karg embed areas
         let region = Region::read(
-            &mut file,
+            file,
             32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
             COREOS_KARG_EMBED_AREA_HEADER_SIZE as usize,
         )
@@ -516,152 +517,92 @@ impl KargEmbedAreas {
             );
         }
 
-        let metadata = file.metadata().context("reading metadata for ISO")?;
-        let iso_size = metadata.len();
+        // we rely on Region::read() to verify that offset/length pairs are
+        // in bounds
 
         // default kargs
-        let default_kargs_offset = header.get_u64_le();
-        if default_kargs_offset + (length as u64) > iso_size {
-            bail!(
-                "Default kargs area end outside ISO ({}+{} vs {})",
-                default_kargs_offset,
-                length,
-                iso_size
-            );
-        }
+        let offset = header.get_u64_le();
+        let default_region = Region::read(file, offset, length).context("reading default kargs")?;
+        let default_args = Self::parse(&default_region)?;
 
-        // offsets
-        let mut kargs_offsets: Vec<u64> = Vec::new();
-        while kargs_offsets.len() < COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS {
+        // writable regions
+        let mut regions = Vec::new();
+        while regions.len() < COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS {
             let offset = header.get_u64_le();
             if offset == 0 {
                 break;
-            } else if offset + (length as u64) > iso_size {
-                bail!(
-                    "Kargs area end outside ISO ({}+{} vs {})",
-                    offset,
-                    length,
-                    iso_size
-                );
             }
-            kargs_offsets.push(offset);
+            regions.push(Region::read(file, offset, length).context("reading kargs embed area")?);
         }
 
-        // we need ordered offsets when streaming
-        kargs_offsets.sort_unstable();
-
         // we expect at least one
-        if kargs_offsets.is_empty() {
+        if regions.is_empty() {
             bail!("No karg embed areas found; corrupted CoreOS ISO image.");
         }
 
+        // parse kargs and verify that all the offsets have the same arguments
+        let args = Self::parse(&regions[0])?;
+        for region in regions.iter().skip(1) {
+            let current_args = Self::parse(region)?;
+            if current_args != args {
+                bail!(
+                    "kargs don't match at all offsets! (expected '{}', but offset {} has: '{}')",
+                    args,
+                    region.offset,
+                    current_args
+                );
+            }
+        }
+
         Ok(KargEmbedAreas {
-            file,
-            length,
-            default_kargs_offset,
-            kargs_offsets,
+            default_region,
+            default_args,
+            regions,
+            args,
         })
     }
 
-    fn get_current_kargs(&mut self) -> Result<String> {
-        // really, we could just get the kargs from the first file, but let's sanity-check that all
-        // the offsets have the same kargs
-        let mut first_kargs: Option<String> = None;
-        for offset in &self.kargs_offsets {
-            let kargs = get_kargs_at_offset(&mut self.file, self.length, *offset)?;
-            if let Some(ref first_kargs) = first_kargs {
-                if &kargs != first_kargs {
-                    bail!(
-                        "kargs don't match at all offsets! (expected '{}', but offset {} has: '{}')",
-                        first_kargs,
-                        *offset,
-                        kargs
-                    );
-                }
-            } else {
-                first_kargs = Some(kargs);
-            }
-        }
-        Ok(first_kargs.expect("at least one area offset"))
+    fn parse(region: &Region) -> Result<String> {
+        Ok(String::from_utf8(region.contents.clone())
+            .context("invalid UTF-8 in karg area")?
+            .trim_end_matches('#')
+            .trim()
+            .into())
     }
 
-    fn get_default_kargs(&mut self) -> Result<String> {
-        get_kargs_at_offset(&mut self.file, self.length, self.default_kargs_offset)
+    pub fn kargs_default(&self) -> &str {
+        &self.default_args
     }
 
-    fn format_embed_area(&mut self, kargs: &str) -> Result<Vec<u8>> {
-        let kargs: String = kargs.trim().to_string() + "\n";
-        if kargs.len() > self.length {
+    pub fn kargs(&self) -> &str {
+        &self.args
+    }
+
+    pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
+        let unformatted = kargs.trim();
+        let formatted = unformatted.to_string() + "\n";
+        if formatted.len() > self.default_region.length {
             bail!(
                 "kargs too large for area: {} vs {}",
-                kargs.len(),
-                self.length
+                formatted.len(),
+                self.default_region.length
             );
         }
-        let mut new_area = vec![b'#'; self.length];
-        new_area[..kargs.len()].copy_from_slice(kargs.as_bytes());
-        Ok(new_area)
-    }
-
-    fn stream(&mut self, kargs: &str, writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        let mut buf = [0u8; BUFFER_SIZE];
-        let new_area = self.format_embed_area(kargs)?;
-
-        self.file
-            .seek(SeekFrom::Start(0))
-            .context("seeking to start")?;
-        let mut cursor: u64 = 0;
-
-        for offset in &self.kargs_offsets {
-            copy_exactly_n(&mut self.file, writer, *offset - cursor, &mut buf)
-                .with_context(|| format!("copying bytes from {} to {}", cursor, *offset))?;
-            writer
-                .write_all(&new_area)
-                .with_context(|| format!("writing karg embed area at offset {}", *offset))?;
-            cursor = self
-                .file
-                .seek(SeekFrom::Current(self.length as i64))
-                .with_context(|| format!("seeking length of karg embed area {}", self.length))?;
+        let mut contents = vec![b'#'; self.default_region.length];
+        contents[..formatted.len()].copy_from_slice(formatted.as_bytes());
+        for region in &mut self.regions {
+            region.contents = contents.clone();
         }
-
-        // write the remainder
-        let mut write_buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
-        copy(
-            &mut BufReader::with_capacity(BUFFER_SIZE, &mut self.file),
-            &mut write_buf,
-        )
-        .context("copying file")?;
-        write_buf.flush().context("flushing output")?;
+        self.args = unformatted.to_string();
         Ok(())
     }
 
-    fn write_kargs(&mut self, kargs: &str) -> Result<()> {
-        let new_area = self.format_embed_area(kargs)?;
-
-        for offset in &self.kargs_offsets {
-            self.file
-                .seek(SeekFrom::Start(*offset))
-                .with_context(|| format!("seeking to karg area offset {}", *offset))?;
-            self.file
-                .write_all(&new_area)
-                .with_context(|| format!("writing karg embed area at offset {}", *offset))?;
+    pub fn write(&self, file: &mut File) -> Result<()> {
+        for region in &self.regions {
+            region.write(file)?;
         }
         Ok(())
     }
-}
-
-// This is purposely not an impl function because we need to be able to call it while borrowing
-// parts of the struct (e.g. when iterating over the offsets).
-fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Result<String> {
-    file.seek(SeekFrom::Start(offset))
-        .with_context(|| format!("seeking to karg area offset {}", offset))?;
-    let area = {
-        let mut buf = vec![0u8; area_length];
-        file.read_exact(&mut buf)
-            .with_context(|| format!("reading karg area at offset {}", offset))?;
-        String::from_utf8(buf).context("invalid UTF-8 in karg area")?
-    };
-    Ok(area.trim_end_matches('#').trim().into())
 }
 
 fn ignition_embed_area(file: &mut File) -> Result<Region> {
