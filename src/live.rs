@@ -86,7 +86,7 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     iso.set_ignition(&cpio)?;
 
     if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_ignition(&iso_file, &mut stdout())?;
+        iso.stream_ignition(&mut iso_file, &mut stdout())?;
     }
 
     Ok(())
@@ -96,9 +96,7 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     if config.header {
-        // XXX
-        let embed = EmbedArea::for_file(iso_file.try_clone()?)?;
-        serde_json::to_writer_pretty(std::io::stdout(), &embed)
+        serde_json::to_writer_pretty(std::io::stdout(), &iso.ignition)
             .context("failed to serialize header")?;
         std::io::stdout()
             .write_all("\n".as_bytes())
@@ -122,7 +120,7 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
     iso.set_ignition(&[])?;
 
     if write_live_iso(&iso, &mut iso_file, config.output.as_ref())? {
-        iso.stream_ignition(&iso_file, &mut stdout())?;
+        iso.stream_ignition(&mut iso_file, &mut stdout())?;
     }
     Ok(())
 }
@@ -272,18 +270,13 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
 }
 
 struct IsoConfig {
-    ignition_current: Vec<u8>,
+    ignition: Region,
     kargs_current: Option<String>,
     kargs_default: Option<String>,
 }
 
 impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
-        let mut ignition_area = EmbedArea::for_file(file.try_clone()?)?;
-        let mut ignition_current = ignition_area.new_buffer();
-        ignition_area.seek_to_start()?;
-        ignition_area.read(&mut ignition_current)?;
-
         let (kargs_current, kargs_default) = match KargEmbedAreas::for_file(file.try_clone()?) {
             Ok(mut karg_areas) => {
                 let current = karg_areas.get_current_kargs()?;
@@ -295,7 +288,7 @@ impl IsoConfig {
         };
 
         Ok(Self {
-            ignition_current,
+            ignition: ignition_embed_area(file)?,
             kargs_current,
             kargs_default,
         })
@@ -306,11 +299,11 @@ impl IsoConfig {
     }
 
     pub fn ignition(&self) -> &[u8] {
-        &self.ignition_current[..]
+        &self.ignition.contents[..]
     }
 
     pub fn set_ignition(&mut self, data: &[u8]) -> Result<()> {
-        let capacity = self.ignition_current.len();
+        let capacity = self.ignition.length;
         if data.len() > capacity {
             bail!(
                 "Compressed Ignition config is too large: {} > {}",
@@ -318,9 +311,10 @@ impl IsoConfig {
                 capacity
             )
         }
-        self.ignition_current.clear();
-        self.ignition_current.extend_from_slice(data);
-        self.ignition_current
+        self.ignition.contents.clear();
+        self.ignition.contents.extend_from_slice(data);
+        self.ignition
+            .contents
             .extend(repeat(0).take(capacity - data.len()));
         Ok(())
     }
@@ -342,10 +336,7 @@ impl IsoConfig {
     }
 
     pub fn write(&self, file: &mut File) -> Result<()> {
-        let mut ignition_area = EmbedArea::for_file(file.try_clone()?)?;
-        ignition_area.seek_to_start()?;
-        ignition_area.write(&self.ignition_current)?;
-
+        self.ignition.write(file)?;
         if let Some(kargs_current) = &self.kargs_current {
             let mut karg_areas = KargEmbedAreas::for_file(file.try_clone()?)?;
             karg_areas.write_kargs(&kargs_current)?;
@@ -354,9 +345,12 @@ impl IsoConfig {
     }
 
     // XXX temporary API
-    pub fn stream_ignition(&self, input: &File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        let mut ignition_area = EmbedArea::for_file(input.try_clone()?)?;
-        ignition_area.stream(&self.ignition_current, writer)
+    pub fn stream_ignition(
+        &self,
+        input: &mut File,
+        writer: &mut (impl Write + ?Sized),
+    ) -> Result<()> {
+        vec![&self.ignition].stream(input, writer)
     }
 
     // XXX temporary API
@@ -371,9 +365,12 @@ impl IsoConfig {
     }
 }
 
+#[derive(Eq, Ord, PartialEq, PartialOrd, Serialize)]
 struct Region {
+    // sort order is derived from field order
     pub offset: u64,
     pub length: usize,
+    #[serde(skip_serializing)]
     pub contents: Vec<u8>,
 }
 
@@ -389,6 +386,81 @@ impl Region {
             length,
             contents,
         })
+    }
+
+    pub fn write(&self, file: &mut File) -> Result<()> {
+        self.validate()?;
+        file.seek(SeekFrom::Start(self.offset))
+            .with_context(|| format!("seeking to offset {}", self.offset))?;
+        file.write_all(&self.contents)
+            .with_context(|| format!("writing {} bytes at {}", self.length, self.offset))
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.length != self.contents.len() {
+            bail!(
+                "expected region contents length {}, found {}",
+                self.length,
+                self.contents.len()
+            );
+        }
+        Ok(())
+    }
+}
+
+trait Stream {
+    fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()>;
+}
+
+impl Stream for [&Region] {
+    fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
+        input.seek(SeekFrom::Start(0)).context("seeking to start")?;
+
+        let mut regions: Vec<&&Region> = self.iter().collect();
+        regions.sort_unstable();
+
+        let mut buf = [0u8; BUFFER_SIZE];
+        let mut cursor: u64 = 0;
+
+        // validate regions
+        for region in &regions {
+            region.validate()?;
+            if region.offset < cursor {
+                bail!(
+                    "region starting at {} precedes current offset {}",
+                    region.offset,
+                    cursor
+                );
+            }
+            cursor = region.offset + region.length as u64;
+        }
+
+        // write regions
+        cursor = 0;
+        for region in &regions {
+            assert!(region.offset >= cursor);
+            copy_exactly_n(input, writer, region.offset - cursor, &mut buf)
+                .with_context(|| format!("copying bytes from {} to {}", cursor, region.offset))?;
+            writer.write_all(&region.contents).with_context(|| {
+                format!(
+                    "writing region for {} at offset {}",
+                    region.length, region.offset
+                )
+            })?;
+            cursor = input
+                .seek(SeekFrom::Current(region.length as i64))
+                .with_context(|| format!("seeking region length {}", region.length))?;
+        }
+
+        // write the remainder
+        let mut write_buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
+        copy(
+            &mut BufReader::with_capacity(BUFFER_SIZE, input),
+            &mut write_buf,
+        )
+        .context("copying file")?;
+        write_buf.flush().context("flushing output")?;
+        Ok(())
     }
 }
 
@@ -582,107 +654,31 @@ fn get_kargs_at_offset(file: &mut File, area_length: usize, offset: u64) -> Resu
     Ok(area.trim_end_matches('#').trim().into())
 }
 
-#[derive(Serialize)]
-struct EmbedArea {
-    #[serde(skip_serializing)]
-    file: File,
-    offset: u64,
-    length: usize,
-}
-
-impl EmbedArea {
-    fn for_file(mut file: File) -> Result<Self> {
-        // The ISO 9660 System Area is 32 KiB.  The last 24 bytes should be:
-        // 8 bytes: magic string "coreiso+"
-        // 8 bytes little-endian: offset of embed area from start of file
-        // 8 bytes little-endian: length of embed area
-        let region = Region::read(
-            &mut file,
-            32768 - COREOS_IGNITION_HEADER_SIZE,
-            COREOS_IGNITION_HEADER_SIZE as usize,
-        )
-        .context("reading Ignition embed header")?;
-        let mut header = &region.contents[..];
-        // magic number
-        if header.copy_to_bytes(8) != COREOS_IGNITION_HEADER_MAGIC {
-            bail!("Unrecognized CoreOS ISO image.");
-        }
-        // offset
-        let offset = header.get_u64_le();
-        // length
-        let length: usize = header
-            .get_u64_le()
-            .try_into()
-            .context("embed area too large to allocate")?;
-        // check file size
-        if file
-            .seek(SeekFrom::End(0))
-            .context("seeking to end of image file")?
-            < offset + length as u64
-        {
-            bail!("Invalid CoreOS ISO image.");
-        }
-        Ok(Self {
-            file,
-            offset,
-            length,
-        })
+fn ignition_embed_area(file: &mut File) -> Result<Region> {
+    // The ISO 9660 System Area is 32 KiB.  The last 24 bytes should be:
+    // 8 bytes: magic string "coreiso+"
+    // 8 bytes little-endian: offset of embed area from start of file
+    // 8 bytes little-endian: length of embed area
+    let region = Region::read(
+        file,
+        32768 - COREOS_IGNITION_HEADER_SIZE,
+        COREOS_IGNITION_HEADER_SIZE as usize,
+    )
+    .context("reading Ignition embed header")?;
+    let mut header = &region.contents[..];
+    // magic number
+    if header.copy_to_bytes(8) != COREOS_IGNITION_HEADER_MAGIC {
+        bail!("Unrecognized CoreOS ISO image.");
     }
-
-    fn seek_to_start(&mut self) -> Result<()> {
-        self.file
-            .seek(SeekFrom::Start(self.offset))
-            .context("seeking to embed area")?;
-        Ok(())
-    }
-
-    fn read(&mut self, buf: &mut [u8]) -> Result<()> {
-        self.file.read_exact(buf).context("reading embed area")?;
-        Ok(())
-    }
-
-    fn write(&mut self, buf: &[u8]) -> Result<()> {
-        self.file.write_all(buf).context("writing embed area")?;
-        Ok(())
-    }
-
-    fn stream(&mut self, cpio: &[u8], writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        let mut buf = [0u8; BUFFER_SIZE];
-        self.file
-            .seek(SeekFrom::Start(0))
-            .context("seeking to start")?;
-        copy_exactly_n(&mut self.file, writer, self.offset, &mut buf).context("copying file")?;
-        if cpio.len() > self.length {
-            bail!("buffer larger than embed area");
-        }
-        writer.write_all(cpio).context("writing embed area")?;
-        let zeroes = vec![0; self.length - cpio.len()];
-        writer.write_all(&zeroes).context("writing zeros")?;
-        self.file
-            .seek(SeekFrom::Start(self.offset + self.length as u64))
-            .context("seeking to end of embed area")?;
-        let mut write_buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
-        copy(
-            &mut BufReader::with_capacity(BUFFER_SIZE, &mut self.file),
-            &mut write_buf,
-        )
-        .context("copying file")?;
-        write_buf.flush().context("flushing output")?;
-        Ok(())
-    }
-
-    /// Wipe the embed area.
-    fn clear(&mut self) -> Result<()> {
-        self.seek_to_start()?;
-        let zeroes = self.new_buffer();
-        self.write(&zeroes)?;
-        Ok(())
-    }
-
-    /// Allocate a zeroed buffer the size of the embed area.
-    fn new_buffer(&self) -> Vec<u8> {
-        vec![0; self.length]
-    }
+    // offset
+    let offset = header.get_u64_le();
+    // length
+    let length: usize = header
+        .get_u64_le()
+        .try_into()
+        .context("embed area too large to allocate")?;
+    // read (checks offset/length as a side effect)
+    Region::read(file, offset, length).context("reading Ignition embed area")
 }
 
 /// Make a gzipped CPIO archive containing the specified Ignition config.
