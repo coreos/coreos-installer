@@ -315,6 +315,49 @@ impl Sha256Digest {
     }
 }
 
+pub struct WriteHasher<W: Write> {
+    writer: W,
+    hasher: Hasher,
+}
+
+impl<W: Write> WriteHasher<W> {
+    pub fn new(writer: W, hasher: Hasher) -> Self {
+        WriteHasher { writer, hasher }
+    }
+
+    pub fn new_sha256(writer: W) -> Result<Self> {
+        let hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
+        Ok(WriteHasher { writer, hasher })
+    }
+}
+
+impl<W: Write> Write for WriteHasher<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let n = self.writer.write(buf)?;
+        self.hasher.write_all(&buf[..n])?;
+
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush()?;
+        self.hasher.flush()?;
+        Ok(())
+    }
+}
+
+impl<W: Write> TryFrom<WriteHasher<W>> for Sha256Digest {
+    type Error = Error;
+
+    fn try_from(wrapper: WriteHasher<W>) -> std::result::Result<Self, Self::Error> {
+        Sha256Digest::try_from(wrapper.hasher)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
