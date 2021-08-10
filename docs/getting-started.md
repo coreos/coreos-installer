@@ -107,7 +107,7 @@ line.
 Download a Fedora CoreOS ISO image:
 
 ```
-podman run --privileged --pull=always --rm -v .:/data -w /data \
+podman run --security-opt label=disable --pull=always --rm -v .:/data -w /data \
     quay.io/coreos/coreos-installer:release download -f iso
 ```
 
@@ -154,7 +154,7 @@ embedded Ignition config will run on first boot.
 Download a Fedora CoreOS PXE kernel, initramfs, and rootfs image:
 
 ```
-podman run --privileged --pull=always --rm -v .:/data -w /data \
+podman run --security-opt label=disable --pull=always --rm -v .:/data -w /data \
     quay.io/coreos/coreos-installer:release download -f pxe
 ```
 
