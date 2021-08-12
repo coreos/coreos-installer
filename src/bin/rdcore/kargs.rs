@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::fs::read_to_string;
 
 use libcoreinst::install::*;
@@ -23,6 +23,16 @@ use crate::cmdline::*;
 use crate::rootmap::get_boot_mount_from_cmdline_args;
 
 pub fn kargs(config: &KargsConfig) -> Result<()> {
+    // we could enforce these via clap's ArgGroup, but I don't like how the --help text looks
+    if !(config.boot_device.is_some()
+        || config.boot_mount.is_some()
+        || config.current
+        || config.override_options.is_some())
+    {
+        // --override-options is undocumented on purpose
+        bail!("one of --boot-device, --boot-mount, or --current required");
+    }
+
     if let Some(ref orig_options) = config.override_options {
         modify_and_print(config, orig_options.trim()).context("modifying options")?;
     } else if config.current {

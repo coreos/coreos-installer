@@ -32,8 +32,24 @@ use crate::verify::*;
 
 // Download all artifacts for an image and verify their signatures.
 pub fn download(config: &DownloadConfig) -> Result<()> {
+    // Build image location.  Ideally the parser would use conflicts_with
+    // (and an ArgGroup for streams), but that doesn't play well with
+    // default arguments, so we manually prioritize modes.
+    let location: Box<dyn ImageLocation> = if let Some(ref image_url) = config.image_url {
+        Box::new(UrlLocation::new(image_url, config.fetch_retries))
+    } else {
+        Box::new(StreamLocation::new(
+            &config.stream,
+            config.architecture.as_str(),
+            &config.platform,
+            &config.format,
+            config.stream_base_url.as_ref(),
+            config.fetch_retries,
+        )?)
+    };
+
     // walk sources
-    let mut sources = config.location.sources()?;
+    let mut sources = location.sources()?;
     if sources.is_empty() {
         bail!("no artifacts found");
     }

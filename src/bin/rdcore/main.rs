@@ -17,14 +17,13 @@ mod kargs;
 mod rootmap;
 mod stream_hash;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+use structopt::StructOpt;
 
 use crate::cmdline::*;
 
 fn main() -> Result<()> {
-    let config = cmdline::parse_args().context("parsing arguments")?;
-
-    match config {
+    match Cmd::from_args() {
         Cmd::Kargs(c) => kargs::kargs(&c),
         Cmd::Rootmap(c) => rootmap::rootmap(&c),
         Cmd::StreamHash(c) => stream_hash::stream_hash(&c),

@@ -15,7 +15,6 @@
 // For consistency, have all parse_*() functions return Result.
 #![allow(clippy::unnecessary_wraps)]
 
-use anyhow::{bail, Result};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
@@ -95,26 +94,4 @@ pub struct StreamHashConfig {
     /// Path to the piecewise hash file
     #[structopt(value_name = "hash-file")]
     pub hash_file: String,
-}
-
-/// Parse command-line arguments.
-pub fn parse_args() -> Result<Cmd> {
-    let config = Cmd::from_args();
-    if let Cmd::Kargs(ref config) = config {
-        check_kargs(config)?;
-    }
-    Ok(config)
-}
-
-fn check_kargs(config: &KargsConfig) -> Result<()> {
-    // we could enforce these via clap's ArgGroup, but I don't like how the --help text looks
-    if !(config.boot_device.is_some()
-        || config.boot_mount.is_some()
-        || config.current
-        || config.override_options.is_some())
-    {
-        // --override-options is undocumented on purpose
-        bail!("one of --boot-device, --boot-mount, or --current required");
-    }
-    Ok(())
 }

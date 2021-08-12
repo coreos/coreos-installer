@@ -12,32 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+use structopt::StructOpt;
 
 use libcoreinst::{cmdline, download, install, live, osmet, source};
 
-use cmdline::Config;
+use cmdline::*;
 
 fn main() -> Result<()> {
-    let config = cmdline::parse_args().context("parsing arguments")?;
-
-    match config {
-        Config::Download(c) => download::download(&c),
-        Config::ListStream(c) => source::list_stream(&c),
-        Config::Install(c) => install::install(&c),
-        Config::IsoEmbed(c) => live::iso_embed(&c),
-        Config::IsoShow(c) => live::iso_show(&c),
-        Config::IsoRemove(c) => live::iso_remove(&c),
-        Config::IsoIgnitionEmbed(c) => live::iso_ignition_embed(&c),
-        Config::IsoIgnitionShow(c) => live::iso_ignition_show(&c),
-        Config::IsoIgnitionRemove(c) => live::iso_ignition_remove(&c),
-        Config::IsoKargsModify(c) => live::iso_kargs_modify(&c),
-        Config::IsoKargsReset(c) => live::iso_kargs_reset(&c),
-        Config::IsoKargsShow(c) => live::iso_kargs_show(&c),
-        Config::OsmetFiemap(c) => osmet::osmet_fiemap(&c),
-        Config::OsmetPack(c) => osmet::osmet_pack(&c),
-        Config::OsmetUnpack(c) => osmet::osmet_unpack(&c),
-        Config::PxeIgnitionWrap(c) => live::pxe_ignition_wrap(&c),
-        Config::PxeIgnitionUnwrap(c) => live::pxe_ignition_unwrap(&c),
+    match Cmd::from_args() {
+        Cmd::Download(c) => download::download(&c),
+        Cmd::Install(c) => install::install(&c),
+        Cmd::ListStream(c) => source::list_stream(&c),
+        Cmd::Iso(c) => match c {
+            IsoCmd::Embed(c) => live::iso_embed(&c),
+            IsoCmd::Show(c) => live::iso_show(&c),
+            IsoCmd::Remove(c) => live::iso_remove(&c),
+            IsoCmd::Ignition(c) => match c {
+                IsoIgnitionCmd::Embed(c) => live::iso_ignition_embed(&c),
+                IsoIgnitionCmd::Show(c) => live::iso_ignition_show(&c),
+                IsoIgnitionCmd::Remove(c) => live::iso_ignition_remove(&c),
+            },
+            IsoCmd::Kargs(c) => match c {
+                IsoKargsCmd::Modify(c) => live::iso_kargs_modify(&c),
+                IsoKargsCmd::Reset(c) => live::iso_kargs_reset(&c),
+                IsoKargsCmd::Show(c) => live::iso_kargs_show(&c),
+            },
+        },
+        Cmd::Osmet(c) => match c {
+            OsmetCmd::Fiemap(c) => osmet::osmet_fiemap(&c),
+            OsmetCmd::Pack(c) => osmet::osmet_pack(&c),
+            OsmetCmd::Unpack(c) => osmet::osmet_unpack(&c),
+        },
+        Cmd::Pxe(c) => match c {
+            PxeCmd::Ignition(c) => match c {
+                PxeIgnitionCmd::Wrap(c) => live::pxe_ignition_wrap(&c),
+                PxeIgnitionCmd::Unwrap(c) => live::pxe_ignition_unwrap(&c),
+            },
+        },
     }
 }
