@@ -16,222 +16,105 @@
 #![allow(clippy::unnecessary_wraps)]
 
 use anyhow::{bail, Result};
-use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
+use structopt::clap::AppSettings;
+use structopt::StructOpt;
 
-pub enum Config {
+// Args are listed in --help in the order declared in these structs/enums.
+
+#[derive(Debug, StructOpt)]
+#[structopt(name = "rdcore")]
+#[structopt(global_setting(AppSettings::ArgsNegateSubcommands))]
+#[structopt(global_setting(AppSettings::DeriveDisplayOrder))]
+#[structopt(global_setting(AppSettings::DisableHelpSubcommand))]
+#[structopt(global_setting(AppSettings::UnifiedHelpMessage))]
+#[structopt(global_setting(AppSettings::VersionlessSubcommands))]
+pub enum Cmd {
+    /// Generate rootmap kargs and optionally inject into BLS configs
+    Rootmap(RootmapConfig),
+    /// Modify kargs in BLS configs
     Kargs(KargsConfig),
-    RootMap(RootMapConfig),
+    /// Copy data from stdin to stdout, checking piecewise hashes
     StreamHash(StreamHashConfig),
 }
 
-pub struct KargsConfig {
+#[derive(Debug, StructOpt)]
+pub struct RootmapConfig {
+    // we allow mounting /boot ourselves (--boot-device) or letting our
+    // caller do the mount and point us to it (--boot-mount); lots of
+    // backstory on /boot mounting in the initrd, so leave some flexibility
+    // for changing implementation details on the OS side without having to
+    // respin rdcore
+    /// Boot device containing BLS entries to modify
+    #[structopt(long, value_name = "DEVPATH", conflicts_with = "boot-mount")]
     pub boot_device: Option<String>,
+    /// Boot mount containing BLS entries to modify
+    #[structopt(long, value_name = "BOOT_MOUNT", conflicts_with = "boot-device")]
     pub boot_mount: Option<String>,
-    pub current: bool,
-    pub override_options: Option<String>,
-    pub append_kargs: Vec<String>,
-    pub append_kargs_if_missing: Vec<String>,
-    pub delete_kargs: Vec<String>,
-    pub create_if_changed: Option<String>,
-}
-
-pub struct RootMapConfig {
-    pub boot_device: Option<String>,
-    pub boot_mount: Option<String>,
+    /// Path to rootfs mount
+    #[structopt(value_name = "ROOT_MOUNT")]
     pub root_mount: String,
 }
 
+#[derive(Debug, StructOpt)]
+pub struct KargsConfig {
+    // see comment block in rootmap command above
+    /// Boot device containing BLS entries to modify
+    #[structopt(long, value_name = "DEVPATH")]
+    #[structopt(conflicts_with = "boot-mount", conflicts_with = "current")]
+    pub boot_device: Option<String>,
+    /// Boot mount containing BLS entries to modify
+    #[structopt(long, value_name = "BOOT_MOUNT")]
+    #[structopt(conflicts_with = "boot-device", conflicts_with = "current")]
+    pub boot_mount: Option<String>,
+    /// Dry run using kargs from this boot
+    #[structopt(long)]
+    #[structopt(conflicts_with = "boot-device", conflicts_with = "boot-mount")]
+    pub current: bool,
+    /// Modify this option string instead of fetching from BLS entry
+    // this is purely for dev testing
+    #[structopt(long, value_name = "OPTIONS", hidden = true)]
+    pub override_options: Option<String>,
+    /// File to create if BLS entry was modified
+    #[structopt(long, value_name = "PATH")]
+    pub create_if_changed: Option<String>,
+    /// Append kernel arg
+    #[structopt(long, value_name = "ARG", number_of_values = 1)]
+    pub append: Vec<String>,
+    /// Append kernel arg if missing
+    #[structopt(long, value_name = "ARG", number_of_values = 1)]
+    #[structopt(alias = "should-exist")]
+    pub append_if_missing: Vec<String>,
+    /// Delete kernel arg
+    #[structopt(long, value_name = "ARG", number_of_values = 1)]
+    #[structopt(alias = "should-not-exist")]
+    pub delete: Vec<String>,
+}
+
+#[derive(Debug, StructOpt)]
 pub struct StreamHashConfig {
+    /// Path to the piecewise hash file
+    #[structopt(value_name = "hash-file")]
     pub hash_file: String,
 }
 
 /// Parse command-line arguments.
-pub fn parse_args() -> Result<Config> {
-    // Args are listed in --help in the order declared here.  Please keep
-    // the entire help text to 80 columns.
-    let app_matches = App::new("rdcore")
-        .version(crate_version!())
-        .setting(AppSettings::SubcommandRequiredElseHelp)
-        .global_setting(AppSettings::ArgsNegateSubcommands)
-        .global_setting(AppSettings::DeriveDisplayOrder)
-        .global_setting(AppSettings::DisableHelpSubcommand)
-        .global_setting(AppSettings::GlobalVersion)
-        .global_setting(AppSettings::UnifiedHelpMessage)
-        .global_setting(AppSettings::VersionlessSubcommands)
-        .subcommand(
-            SubCommand::with_name("rootmap")
-                .about("Generate rootmap kargs and optionally inject into BLS configs")
-                .arg(
-                    Arg::with_name("root-mount")
-                        .help("Path to rootfs mount")
-                        .required(true)
-                        .value_name("ROOT_MOUNT")
-                        .takes_value(true),
-                )
-                // we allow mounting /boot ourselves (--boot-device) or letting our caller do the
-                // mount and point us to it (--boot-mount); lots of backstory on /boot mounting in
-                // the initrd, so leave some flexibility for changing implementation details on the
-                // OS side without having to respin rdcore
-                .arg(
-                    Arg::with_name("boot-device")
-                        .long("boot-device")
-                        .help("Boot device containing BLS entries to modify")
-                        .conflicts_with("boot-mount")
-                        .value_name("DEVPATH")
-                        .takes_value(true),
-                )
-                .arg(
-                    Arg::with_name("boot-mount")
-                        .long("boot-mount")
-                        .help("Boot mount containing BLS entries to modify")
-                        .conflicts_with("boot-device")
-                        .value_name("BOOT_MOUNT")
-                        .takes_value(true),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("kargs")
-                .about("Modify kargs in BLS configs")
-                // see comment block in rootmap command above
-                .arg(
-                    Arg::with_name("boot-device")
-                        .long("boot-device")
-                        .help("Boot device containing BLS entries to modify")
-                        .conflicts_with("boot-mount")
-                        .conflicts_with("current")
-                        .value_name("DEVPATH")
-                        .takes_value(true),
-                )
-                .arg(
-                    Arg::with_name("boot-mount")
-                        .long("boot-mount")
-                        .help("Boot mount containing BLS entries to modify")
-                        .conflicts_with("boot-device")
-                        .conflicts_with("current")
-                        .value_name("BOOT_MOUNT")
-                        .takes_value(true),
-                )
-                .arg(
-                    Arg::with_name("current")
-                        .long("current")
-                        .help("Dry run using kargs from this boot")
-                        .conflicts_with("boot-device")
-                        .conflicts_with("boot-mount"),
-                )
-                // this is purely for dev testing
-                .arg(
-                    Arg::with_name("override-options")
-                        .hidden(true)
-                        .long("override-options")
-                        .help("Modify this option string instead of fetching from BLS entry")
-                        .value_name("OPTIONS")
-                        .takes_value(true),
-                )
-                .arg(
-                    Arg::with_name("create-if-changed")
-                        .long("create-if-changed")
-                        .help("File to create if BLS entry was modified")
-                        .value_name("PATH")
-                        .takes_value(true),
-                )
-                .arg(
-                    Arg::with_name("append")
-                        .long("append")
-                        .value_name("ARG")
-                        .help("Append kernel arg")
-                        .takes_value(true)
-                        .number_of_values(1)
-                        .multiple(true),
-                )
-                .arg(
-                    Arg::with_name("append-if-missing")
-                        .long("append-if-missing")
-                        .alias("should-exist")
-                        .value_name("ARG")
-                        .help("Append kernel arg if missing")
-                        .takes_value(true)
-                        .number_of_values(1)
-                        .multiple(true),
-                )
-                .arg(
-                    Arg::with_name("delete")
-                        .long("delete")
-                        .alias("should-not-exist")
-                        .value_name("ARG")
-                        .help("Delete kernel arg")
-                        .takes_value(true)
-                        .number_of_values(1)
-                        .multiple(true),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("stream-hash")
-                .about("Copy data from stdin to stdout, checking piecewise hashes")
-                .arg(
-                    Arg::with_name("hash-file")
-                        .value_name("hash-file")
-                        .help("Path to the piecewise hash file")
-                        .required(true)
-                        .takes_value(true),
-                ),
-        )
-        .get_matches();
-
-    match app_matches.subcommand() {
-        ("kargs", Some(matches)) => parse_kargs(matches),
-        ("rootmap", Some(matches)) => parse_rootmap(matches),
-        ("stream-hash", Some(matches)) => parse_stream_hash(matches),
-        _ => bail!("unrecognized subcommand"),
+pub fn parse_args() -> Result<Cmd> {
+    let config = Cmd::from_args();
+    if let Cmd::Kargs(ref config) = config {
+        check_kargs(config)?;
     }
+    Ok(config)
 }
 
-fn parse_kargs(matches: &ArgMatches) -> Result<Config> {
+fn check_kargs(config: &KargsConfig) -> Result<()> {
     // we could enforce these via clap's ArgGroup, but I don't like how the --help text looks
-    if !(matches.is_present("boot-device")
-        || matches.is_present("boot-mount")
-        || matches.is_present("current")
-        || matches.is_present("override-options"))
+    if !(config.boot_device.is_some()
+        || config.boot_mount.is_some()
+        || config.current
+        || config.override_options.is_some())
     {
         // --override-options is undocumented on purpose
         bail!("one of --boot-device, --boot-mount, or --current required");
     }
-    Ok(Config::Kargs(KargsConfig {
-        boot_device: matches.value_of("boot-device").map(String::from),
-        boot_mount: matches.value_of("boot-mount").map(String::from),
-        current: matches.is_present("current"),
-        override_options: matches.value_of("override-options").map(String::from),
-        append_kargs: matches
-            .values_of("append")
-            .map(|v| v.map(String::from).collect())
-            .unwrap_or_else(Vec::new),
-        append_kargs_if_missing: matches
-            .values_of("append-if-missing")
-            .map(|v| v.map(String::from).collect())
-            .unwrap_or_else(Vec::new),
-        delete_kargs: matches
-            .values_of("delete")
-            .map(|v| v.map(String::from).collect())
-            .unwrap_or_else(Vec::new),
-        create_if_changed: matches.value_of("create-if-changed").map(String::from),
-    }))
-}
-
-fn parse_rootmap(matches: &ArgMatches) -> Result<Config> {
-    Ok(Config::RootMap(RootMapConfig {
-        boot_device: matches.value_of("boot-device").map(String::from),
-        boot_mount: matches.value_of("boot-mount").map(String::from),
-        root_mount: matches
-            .value_of("root-mount")
-            .map(String::from)
-            .expect("rootfs mount missing"),
-    }))
-}
-
-fn parse_stream_hash(matches: &ArgMatches) -> Result<Config> {
-    Ok(Config::StreamHash(StreamHashConfig {
-        hash_file: matches
-            .value_of("hash-file")
-            .map(String::from)
-            .expect("hash file missing"),
-    }))
+    Ok(())
 }

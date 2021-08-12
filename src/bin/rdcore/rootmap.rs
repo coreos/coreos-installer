@@ -26,7 +26,7 @@ use libcoreinst::runcmd_output;
 
 use crate::cmdline::*;
 
-pub fn rootmap(config: &RootMapConfig) -> Result<()> {
+pub fn rootmap(config: &RootmapConfig) -> Result<()> {
     // get the backing device for the root mount
     let mount = Mount::from_existing(&config.root_mount)?;
     let device = PathBuf::from(mount.device());

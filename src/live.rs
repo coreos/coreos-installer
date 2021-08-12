@@ -52,7 +52,7 @@ pub fn iso_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
-    let ignition = match config.ignition {
+    let ignition = match config.ignition_file {
         Some(ref ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
@@ -142,7 +142,7 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
         bail!("Refusing to write binary data to terminal");
     }
 
-    let ignition = match config.ignition {
+    let ignition = match config.ignition_file {
         Some(ref ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
