@@ -153,7 +153,7 @@ struct InstallCmd {
     /// Manually specify the image URL
     #[structopt(short = "u", long, value_name = "URL")]
     #[structopt(conflicts_with = "stream", conflicts_with = "image-file")]
-    image_url: Option<String>,
+    image_url: Option<Url>,
     /// Manually specify a local image file
     #[structopt(short = "f", long, value_name = "path")]
     #[structopt(conflicts_with = "stream", conflicts_with = "image-url")]
@@ -168,7 +168,7 @@ struct InstallCmd {
     /// Embed an Ignition config from a URL
     #[structopt(short = "I", long, value_name = "URL")]
     #[structopt(conflicts_with = "ignition-file")]
-    ignition_url: Option<String>,
+    ignition_url: Option<Url>,
     /// Digest (type-value) of the Ignition config
     #[structopt(long, value_name = "digest")]
     ignition_hash: Option<String>,
@@ -225,7 +225,7 @@ struct InstallCmd {
     insecure_ignition: bool,
     /// Base URL for Fedora CoreOS stream metadata
     #[structopt(long, value_name = "URL")]
-    stream_base_url: Option<String>,
+    stream_base_url: Option<Url>,
     /// Target CPU architecture
     #[structopt(long, default_value, value_name = "name")]
     architecture: Architecture,
@@ -287,7 +287,7 @@ struct DownloadCmd {
     format: String,
     /// Manually specify the image URL
     #[structopt(short = "u", long, value_name = "URL")]
-    image_url: Option<String>,
+    image_url: Option<Url>,
     /// Destination directory
     #[structopt(short = "C", long, value_name = "path", default_value = ".")]
     directory: String,
@@ -299,7 +299,7 @@ struct DownloadCmd {
     insecure: bool,
     /// Base URL for Fedora CoreOS stream metadata
     #[structopt(long, value_name = "URL")]
-    stream_base_url: Option<String>,
+    stream_base_url: Option<Url>,
     /// Fetch retries, or "infinite"
     #[structopt(long, value_name = "N", default_value = "0")]
     fetch_retries: String,
@@ -557,7 +557,6 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
     let location: Box<dyn ImageLocation> = if let Some(image_file) = cmd.image_file {
         Box::new(FileLocation::new(&image_file))
     } else if let Some(image_url) = cmd.image_url {
-        let image_url = Url::parse(&image_url).context("parsing image URL")?;
         Box::new(UrlLocation::new(&image_url, fetch_retries))
     } else if cmd.offline {
         match OsmetLocation::new(cmd.architecture.as_str(), sector_size)? {
@@ -590,17 +589,12 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
                     "raw.xz"
                 }
             };
-            let base_url = if let Some(stream_base_url) = cmd.stream_base_url {
-                Some(Url::parse(&stream_base_url).context("parsing stream base URL")?)
-            } else {
-                None
-            };
             Box::new(StreamLocation::new(
                 cmd.stream.as_deref().unwrap_or("stable"),
                 cmd.architecture.as_str(),
                 "metal",
                 format,
-                base_url.as_ref(),
+                cmd.stream_base_url.as_ref(),
                 fetch_retries,
             )?)
         }
@@ -614,11 +608,11 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
                 .with_context(|| format!("opening source Ignition config {}", file))?,
         )
     } else if let Some(url) = cmd.ignition_url {
-        if url.starts_with("http://") {
+        if url.scheme() == "http" {
             if cmd.ignition_hash.is_none() && !cmd.insecure_ignition {
                 bail!("refusing to fetch Ignition config over HTTP without --ignition-hash or --insecure-ignition");
             }
-        } else if !url.starts_with("https://") {
+        } else if url.scheme() != "https" {
             bail!("unknown protocol for URL '{}'", url);
         }
         Some(
@@ -737,20 +731,14 @@ fn parse_download(cmd: DownloadCmd) -> Result<DownloadConfig> {
     };
 
     let location: Box<dyn ImageLocation> = if let Some(image_url) = cmd.image_url {
-        let image_url = Url::parse(&image_url).context("parsing image URL")?;
         Box::new(UrlLocation::new(&image_url, fetch_retries))
     } else {
-        let base_url = if let Some(stream_base_url) = cmd.stream_base_url {
-            Some(Url::parse(&stream_base_url).context("parsing stream base URL")?)
-        } else {
-            None
-        };
         Box::new(StreamLocation::new(
             &cmd.stream,
             cmd.architecture.as_str(),
             &cmd.platform,
             &cmd.format,
-            base_url.as_ref(),
+            cmd.stream_base_url.as_ref(),
             fetch_retries,
         )?)
     };

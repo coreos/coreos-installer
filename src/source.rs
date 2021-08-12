@@ -171,8 +171,8 @@ impl UrlLocation {
     /// Fetch signature content from URL.
     fn fetch_signature(&self) -> Result<Vec<u8>> {
         let client = new_http_client()?;
-        let mut resp = http_get(client, self.sig_url.as_str(), self.retries)
-            .context("fetching signature URL")?;
+        let mut resp =
+            http_get(client, &self.sig_url, self.retries).context("fetching signature URL")?;
 
         let mut sig_bytes = Vec::new();
         resp.read_to_end(&mut sig_bytes)
@@ -200,8 +200,7 @@ impl ImageLocation for UrlLocation {
 
         // start fetch, get length
         let client = new_http_client()?;
-        let resp = http_get(client, self.image_url.as_str(), self.retries)
-            .context("fetching image URL")?;
+        let resp = http_get(client, &self.image_url, self.retries).context("fetching image URL")?;
         match resp.status() {
             StatusCode::OK => (),
             s => bail!("image fetch failed: {}", s),
@@ -442,7 +441,7 @@ fn build_stream_url(stream: &str, base_url: Option<&Url>) -> Result<Url> {
 /// Fetch and parse stream metadata.
 fn fetch_stream(client: blocking::Client, url: &Url, retries: FetchRetries) -> Result<Stream> {
     // fetch stream metadata
-    let resp = http_get(client, url.as_str(), retries).context("fetching stream metadata")?;
+    let resp = http_get(client, url, retries).context("fetching stream metadata")?;
     match resp.status() {
         StatusCode::OK => (),
         s => bail!("stream metadata fetch from {} failed: {}", url, s),
@@ -465,7 +464,7 @@ pub fn new_http_client() -> Result<blocking::Client> {
 /// exponential backoff retries for transient errors.
 pub fn http_get(
     client: blocking::Client,
-    url: &str,
+    url: &Url,
     retries: FetchRetries,
 ) -> Result<blocking::Response> {
     // this matches `curl --retry` semantics -- see list in `curl(1)`
@@ -479,7 +478,7 @@ pub fn http_get(
     };
 
     loop {
-        let err: anyhow::Error = match client.get(url).send() {
+        let err: anyhow::Error = match client.get(url.clone()).send() {
             Err(err) => err.into(),
             Ok(resp) => match resp.status().as_u16() {
                 code if RETRY_STATUS_CODES.contains(&code) => anyhow!(

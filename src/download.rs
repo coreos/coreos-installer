@@ -15,6 +15,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use byte_unit::Byte;
 use nix::unistd::isatty;
+use reqwest::Url;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{self, copy, stderr, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU32, NonZeroU64};
@@ -327,7 +328,7 @@ pub fn image_copy_default(
     Ok(())
 }
 
-pub fn download_to_tempfile(url: &str, retries: FetchRetries) -> Result<File> {
+pub fn download_to_tempfile(url: &Url, retries: FetchRetries) -> Result<File> {
     let mut f = tempfile::tempfile()?;
 
     let client = new_http_client()?;
