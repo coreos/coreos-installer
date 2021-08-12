@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, Context, Error, Result};
+use anyhow::{anyhow, bail, Context, Error, Result};
 use reqwest::Url;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
@@ -233,8 +233,8 @@ struct InstallCmd {
     #[structopt(long)]
     preserve_on_error: bool,
     /// Fetch retries, or "infinite"
-    #[structopt(long, value_name = "N", default_value = "0")]
-    fetch_retries: String,
+    #[structopt(long, value_name = "N", default_value)]
+    fetch_retries: FetchRetries,
 
     // positional args
     /// Destination device
@@ -301,8 +301,8 @@ struct DownloadCmd {
     #[structopt(long, value_name = "URL")]
     stream_base_url: Option<Url>,
     /// Fetch retries, or "infinite"
-    #[structopt(long, value_name = "N", default_value = "0")]
-    fetch_retries: String,
+    #[structopt(long, value_name = "N", default_value)]
+    fetch_retries: FetchRetries,
 }
 
 pub struct DownloadConfig {
@@ -526,18 +526,6 @@ pub fn parse_args() -> Result<Config> {
 }
 
 fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
-    let fetch_retries = match cmd.fetch_retries.as_str() {
-        "infinite" => FetchRetries::Infinite,
-        num => num
-            .parse::<u32>()
-            .map(|num| {
-                NonZeroU32::new(num)
-                    .map(FetchRetries::Finite)
-                    .unwrap_or(FetchRetries::None)
-            })
-            .context("parsing --fetch-retries")?,
-    };
-
     // Uninitialized ECKD DASD's blocksize is 512, but after formatting
     // it changes to the recommended 4096
     // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
@@ -557,7 +545,7 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
     let location: Box<dyn ImageLocation> = if let Some(image_file) = cmd.image_file {
         Box::new(FileLocation::new(&image_file))
     } else if let Some(image_url) = cmd.image_url {
-        Box::new(UrlLocation::new(&image_url, fetch_retries))
+        Box::new(UrlLocation::new(&image_url, cmd.fetch_retries))
     } else if cmd.offline {
         match OsmetLocation::new(cmd.architecture.as_str(), sector_size)? {
             Some(osmet) => Box::new(osmet),
@@ -595,7 +583,7 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
                 "metal",
                 format,
                 cmd.stream_base_url.as_ref(),
-                fetch_retries,
+                cmd.fetch_retries,
             )?)
         }
     };
@@ -616,7 +604,7 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
             bail!("unknown protocol for URL '{}'", url);
         }
         Some(
-            download_to_tempfile(&url, fetch_retries)
+            download_to_tempfile(&url, cmd.fetch_retries)
                 .with_context(|| format!("downloading source Ignition config {}", url))?,
         )
     } else {
@@ -640,7 +628,7 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
         device: cmd.device,
         location,
         ignition,
-        fetch_retries,
+        fetch_retries: cmd.fetch_retries,
         ignition_hash: cmd
             .ignition_hash
             .map(|s| IgnitionHash::try_parse(&s))
@@ -664,6 +652,35 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
                 .collect::<Vec<&str>>(),
         )?,
     })
+}
+
+impl FromStr for FetchRetries {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "infinite" => Ok(Self::Infinite),
+            num => num
+                .parse::<u32>()
+                .map(|num| NonZeroU32::new(num).map(Self::Finite).unwrap_or(Self::None))
+                .map_err(|e| anyhow!(e)),
+        }
+    }
+}
+
+impl ToString for FetchRetries {
+    fn to_string(&self) -> String {
+        match self {
+            Self::None => "0".into(),
+            Self::Finite(n) => n.to_string(),
+            Self::Infinite => "infinite".into(),
+        }
+    }
+}
+
+impl Default for FetchRetries {
+    fn default() -> Self {
+        Self::None
+    }
 }
 
 fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<PartitionFilter>> {
@@ -718,20 +735,8 @@ fn parse_download(cmd: DownloadCmd) -> Result<DownloadConfig> {
     // Build image location.  Ideally we'd use conflicts_with (and an
     // ArgGroup for streams), but that doesn't play well with default
     // arguments, so we manually prioritize modes.
-    let fetch_retries = match cmd.fetch_retries.as_str() {
-        "infinite" => FetchRetries::Infinite,
-        num => num
-            .parse::<u32>()
-            .map(|num| {
-                NonZeroU32::new(num)
-                    .map(FetchRetries::Finite)
-                    .unwrap_or(FetchRetries::None)
-            })
-            .context("parsing --fetch-retries")?,
-    };
-
     let location: Box<dyn ImageLocation> = if let Some(image_url) = cmd.image_url {
-        Box::new(UrlLocation::new(&image_url, fetch_retries))
+        Box::new(UrlLocation::new(&image_url, cmd.fetch_retries))
     } else {
         Box::new(StreamLocation::new(
             &cmd.stream,
@@ -739,7 +744,7 @@ fn parse_download(cmd: DownloadCmd) -> Result<DownloadConfig> {
             &cmd.platform,
             &cmd.format,
             cmd.stream_base_url.as_ref(),
-            fetch_retries,
+            cmd.fetch_retries,
         )?)
     };
 
