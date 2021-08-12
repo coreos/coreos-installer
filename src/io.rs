@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Error, Result};
 use flate2::read::GzDecoder;
 use openssl::sha;
 use std::io::{self, BufRead, ErrorKind, Read, Write};
 use std::result;
+use std::str::FromStr;
 use xz2::read::XzDecoder;
 
 // The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
@@ -93,12 +94,14 @@ enum IgnitionHasher {
     Sha512(sha::Sha512),
 }
 
-impl IgnitionHash {
+impl FromStr for IgnitionHash {
+    type Err = Error;
+
     /// Try to parse an hash-digest argument.
     ///
     /// This expects an input value following the `ignition.config.verification.hash`
     /// spec, i.e. `<type>-<value>` format.
-    pub fn try_parse(input: &str) -> Result<Self> {
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
         let parts: Vec<_> = input.splitn(2, '-').collect();
         if parts.len() != 2 {
             bail!("failed to detect hash-type and digest in '{}'", input);
@@ -129,7 +132,9 @@ impl IgnitionHash {
 
         Ok(hash)
     }
+}
 
+impl IgnitionHash {
     /// Digest and validate input data.
     pub fn validate(&self, input: &mut impl Read) -> Result<()> {
         let (mut hasher, digest) = match self {
@@ -255,11 +260,11 @@ mod tests {
     fn test_ignition_hash_cli_parse() {
         let err_cases = vec!["", "foo-bar", "-bar", "sha512", "sha512-", "sha512-00"];
         for arg in err_cases {
-            IgnitionHash::try_parse(arg).expect_err(&format!("input: {}", arg));
+            IgnitionHash::from_str(arg).expect_err(&format!("input: {}", arg));
         }
 
         let null_digest = "sha512-cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
-        IgnitionHash::try_parse(null_digest).unwrap();
+        IgnitionHash::from_str(null_digest).unwrap();
     }
 
     #[test]
@@ -272,7 +277,7 @@ mod tests {
             (false, "sha512-cdaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")
         ];
         for (valid, hash_arg) in &hash_args {
-            let hasher = IgnitionHash::try_parse(&hash_arg).unwrap();
+            let hasher = IgnitionHash::from_str(&hash_arg).unwrap();
             let mut rd = std::io::Cursor::new(&input);
             assert!(hasher.validate(&mut rd).is_ok() == *valid);
         }

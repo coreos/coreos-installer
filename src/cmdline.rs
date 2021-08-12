@@ -171,7 +171,7 @@ struct InstallCmd {
     ignition_url: Option<Url>,
     /// Digest (type-value) of the Ignition config
     #[structopt(long, value_name = "digest")]
-    ignition_hash: Option<String>,
+    ignition_hash: Option<IgnitionHash>,
     /// Override the Ignition platform ID
     #[structopt(short, long, value_name = "name")]
     platform: Option<String>,
@@ -629,11 +629,7 @@ fn parse_install(cmd: InstallCmd) -> Result<InstallConfig> {
         location,
         ignition,
         fetch_retries: cmd.fetch_retries,
-        ignition_hash: cmd
-            .ignition_hash
-            .map(|s| IgnitionHash::try_parse(&s))
-            .transpose()
-            .context("parsing Ignition config hash")?,
+        ignition_hash: cmd.ignition_hash,
         platform: cmd.platform,
         firstboot_kargs: cmd.firstboot_args,
         append_kargs: cmd.append_karg,
