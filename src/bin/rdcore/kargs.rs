@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use anyhow::{Context, Result};
+use std::fs::read_to_string;
 
 use libcoreinst::install::*;
 #[cfg(target_arch = "s390x")]
@@ -23,6 +24,10 @@ use crate::rootmap::get_boot_mount_from_cmdline_args;
 
 pub fn kargs(config: &KargsConfig) -> Result<()> {
     if let Some(ref orig_options) = config.override_options {
+        modify_and_print(config, orig_options.trim()).context("modifying options")?;
+    } else if config.current {
+        let orig_options =
+            read_to_string("/proc/cmdline").context("reading kernel command line")?;
         modify_and_print(config, orig_options.trim()).context("modifying options")?;
     } else {
         // the unwrap() here is safe because we checked in cmdline that one of them must be provided

@@ -27,6 +27,7 @@ pub enum Config {
 pub struct KargsConfig {
     pub boot_device: Option<String>,
     pub boot_mount: Option<String>,
+    pub current: bool,
     pub override_options: Option<String>,
     pub append_kargs: Vec<String>,
     pub append_kargs_if_missing: Vec<String>,
@@ -96,6 +97,7 @@ pub fn parse_args() -> Result<Config> {
                         .long("boot-device")
                         .help("Boot device containing BLS entries to modify")
                         .conflicts_with("boot-mount")
+                        .conflicts_with("current")
                         .value_name("DEVPATH")
                         .takes_value(true),
                 )
@@ -104,8 +106,16 @@ pub fn parse_args() -> Result<Config> {
                         .long("boot-mount")
                         .help("Boot mount containing BLS entries to modify")
                         .conflicts_with("boot-device")
+                        .conflicts_with("current")
                         .value_name("BOOT_MOUNT")
                         .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("current")
+                        .long("current")
+                        .help("Dry run using kargs from this boot")
+                        .conflicts_with("boot-device")
+                        .conflicts_with("boot-mount"),
                 )
                 // this is purely for dev testing
                 .arg(
@@ -178,14 +188,16 @@ fn parse_kargs(matches: &ArgMatches) -> Result<Config> {
     // we could enforce these via clap's ArgGroup, but I don't like how the --help text looks
     if !(matches.is_present("boot-device")
         || matches.is_present("boot-mount")
+        || matches.is_present("current")
         || matches.is_present("override-options"))
     {
         // --override-options is undocumented on purpose
-        bail!("at least one of --boot-device or --boot-mount required");
+        bail!("one of --boot-device, --boot-mount, or --current required");
     }
     Ok(Config::Kargs(KargsConfig {
         boot_device: matches.value_of("boot-device").map(String::from),
         boot_mount: matches.value_of("boot-mount").map(String::from),
+        current: matches.is_present("current"),
         override_options: matches.value_of("override-options").map(String::from),
         append_kargs: matches
             .values_of("append")
