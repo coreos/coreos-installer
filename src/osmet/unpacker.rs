@@ -37,12 +37,12 @@ pub struct OsmetUnpacker {
 
 impl OsmetUnpacker {
     pub fn new(osmet: &Path, repo: &Path) -> Result<Self> {
-        let (_, osmet, xzpacked_image) = osmet_file_read(&osmet)?;
+        let (_, osmet, xzpacked_image) = osmet_file_read(osmet)?;
         Ok(Self::new_impl(osmet, xzpacked_image, repo))
     }
 
     pub fn new_from_sysroot(osmet: &Path) -> Result<Self> {
-        let (_, osmet, xzpacked_image) = osmet_file_read(&osmet)?;
+        let (_, osmet, xzpacked_image) = osmet_file_read(osmet)?;
         Ok(Self::new_impl(
             osmet,
             xzpacked_image,
@@ -102,7 +102,7 @@ pub(super) fn get_unpacked_image_digest(
     let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
     let repo = root.mountpoint().join("ostree/repo");
     let mut packed_image = XzDecoder::new(xzpacked_image);
-    let n = write_unpacked_image(&mut packed_image, &mut hasher, &partitions, &repo)?;
+    let n = write_unpacked_image(&mut packed_image, &mut hasher, partitions, &repo)?;
     Ok((hasher.try_into()?, n))
 }
 

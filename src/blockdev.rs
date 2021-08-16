@@ -96,7 +96,7 @@ impl Disk {
 
         // mount it
         match &part.fstype {
-            Some(fstype) => Mount::try_mount(&part.path, &fstype, flags),
+            Some(fstype) => Mount::try_mount(&part.path, fstype, flags),
             None => bail!(
                 "couldn't get filesystem type of {} device for {}",
                 label,
@@ -559,7 +559,7 @@ impl SavedPartitions {
         {
             bail!("specified file is not a block device");
         }
-        Self::new(disk, get_sector_size(&disk)?.get() as u64, filters)
+        Self::new(disk, get_sector_size(disk)?.get() as u64, filters)
     }
 
     /// Create a SavedPartitions for a file with a specified imputed sector
@@ -651,7 +651,7 @@ impl SavedPartitions {
         {
             return Ok(());
         }
-        let disk_sector_size = get_sector_size(&disk)?.get() as u64;
+        let disk_sector_size = get_sector_size(disk)?.get() as u64;
         if disk_sector_size != self.sector_size {
             bail!(
                 "disk sector size {} doesn't match expected {}",
