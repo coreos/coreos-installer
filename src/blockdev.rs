@@ -896,22 +896,15 @@ fn reread_partition_table(file: &mut File) -> Result<()> {
         let result = unsafe { ioctl::blkrrpart(fd) };
         match result {
             Ok(_) => break,
-            Err(err) => {
-                if retries == 0 {
-                    if err == nix::Error::from_errno(Errno::EINVAL) {
-                        return Err(err).context(
-                            "couldn't reread partition table: device may not support partitions",
-                        );
-                    } else if err == nix::Error::from_errno(Errno::EBUSY) {
-                        return Err(err)
-                            .context("couldn't reread partition table: device is in use");
-                    } else {
-                        return Err(err).context("couldn't reread partition table");
-                    }
-                } else {
-                    sleep(Duration::from_millis(100));
-                }
+            Err(err) if retries == 0 && err == Errno::EINVAL => {
+                return Err(err)
+                    .context("couldn't reread partition table: device may not support partitions")
             }
+            Err(err) if retries == 0 && err == Errno::EBUSY => {
+                return Err(err).context("couldn't reread partition table: device is in use")
+            }
+            Err(err) if retries == 0 => return Err(err).context("couldn't reread partition table"),
+            Err(_) => sleep(Duration::from_millis(100)),
         }
     }
     Ok(())
