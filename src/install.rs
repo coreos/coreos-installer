@@ -93,7 +93,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // from accidentally being used.
     dest.seek(SeekFrom::Start(0))
         .with_context(|| format!("seeking {}", config.device))?;
-    if let Err(err) = write_disk(&config, &mut source, &mut dest, &mut *table, &saved) {
+    if let Err(err) = write_disk(config, &mut source, &mut dest, &mut *table, &saved) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
         eprintln!("\nError: {:?}\n", err);
@@ -169,7 +169,7 @@ fn write_disk(
         Path::new(&config.device),
         image_copy,
         true,
-        Some(&saved),
+        Some(saved),
         Some(sector_size),
     )?;
     table.reread()?;

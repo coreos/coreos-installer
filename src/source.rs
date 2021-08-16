@@ -294,7 +294,7 @@ impl ImageLocation for StreamLocation {
             let signature_url = Url::parse(&artifact.signature)
                 .context("parsing signature URL from stream metadata")?;
             let mut artifact_sources =
-                UrlLocation::new_full(&artifact_url, &signature_url, &artifact_type, self.retries)
+                UrlLocation::new_full(&artifact_url, &signature_url, artifact_type, self.retries)
                     .sources()?;
             sources.append(&mut artifact_sources);
         }
