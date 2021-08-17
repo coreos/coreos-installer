@@ -369,7 +369,7 @@ impl<'a> KargEmbedAreas<'a> {
 
     fn stream(&mut self, kargs: &str, writer: &mut (impl Write + ?Sized)) -> Result<()> {
         let mut buf = [0u8; BUFFER_SIZE];
-        let new_area = self.format_embed_area(&kargs)?;
+        let new_area = self.format_embed_area(kargs)?;
 
         self.file
             .seek(SeekFrom::Start(0))
@@ -400,7 +400,7 @@ impl<'a> KargEmbedAreas<'a> {
     }
 
     fn write_kargs(&mut self, kargs: &str) -> Result<()> {
-        let new_area = self.format_embed_area(&kargs)?;
+        let new_area = self.format_embed_area(kargs)?;
 
         for offset in &self.kargs_offsets {
             self.file
