@@ -163,6 +163,7 @@ pub fn parse_args() -> Result<Config> {
         .global_setting(AppSettings::ArgsNegateSubcommands)
         .global_setting(AppSettings::DeriveDisplayOrder)
         .global_setting(AppSettings::DisableHelpSubcommand)
+        .global_setting(AppSettings::GlobalVersion)
         .global_setting(AppSettings::UnifiedHelpMessage)
         .global_setting(AppSettings::VersionlessSubcommands)
         .subcommand(
@@ -346,7 +347,8 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("fetch-retries")
                         .long("fetch-retries")
                         .value_name("N")
-                        .help("Fetch retries, or string \"infinite\"")
+                        .help("Fetch retries, or \"infinite\"")
+                        .default_value("0")
                         .takes_value(true),
                 )
                 // positional args
@@ -434,7 +436,8 @@ pub fn parse_args() -> Result<Config> {
                     Arg::with_name("fetch-retries")
                         .long("fetch-retries")
                         .value_name("N")
-                        .help("Fetch retries, or string \"infinite\"")
+                        .help("Fetch retries, or \"infinite\"")
+                        .default_value("0")
                         .takes_value(true),
                 ),
         )
@@ -877,19 +880,20 @@ fn parse_install(matches: &ArgMatches) -> Result<Config> {
         .value_of("architecture")
         .expect("architecture missing");
 
-    let fetch_retries: FetchRetries = matches
+    let fetch_retries = match matches
         .value_of("fetch-retries")
-        .map(|s| match s {
-            "infinite" => Ok(FetchRetries::Infinite),
-            num => num.parse::<u32>().map(|num| {
+        .expect("fetch-retries missing")
+    {
+        "infinite" => FetchRetries::Infinite,
+        num => num
+            .parse::<u32>()
+            .map(|num| {
                 NonZeroU32::new(num)
                     .map(FetchRetries::Finite)
                     .unwrap_or(FetchRetries::None)
-            }),
-        })
-        .transpose()
-        .context("parsing --fetch-retries")?
-        .unwrap_or(FetchRetries::None);
+            })
+            .context("parsing --fetch-retries")?,
+    };
 
     // Uninitialized ECKD DASD's blocksize is 512, but after formatting
     // it changes to the recommended 4096
@@ -1089,19 +1093,20 @@ fn parse_download(matches: &ArgMatches) -> Result<Config> {
     // Build image location.  Ideally we'd use conflicts_with (and an
     // ArgGroup for streams), but that doesn't play well with default
     // arguments, so we manually prioritize modes.
-    let fetch_retries: FetchRetries = matches
+    let fetch_retries = match matches
         .value_of("fetch-retries")
-        .map(|s| match s {
-            "infinite" => Ok(FetchRetries::Infinite),
-            num => num.parse::<u32>().map(|num| {
+        .expect("fetch-retries missing")
+    {
+        "infinite" => FetchRetries::Infinite,
+        num => num
+            .parse::<u32>()
+            .map(|num| {
                 NonZeroU32::new(num)
                     .map(FetchRetries::Finite)
                     .unwrap_or(FetchRetries::None)
-            }),
-        })
-        .transpose()
-        .context("parsing --fetch-retries")?
-        .unwrap_or(FetchRetries::None);
+            })
+            .context("parsing --fetch-retries")?,
+    };
 
     let location: Box<dyn ImageLocation> = if matches.is_present("image-url") {
         let image_url = Url::parse(matches.value_of("image-url").expect("image-url missing"))

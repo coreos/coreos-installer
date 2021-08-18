@@ -54,6 +54,7 @@ pub fn parse_args() -> Result<Config> {
         .global_setting(AppSettings::ArgsNegateSubcommands)
         .global_setting(AppSettings::DeriveDisplayOrder)
         .global_setting(AppSettings::DisableHelpSubcommand)
+        .global_setting(AppSettings::GlobalVersion)
         .global_setting(AppSettings::UnifiedHelpMessage)
         .global_setting(AppSettings::VersionlessSubcommands)
         .subcommand(
