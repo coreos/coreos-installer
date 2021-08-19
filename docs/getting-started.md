@@ -107,7 +107,7 @@ line.
 Download a Fedora CoreOS ISO image:
 
 ```
-podman run --privileged --pull=always --rm -v .:/data -w /data \
+podman run --security-opt label=disable --pull=always --rm -v .:/data -w /data \
     quay.io/coreos/coreos-installer:release download -f iso
 ```
 
@@ -119,7 +119,8 @@ Burn the ISO to disk and boot it, or use ISO redirection via a LOM interface.
 Alternatively you can use a VM like so:
 
 ```
-virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate --cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso --network default
+virt-install --name cdrom --ram 4500 --vcpus 2 --disk size=20 --accelerate \
+    --cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso --network default
 ```
 
 Alternatively you can use `qemu` directly.  Create a disk image to use as
@@ -132,7 +133,10 @@ qemu-img create -f qcow2 fcos.qcow2 8G
 Now, run the following qemu command:
 
 ```
-qemu-system-x86_64 -accel kvm -name fcos -m 4500 -cpu host -smp 2 -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 -drive file=/path/to/fcos.qcow2,format=qcow2  -cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso
+qemu-system-x86_64 -accel kvm -name fcos -m 4500 -cpu host -smp 2 \
+    -netdev user,id=eth0,hostname=coreos -device virtio-net-pci,netdev=eth0 \
+    -drive file=/path/to/fcos.qcow2,format=qcow2 \
+    -cdrom /path/to/fedora-coreos-32.20200809.2.1-live.x86_64.iso
 ```
 
 Once you have reached the boot menu, press `<TAB>` (isolinux) or
@@ -154,7 +158,7 @@ embedded Ignition config will run on first boot.
 Download a Fedora CoreOS PXE kernel, initramfs, and rootfs image:
 
 ```
-podman run --privileged --pull=always --rm -v .:/data -w /data \
+podman run --security-opt label=disable --pull=always --rm -v .:/data -w /data \
     quay.io/coreos/coreos-installer:release download -f pxe
 ```
 
