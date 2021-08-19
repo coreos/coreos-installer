@@ -20,6 +20,7 @@ use std::fs::{
     copy as fscopy, create_dir_all, read_dir, set_permissions, File, OpenOptions, Permissions,
 };
 use std::io::{copy, Read, Seek, SeekFrom, Write};
+use std::num::NonZeroU32;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -32,14 +33,127 @@ use crate::s390x;
 use crate::source::*;
 
 pub fn install(config: &InstallConfig) -> Result<()> {
+    // find Ignition config
+    let ignition = if let Some(ref file) = config.ignition_file {
+        Some(
+            OpenOptions::new()
+                .read(true)
+                .open(file)
+                .with_context(|| format!("opening source Ignition config {}", file))?,
+        )
+    } else if let Some(ref url) = config.ignition_url {
+        if url.scheme() == "http" {
+            if config.ignition_hash.is_none() && !config.insecure_ignition {
+                bail!("refusing to fetch Ignition config over HTTP without --ignition-hash or --insecure-ignition");
+            }
+        } else if url.scheme() != "https" {
+            bail!("unknown protocol for URL '{}'", url);
+        }
+        Some(
+            download_to_tempfile(url, config.fetch_retries)
+                .with_context(|| format!("downloading source Ignition config {}", url))?,
+        )
+    } else {
+        None
+    };
+
+    // find network config
+    // If the user requested us to copy networking config by passing
+    // -n or --copy-network then copy networking config from the
+    // directory defined by --network-dir.
+    let network_config = if config.copy_network {
+        Some(config.network_dir.as_str())
+    } else {
+        None
+    };
+
+    // parse partition saving filters
+    let save_partitions = parse_partition_filters(
+        &config
+            .save_partlabel
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>(),
+        &config
+            .save_partindex
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>(),
+    )?;
+
+    // compute sector size
+    // Uninitialized ECKD DASD's blocksize is 512, but after formatting
+    // it changes to the recommended 4096
+    // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
+    #[allow(clippy::match_bool, clippy::match_single_binding)]
+    let sector_size = match is_dasd(&config.device, None)
+        .with_context(|| format!("checking whether {} is an IBM DASD disk", &config.device))?
+    {
+        #[cfg(target_arch = "s390x")]
+        true => dasd_try_get_sector_size(&config.device).transpose(),
+        _ => None,
+    };
+    let sector_size = sector_size
+        .unwrap_or_else(|| get_sector_size_for_path(Path::new(&config.device)))
+        .with_context(|| format!("getting sector size of {}", &config.device))?
+        .get();
+
     // set up image source
+    // create location
+    let location: Box<dyn ImageLocation> = if let Some(ref image_file) = config.image_file {
+        Box::new(FileLocation::new(image_file))
+    } else if let Some(ref image_url) = config.image_url {
+        Box::new(UrlLocation::new(image_url, config.fetch_retries))
+    } else if config.offline {
+        match OsmetLocation::new(config.architecture.as_str(), sector_size)? {
+            Some(osmet) => Box::new(osmet),
+            None => bail!("cannot perform offline install; metadata missing"),
+        }
+    } else {
+        // For now, using --stream automatically will cause a download. In the future, we could
+        // opportunistically use osmet if the version and stream match an osmet file/the live ISO.
+
+        let maybe_osmet = if config.stream.is_some() {
+            None
+        } else {
+            OsmetLocation::new(config.architecture.as_str(), sector_size)?
+        };
+
+        if let Some(osmet) = maybe_osmet {
+            Box::new(osmet)
+        } else {
+            let format = match sector_size {
+                4096 => "4k.raw.xz",
+                512 => "raw.xz",
+                n => {
+                    // could bail on non-512, but let's be optimistic and just warn but try the regular
+                    // 512b image
+                    eprintln!(
+                        "Found non-standard sector size {} for {}, assuming 512b-compatible",
+                        n, &config.device
+                    );
+                    "raw.xz"
+                }
+            };
+            Box::new(StreamLocation::new(
+                config.stream.as_deref().unwrap_or("stable"),
+                config.architecture.as_str(),
+                "metal",
+                format,
+                config.stream_base_url.as_ref(),
+                config.fetch_retries,
+            )?)
+        }
+    };
+    // report it to the user
+    eprintln!("{}", location);
     // we only support installing from a single artifact
-    let mut sources = config.location.sources()?;
+    let mut sources = location.sources()?;
     let mut source = sources.pop().context("no artifacts found")?;
     if !sources.is_empty() {
         bail!("found multiple artifacts");
     }
-    if source.signature.is_none() && config.location.require_signature() {
+    if source.signature.is_none() && location.require_signature() {
         if config.insecure {
             eprintln!("Signature not found; skipping verification as requested");
         } else {
@@ -47,10 +161,11 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         }
     }
 
+    // set up DASD
     #[cfg(target_arch = "s390x")]
     {
         if is_dasd(&config.device, None)? {
-            if !config.save_partitions.is_empty() {
+            if !save_partitions.is_empty() {
                 // The user requested partition saving, but SavedPartitions
                 // doesn't understand DASD VTOCs and won't find any partitions
                 // to save.
@@ -78,7 +193,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         .with_context(|| format!("checking for exclusive access to {}", &config.device))?;
 
     // save partitions that we plan to keep
-    let saved = SavedPartitions::new_from_disk(&mut dest, &config.save_partitions)
+    let saved = SavedPartitions::new_from_disk(&mut dest, &save_partitions)
         .with_context(|| format!("saving partitions from {}", config.device))?;
 
     // get reference to partition table
@@ -93,7 +208,15 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     // from accidentally being used.
     dest.seek(SeekFrom::Start(0))
         .with_context(|| format!("seeking {}", config.device))?;
-    if let Err(err) = write_disk(config, &mut source, &mut dest, &mut *table, &saved) {
+    if let Err(err) = write_disk(
+        config,
+        &mut source,
+        &mut dest,
+        &mut *table,
+        &saved,
+        ignition,
+        network_config,
+    ) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
         eprintln!("\nError: {:?}\n", err);
@@ -120,6 +243,54 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 
     eprintln!("Install complete.");
     Ok(())
+}
+
+fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<PartitionFilter>> {
+    use PartitionFilter::*;
+    let mut filters: Vec<PartitionFilter> = Vec::new();
+
+    // partition label globs
+    for glob in labels {
+        let filter = Label(
+            glob::Pattern::new(glob)
+                .with_context(|| format!("couldn't parse label glob '{}'", glob))?,
+        );
+        filters.push(filter);
+    }
+
+    // partition index ranges
+    let parse_index = |i: &str| -> Result<Option<NonZeroU32>> {
+        match i {
+            "" => Ok(None), // open end of range
+            _ => Ok(Some(
+                NonZeroU32::new(
+                    i.parse()
+                        .with_context(|| format!("couldn't parse partition index '{}'", i))?,
+                )
+                .context("partition index cannot be zero")?,
+            )),
+        }
+    };
+    for range in indexes {
+        let parts: Vec<&str> = range.split('-').collect();
+        let filter = match parts.len() {
+            1 => Index(parse_index(parts[0])?, parse_index(parts[0])?),
+            2 => Index(parse_index(parts[0])?, parse_index(parts[1])?),
+            _ => bail!("couldn't parse partition index range '{}'", range),
+        };
+        match filter {
+            Index(None, None) => bail!(
+                "both ends of partition index range '{}' cannot be open",
+                range
+            ),
+            Index(Some(x), Some(y)) if x > y => bail!(
+                "start of partition index range '{}' cannot be greater than end",
+                range
+            ),
+            _ => filters.push(filter),
+        };
+    }
+    Ok(filters)
 }
 
 fn ensure_exclusive_access(device: &str) -> Result<()> {
@@ -152,6 +323,8 @@ fn write_disk(
     dest: &mut File,
     table: &mut dyn PartTable,
     saved: &SavedPartitions,
+    ignition: Option<File>,
+    network_config: Option<&str>,
 ) -> Result<()> {
     // Get sector size of destination, for comparing with image
     let sector_size = get_sector_size(dest)?;
@@ -175,12 +348,12 @@ fn write_disk(
     table.reread()?;
 
     // postprocess
-    if config.ignition.is_some()
-        || config.firstboot_kargs.is_some()
-        || !config.append_kargs.is_empty()
-        || !config.delete_kargs.is_empty()
+    if ignition.is_some()
+        || config.firstboot_args.is_some()
+        || !config.append_karg.is_empty()
+        || !config.delete_karg.is_empty()
         || config.platform.is_some()
-        || config.network_config.is_some()
+        || network_config.is_some()
         || cfg!(target_arch = "s390x")
     {
         let mount = Disk::new(&config.device)?.mount_partition_by_label(
@@ -188,22 +361,22 @@ fn write_disk(
             false,
             mount::MsFlags::empty(),
         )?;
-        if let Some(ignition) = config.ignition.as_ref() {
+        if let Some(ignition) = ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .context("writing Ignition configuration")?;
         }
-        if let Some(firstboot_kargs) = config.firstboot_kargs.as_ref() {
-            write_firstboot_kargs(mount.mountpoint(), firstboot_kargs)
+        if let Some(firstboot_args) = config.firstboot_args.as_ref() {
+            write_firstboot_kargs(mount.mountpoint(), firstboot_args)
                 .context("writing firstboot kargs")?;
         }
-        if !config.append_kargs.is_empty() || !config.delete_kargs.is_empty() {
+        if !config.append_karg.is_empty() || !config.delete_karg.is_empty() {
             eprintln!("Modifying kernel arguments");
 
             visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
                 bls_entry_options_delete_and_append_kargs(
                     orig_options,
-                    config.delete_kargs.as_slice(),
-                    config.append_kargs.as_slice(),
+                    config.delete_karg.as_slice(),
+                    config.append_karg.as_slice(),
                     &[],
                 )
             })
@@ -212,7 +385,7 @@ fn write_disk(
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
         }
-        if let Some(network_config) = config.network_config.as_ref() {
+        if let Some(network_config) = network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
         }
         #[cfg(target_arch = "s390x")]
@@ -603,6 +776,62 @@ fn stash_saved_partitions(disk: &mut File, saved: &SavedPartitions) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_partition_filters() {
+        use PartitionFilter::*;
+
+        let g = |v| Label(glob::Pattern::new(v).unwrap());
+        let i = |v| Some(NonZeroU32::new(v).unwrap());
+
+        assert_eq!(
+            parse_partition_filters(&["foo", "z*b?", ""], &["1", "7-7", "2-4", "-3", "4-"])
+                .unwrap(),
+            vec![
+                g("foo"),
+                g("z*b?"),
+                g(""),
+                Index(i(1), i(1)),
+                Index(i(7), i(7)),
+                Index(i(2), i(4)),
+                Index(None, i(3)),
+                Index(i(4), None)
+            ]
+        );
+
+        let bad_globs = vec![("***", "couldn't parse label glob '***'")];
+        for (glob, err) in bad_globs {
+            assert_eq!(
+                &parse_partition_filters(&["f", glob, "z*"], &["7-", "34"])
+                    .unwrap_err()
+                    .to_string(),
+                err
+            );
+        }
+
+        let bad_ranges = vec![
+            ("", "both ends of partition index range '' cannot be open"),
+            ("-", "both ends of partition index range '-' cannot be open"),
+            ("--", "couldn't parse partition index range '--'"),
+            ("0", "partition index cannot be zero"),
+            ("-2-3", "couldn't parse partition index range '-2-3'"),
+            ("23q", "couldn't parse partition index '23q'"),
+            ("23-45.7", "couldn't parse partition index '45.7'"),
+            ("0x7", "couldn't parse partition index '0x7'"),
+            (
+                "9-7",
+                "start of partition index range '9-7' cannot be greater than end",
+            ),
+        ];
+        for (range, err) in bad_ranges {
+            assert_eq!(
+                &parse_partition_filters(&["f", "z*"], &["7-", range, "34"])
+                    .unwrap_err()
+                    .to_string(),
+                err
+            );
+        }
+    }
 
     #[test]
     fn test_platform_id() {

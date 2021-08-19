@@ -36,23 +36,33 @@ const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
 const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
 
-pub fn iso_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
+pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
-    iso_ignition_embed(config)
+    iso_ignition_embed(&IsoIgnitionEmbedConfig {
+        force: config.force,
+        ignition_file: config.config.clone(),
+        output: config.output.clone(),
+        input: config.input.clone(),
+    })
 }
 
-pub fn iso_show(config: &IsoIgnitionShowConfig) -> Result<()> {
+pub fn iso_show(config: &IsoShowConfig) -> Result<()> {
     eprintln!("`iso show` is deprecated; use `iso ignition show`.  Continuing.");
-    iso_ignition_show(config)
+    iso_ignition_show(&IsoIgnitionShowConfig {
+        input: config.input.clone(),
+    })
 }
 
-pub fn iso_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
+pub fn iso_remove(config: &IsoRemoveConfig) -> Result<()> {
     eprintln!("`iso remove` is deprecated; use `iso ignition remove`.  Continuing.");
-    iso_ignition_remove(config)
+    iso_ignition_remove(&IsoIgnitionRemoveConfig {
+        output: config.output.clone(),
+        input: config.input.clone(),
+    })
 }
 
 pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
-    let ignition = match config.ignition {
+    let ignition = match config.ignition_file {
         Some(ref ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
@@ -142,7 +152,7 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
         bail!("Refusing to write binary data to terminal");
     }
 
-    let ignition = match config.ignition {
+    let ignition = match config.ignition_file {
         Some(ref ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
