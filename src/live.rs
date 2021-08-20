@@ -256,15 +256,9 @@ struct IsoConfig {
 
 impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
-        let kargs = if KargEmbedAreas::exists_in(file)? {
-            Some(KargEmbedAreas::for_file(file)?)
-        } else {
-            None
-        };
-
         Ok(Self {
             ignition: ignition_embed_area(file)?,
-            kargs,
+            kargs: KargEmbedAreas::for_file(file)?,
         })
     }
 
@@ -447,17 +441,8 @@ struct KargEmbedAreas {
 }
 
 impl KargEmbedAreas {
-    pub fn exists_in(file: &mut File) -> Result<bool> {
-        let region = Region::read(
-            file,
-            32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
-            8,
-        )
-        .context("reading karg embed magic number")?;
-        Ok(region.contents == COREOS_KARG_EMBED_AREA_HEADER_MAGIC)
-    }
-
-    pub fn for_file(file: &mut File) -> Result<Self> {
+    // Return Ok(None) if no kargs embed areas exist.
+    pub fn for_file(file: &mut File) -> Result<Option<Self>> {
         // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
         // before the initrd embed area (see EmbedArea below):
         // 8 bytes: magic string "coreKarg"
@@ -473,7 +458,7 @@ impl KargEmbedAreas {
         let mut header = &region.contents[..];
         // magic number
         if header.copy_to_bytes(8) != COREOS_KARG_EMBED_AREA_HEADER_MAGIC {
-            bail!("No karg embed areas found; old or corrupted CoreOS ISO image.");
+            return Ok(None);
         }
         // length
         let length: usize = header
@@ -526,12 +511,12 @@ impl KargEmbedAreas {
             }
         }
 
-        Ok(KargEmbedAreas {
+        Ok(Some(KargEmbedAreas {
             default_region,
             default_args,
             regions,
             args,
-        })
+        }))
     }
 
     fn parse(region: &Region) -> Result<String> {
