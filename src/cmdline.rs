@@ -325,6 +325,9 @@ pub struct IsoIgnitionShowConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
+    /// Show ISO header (for debugging/testing only)
+    #[structopt(long, hidden = true)]
+    pub header: bool,
 }
 
 #[derive(Debug, StructOpt)]
