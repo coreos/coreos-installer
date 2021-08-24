@@ -402,6 +402,9 @@ fn write_disk(
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .context("writing Ignition configuration")?;
         }
+        if let Some(platform) = config.platform.as_ref() {
+            write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
+        }
         if let Some(firstboot_args) = config.firstboot_args.as_ref() {
             write_firstboot_kargs(mount.mountpoint(), firstboot_args)
                 .context("writing firstboot kargs")?;
@@ -416,9 +419,6 @@ fn write_disk(
                     .maybe_apply_to(orig_options)
             })
             .context("deleting and appending kargs")?;
-        }
-        if let Some(platform) = config.platform.as_ref() {
-            write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
         }
         if let Some(network_config) = network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
