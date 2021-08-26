@@ -39,7 +39,7 @@ lto = true
 [dependencies]
 anyhow = ">= 1.0.38, < 2"
 bincode = "^1.3"
-bytes = "1.0.1"
+bytes = "1.1.0"
 byte-unit = ">= 3.1.0, < 5.0.0"
 cpio = "^0.2"
 flate2 = "^1.0"
