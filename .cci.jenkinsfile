@@ -17,8 +17,7 @@ cosaPod(buildroot: true, runAsUser: 0) {
     // Make sure cosa is using the binary we just built.
     shwrap("rsync -rlv install/usr/ /usr/")
 
-    // we don't need the qemu image to test coreos-installer; just the OSTree
-    fcosBuild(overlays: ["install"], skipKola: true, extraArgs: 'ostree')
+    fcosBuild(overlays: ["install"])
 
     stage("Build metal+live") {
         shwrap("cd /srv/fcos && cosa buildextend-metal")
