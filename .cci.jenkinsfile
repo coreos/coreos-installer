@@ -29,19 +29,13 @@ cosaPod(buildroot: true, runAsUser: 0) {
         shwrap("cd /srv/fcos && cosa compress --fast --artifact=metal4k")
     }
     stage("Test ISO") {
-        // No need to run the iso-live-login scenario (in theory, and also right
-        // now it's buggy)
-        try {
-            parallel metal: {
-                shwrap("cd /srv/fcos && kola testiso -S --scenarios pxe-install,pxe-offline-install,iso-install,iso-offline-install --output-dir tmp/kola-testiso-metal")
-            }, metal4k: {
-                shwrap("cd /srv/fcos && kola testiso -S --scenarios iso-install,iso-offline-install --qemu-native-4k --output-dir tmp/kola-testiso-metal4k")
-            }
-        } finally {
-            shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal.tar.xz")
-            shwrap("cd /srv/fcos && tar -cf - tmp/kola-testiso-metal4k/ | xz -c9 > ${env.WORKSPACE}/kola-testiso-metal4k.tar.xz")
-            archiveArtifacts allowEmptyArchive: true, artifacts: 'kola-testiso*.tar.xz'
-        }
+        // No need to run the iso-live-login/iso-as-disk scenarios
+        fcosKolaTestIso(
+            cosaDir: "/srv/fcos",
+            scenarios: "pxe-install,pxe-offline-install,iso-install,iso-offline-install",
+            scenarios4k: "iso-install,iso-offline-install",
+            skipUEFI: true
+        )
         shwrap("tests/iso-ignition.sh /srv/fcos/builds/latest/x86_64/*.iso")
         shwrap("tests/iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
     }
