@@ -9,5 +9,6 @@ install() {
     if [[ "$_arch" == "s390x" ]]; then
         inst_multiple zipl
         inst /lib/s390-tools/stage3.bin
+        inst /lib/s390-tools/zipl_helper.device-mapper
     fi
 }
