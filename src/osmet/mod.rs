@@ -74,8 +74,20 @@ struct Osmet {
     size: u64,
 }
 
+#[derive(Serialize)]
+struct FiemapOutput {
+    extents: Vec<Extent>,
+}
+
 pub fn osmet_fiemap(config: &OsmetFiemapConfig) -> Result<()> {
-    eprintln!("{:?}", fiemap_path(config.file.as_str().as_ref())?);
+    let output = FiemapOutput {
+        extents: fiemap_path(config.file.as_str().as_ref())?,
+    };
+    serde_json::to_writer_pretty(std::io::stdout(), &output)
+        .context("failed to serialize extents")?;
+    std::io::stdout()
+        .write_all(b"\n")
+        .context("failed to write newline")?;
     Ok(())
 }
 
