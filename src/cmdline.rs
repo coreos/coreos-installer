@@ -22,8 +22,6 @@ use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
 use crate::io::IgnitionHash;
-#[cfg(target_arch = "s390x")]
-use crate::s390x::dasd_try_get_sector_size;
 
 // Args are listed in --help in the order declared in these structs/enums.
 // Please keep the entire help text to 80 columns.

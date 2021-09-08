@@ -90,7 +90,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         .with_context(|| format!("checking whether {} is an IBM DASD disk", &config.device))?
     {
         #[cfg(target_arch = "s390x")]
-        true => dasd_try_get_sector_size(&config.device).transpose(),
+        true => s390x::dasd_try_get_sector_size(&config.device).transpose(),
         _ => None,
     };
     let sector_size = sector_size
