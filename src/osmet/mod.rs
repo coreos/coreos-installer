@@ -83,11 +83,10 @@ pub fn osmet_fiemap(config: &OsmetFiemapConfig) -> Result<()> {
     let output = FiemapOutput {
         extents: fiemap_path(config.file.as_str().as_ref())?,
     };
-    serde_json::to_writer_pretty(std::io::stdout(), &output)
-        .context("failed to serialize extents")?;
-    std::io::stdout()
-        .write_all(b"\n")
-        .context("failed to write newline")?;
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    serde_json::to_writer_pretty(&mut out, &output).context("failed to serialize extents")?;
+    out.write_all(b"\n").context("failed to write newline")?;
     Ok(())
 }
 

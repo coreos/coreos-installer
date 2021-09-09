@@ -20,7 +20,7 @@ use openat_ext::FileExt;
 use serde::Serialize;
 use std::convert::TryInto;
 use std::fs::{read, write, File, OpenOptions};
-use std::io::{copy, stdin, stdout, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
@@ -70,7 +70,10 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
         }
         None => {
             let mut data = Vec::new();
-            stdin().read_to_end(&mut data).context("reading stdin")?;
+            io::stdin()
+                .lock()
+                .read_to_end(&mut data)
+                .context("reading stdin")?;
             data
         }
     };
@@ -91,20 +94,19 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
 pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
     if config.header {
-        serde_json::to_writer_pretty(std::io::stdout(), &iso.ignition)
+        serde_json::to_writer_pretty(&mut out, &iso.ignition)
             .context("failed to serialize header")?;
-        std::io::stdout()
-            .write_all("\n".as_bytes())
-            .context("failed to write newline")?;
+        out.write_all(b"\n").context("failed to write newline")?;
     } else {
         if !iso.have_ignition() {
             bail!("No embedded Ignition config.");
         }
-        stdout()
-            .write_all(&extract_cpio(iso.ignition())?)
+        out.write_all(&extract_cpio(iso.ignition())?)
             .context("writing output")?;
-        stdout().flush().context("flushing output")?;
+        out.flush().context("flushing output")?;
     }
     Ok(())
 }
@@ -120,7 +122,7 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 
 pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
     if config.output.is_none()
-        && isatty(stdout().as_raw_fd()).context("checking if stdout is a TTY")?
+        && isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")?
     {
         bail!("Refusing to write binary data to terminal");
     }
@@ -131,7 +133,10 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
         }
         None => {
             let mut data = Vec::new();
-            stdin().read_to_end(&mut data).context("reading stdin")?;
+            io::stdin()
+                .lock()
+                .read_to_end(&mut data)
+                .context("reading stdin")?;
             data
         }
     };
@@ -143,8 +148,10 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
             write(output_path, cpio).with_context(|| format!("writing {}", output_path))?
         }
         None => {
-            stdout().write_all(&cpio).context("writing output")?;
-            stdout().flush().context("flushing output")?;
+            let stdout = io::stdout();
+            let mut out = stdout.lock();
+            out.write_all(&cpio).context("writing output")?;
+            out.flush().context("flushing output")?;
         }
     }
     Ok(())
@@ -152,10 +159,11 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
 
 pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
     let buf = read(&config.input).with_context(|| format!("reading {}", config.input))?;
-    stdout()
-        .write_all(&extract_cpio(&buf)?)
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    out.write_all(&extract_cpio(&buf)?)
         .context("writing output")?;
-    stdout().flush().context("flushing output")?;
+    out.flush().context("flushing output")?;
     Ok(())
 }
 
@@ -188,11 +196,10 @@ pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     if config.header {
-        serde_json::to_writer_pretty(std::io::stdout(), &iso.kargs)
-            .context("failed to serialize header")?;
-        std::io::stdout()
-            .write_all("\n".as_bytes())
-            .context("failed to write newline")?;
+        let stdout = io::stdout();
+        let mut out = stdout.lock();
+        serde_json::to_writer_pretty(&mut out, &iso.kargs).context("failed to serialize header")?;
+        out.write_all(b"\n").context("failed to write newline")?;
     } else {
         let kargs = if config.default {
             iso.kargs_default()?
@@ -222,10 +229,10 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
             iso.write(input)?;
         }
         Some("-") => {
-            if isatty(stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
+            if isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
                 bail!("Refusing to write binary data to terminal");
             }
-            iso.stream(input, &mut stdout())?;
+            iso.stream(input, &mut io::stdout().lock())?;
         }
         Some(output_path) => {
             let output_dir = Path::new(output_path)
