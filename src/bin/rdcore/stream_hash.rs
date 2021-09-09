@@ -43,7 +43,7 @@ pub fn stream_hash(config: &StreamHashConfig) -> Result<()> {
         .read(true)
         .open(&config.hash_file)
         .with_context(|| format!("opening {}", config.hash_file))?;
-    do_stream_hash(&mut hash_file, &mut stdin(), &mut stdout())
+    do_stream_hash(&mut hash_file, &mut stdin().lock(), &mut stdout().lock())
 }
 
 fn do_stream_hash(
