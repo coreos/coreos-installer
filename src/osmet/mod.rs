@@ -112,16 +112,16 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
 
     // create a first tempfile to store the packed image
     eprintln!("Packing image");
-    let (mut packed_image, size) =
-        write_packed_image_to_file(Path::new(&config.device), &partitions, config.fast)?;
+    let (mut xzpacked_image, size) =
+        write_xzpacked_image_to_file(Path::new(&config.device), &partitions, config.fast)?;
 
     // verify that re-packing will yield the expected checksum
     eprintln!("Verifying that repacked image matches digest");
     let (checksum, unpacked_size) =
-        get_unpacked_image_digest(&mut packed_image, &partitions, &root)?;
-    packed_image
+        get_unpacked_image_digest(&mut xzpacked_image, &partitions, &root)?;
+    xzpacked_image
         .seek(SeekFrom::Start(0))
-        .context("seeking back to start of packed image")?;
+        .context("seeking back to start of xzpacked image")?;
 
     if unpacked_size != size {
         bail!(
@@ -131,7 +131,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
         );
     }
 
-    let checksum_str = checksum_to_string(&checksum)?;
+    let checksum_str = checksum.to_hex_string()?;
     if checksum_str != config.checksum {
         bail!(
             "unpacking test: got checksum {} but expected {}",
@@ -150,7 +150,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
         size,
     };
 
-    osmet_file_write(Path::new(&config.output), header, osmet, packed_image)?;
+    osmet_file_write(Path::new(&config.output), header, osmet, xzpacked_image)?;
     eprintln!("Packing successful!");
 
     Ok(())
@@ -252,12 +252,12 @@ fn scan_root_partition(
             .with_context(|| format!("getting metadata for {:?}", entry.path()))?
             .len();
         if let Entry::Occupied(boot_entry) = boot_files.entry(len) {
-            // we can't use Entry::or_insert_with() here because get_path_digest() is fallible
+            // we can't use Entry::or_insert_with() here because from_path() is fallible
             let boot_file_digest = match cached_boot_files_digests.entry(len) {
-                Entry::Vacant(e) => e.insert(get_path_digest(boot_entry.get())?),
+                Entry::Vacant(e) => e.insert(Sha256Digest::from_path(boot_entry.get())?),
                 Entry::Occupied(e) => e.into_mut(),
             };
-            if get_path_digest(entry.path())? == *boot_file_digest {
+            if Sha256Digest::from_path(entry.path())? == *boot_file_digest {
                 mapped_boot_files.insert(boot_entry.remove(), object.clone());
             }
         }
@@ -348,8 +348,8 @@ fn scan_boot_partition(
     })
 }
 
-/// Writes the disk image, with the extents for which we have mappings for skipped.
-fn write_packed_image_to_file(
+/// Writes the compressed disk image, with the extents for which we have mappings for skipped.
+fn write_xzpacked_image_to_file(
     block_device: &Path,
     partitions: &[OsmetPartition],
     fast: bool,

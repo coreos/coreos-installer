@@ -14,8 +14,14 @@
 
 use anyhow::{bail, ensure, Context, Error, Result};
 use flate2::read::GzDecoder;
+use openssl::hash::{Hasher, MessageDigest};
 use openssl::sha;
+use serde::{Deserialize, Serialize};
+use std::convert::{TryFrom, TryInto};
+use std::fs::OpenOptions;
 use std::io::{self, BufRead, ErrorKind, Read, Write};
+use std::os::unix::io::AsRawFd;
+use std::path::Path;
 use std::result;
 use std::str::FromStr;
 use xz2::read::XzDecoder;
@@ -211,11 +217,11 @@ pub struct LimitReader<R: Read> {
     source: R,
     length: u64,
     remaining: u64,
-    conflict: String,
+    conflict: Option<String>,
 }
 
 impl<R: Read> LimitReader<R> {
-    pub fn new(source: R, length: u64, conflict: String) -> Self {
+    pub fn new(source: R, length: u64, conflict: Option<String>) -> Self {
         Self {
             source,
             length,
@@ -232,14 +238,17 @@ impl<R: Read> Read for LimitReader<R> {
         }
         let allowed = self.remaining.min(buf.len() as u64);
         if allowed == 0 {
-            // reached the limit; only error if we're not at EOF
-            return match self.source.read(&mut buf[..1]) {
-                Ok(0) => Ok(0),
-                Ok(_) => Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("collision with {} at offset {}", self.conflict, self.length),
-                )),
-                Err(e) => Err(e),
+            return match self.conflict {
+                None => return Ok(0),
+                // reached the limit; only error if we're not at EOF
+                Some(ref msg) => match self.source.read(&mut buf[..1]) {
+                    Ok(0) => Ok(0),
+                    Ok(_) => Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("collision with {} at offset {}", msg, self.length),
+                    )),
+                    Err(e) => Err(e),
+                },
             };
         }
         let count = self.source.read(&mut buf[..allowed as usize])?;
@@ -248,6 +257,104 @@ impl<R: Read> Read for LimitReader<R> {
             .checked_sub(count as u64)
             .expect("read more bytes than allowed");
         Ok(count)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+pub struct Sha256Digest(pub [u8; 32]);
+
+impl TryFrom<Hasher> for Sha256Digest {
+    type Error = Error;
+
+    fn try_from(mut hasher: Hasher) -> std::result::Result<Self, Self::Error> {
+        let digest = hasher.finish().context("finishing hash")?;
+        Ok(Sha256Digest(
+            digest.as_ref().try_into().context("converting to SHA256")?,
+        ))
+    }
+}
+
+impl Sha256Digest {
+    /// Calculates the SHA256 of a file.
+    pub fn from_path(path: &Path) -> Result<Self> {
+        let mut f = OpenOptions::new()
+            .read(true)
+            .open(path)
+            .with_context(|| format!("opening {:?}", path))?;
+
+        Self::from_file(&mut f)
+    }
+
+    /// Calculates the SHA256 of an opened file. Note that the underlying file descriptor will have
+    /// `posix_fadvise` called on it to optimize for sequential reading.
+    pub fn from_file(f: &mut std::fs::File) -> Result<Self> {
+        // tell kernel to optimize for sequential reading
+        if unsafe { libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL) } < 0 {
+            eprintln!(
+                "posix_fadvise(SEQUENTIAL) failed (errno {}) -- ignoring...",
+                nix::errno::errno()
+            );
+        }
+
+        Self::from_reader(f)
+    }
+
+    /// Calculates the SHA256 of a reader.
+    pub fn from_reader(r: &mut impl Read) -> Result<Self> {
+        let mut hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
+        std::io::copy(r, &mut hasher)?;
+        hasher.try_into()
+    }
+
+    pub fn to_hex_string(&self) -> Result<String> {
+        let mut buf: Vec<u8> = Vec::with_capacity(64);
+        for i in 0..32 {
+            write!(buf, "{:02x}", self.0[i])?;
+        }
+        Ok(String::from_utf8(buf)?)
+    }
+}
+
+pub struct WriteHasher<W: Write> {
+    writer: W,
+    hasher: Hasher,
+}
+
+impl<W: Write> WriteHasher<W> {
+    pub fn new(writer: W, hasher: Hasher) -> Self {
+        WriteHasher { writer, hasher }
+    }
+
+    pub fn new_sha256(writer: W) -> Result<Self> {
+        let hasher = Hasher::new(MessageDigest::sha256()).context("creating SHA256 hasher")?;
+        Ok(WriteHasher { writer, hasher })
+    }
+}
+
+impl<W: Write> Write for WriteHasher<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let n = self.writer.write(buf)?;
+        self.hasher.write_all(&buf[..n])?;
+
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush()?;
+        self.hasher.flush()?;
+        Ok(())
+    }
+}
+
+impl<W: Write> TryFrom<WriteHasher<W>> for Sha256Digest {
+    type Error = Error;
+
+    fn try_from(wrapper: WriteHasher<W>) -> std::result::Result<Self, Self::Error> {
+        Sha256Digest::try_from(wrapper.hasher)
     }
 }
 
@@ -371,7 +478,7 @@ mod tests {
 
         // limit larger than file
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 150, "foo".into());
+        let mut lim = LimitReader::new(&mut file, 150, Some("foo".into()));
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -381,7 +488,7 @@ mod tests {
 
         // limit exactly equal to file
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 100, "foo".into());
+        let mut lim = LimitReader::new(&mut file, 100, Some("foo".into()));
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -391,7 +498,7 @@ mod tests {
 
         // buffer smaller than limit
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 90, "foo".into());
+        let mut lim = LimitReader::new(&mut file, 90, Some("foo".into()));
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -404,7 +511,7 @@ mod tests {
 
         // buffer exactly equal to limit
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 60, "foo".into());
+        let mut lim = LimitReader::new(&mut file, 60, Some("foo".into()));
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -415,7 +522,7 @@ mod tests {
 
         // buffer larger than limit
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 50, "foo".into());
+        let mut lim = LimitReader::new(&mut file, 50, Some("foo".into()));
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 50);
         assert_eq!(buf[..50], data[0..50]);
@@ -423,5 +530,13 @@ mod tests {
             lim.read(&mut buf).unwrap_err().to_string(),
             "collision with foo at offset 50"
         );
+
+        // test no collision
+        let mut file = Cursor::new(data.clone());
+        let mut lim = LimitReader::new(&mut file, 50, None);
+        let mut buf = [0u8; 60];
+        assert_eq!(lim.read(&mut buf).unwrap(), 50);
+        assert_eq!(buf[..50], data[0..50]);
+        assert_eq!(lim.read(&mut buf).unwrap(), 0);
     }
 }
