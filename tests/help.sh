@@ -25,6 +25,7 @@ checklen iso ignition
 checklen iso ignition embed
 checklen iso ignition show
 checklen iso ignition remove
+checklen iso inspect
 checklen iso kargs
 checklen iso kargs modify
 checklen iso kargs reset
