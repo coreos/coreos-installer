@@ -72,6 +72,8 @@ pub enum IsoCmd {
     // for testing and debugging purposes only
     #[structopt(setting(AppSettings::Hidden))]
     Inspect(IsoInspectConfig),
+    /// Commands to extract files from a CoreOS live ISO image
+    Extract(IsoExtractCmd),
 }
 
 #[derive(Debug, StructOpt)]
@@ -92,6 +94,12 @@ pub enum IsoKargsCmd {
     Reset(IsoKargsResetConfig),
     /// Show kernel args from an ISO image
     Show(IsoKargsShowConfig),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum IsoExtractCmd {
+    /// Extract PXE files from an ISO image
+    Pxe(IsoExtractPxeConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -389,6 +397,16 @@ pub struct IsoInspectConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoExtractPxeConfig {
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+    /// Output directory
+    #[structopt(short, long, value_name = "PATH", default_value = ".")]
+    pub output_dir: String,
 }
 
 #[derive(Debug, StructOpt)]

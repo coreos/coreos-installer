@@ -38,5 +38,7 @@ cosaPod(buildroot: true, runAsUser: 0) {
         shwrap("tests/iso-ignition.sh /srv/fcos/builds/latest/x86_64/*.iso")
         shwrap("tests/iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
         shwrap("tests/iso-inspect.sh /srv/fcos/builds/latest/x86_64/*.iso")
+        // just pass the build dir; this test also uses the other live artifacts
+        shwrap("tests/iso-extract-pxe.sh /srv/fcos/builds/latest/x86_64")
     }
 }

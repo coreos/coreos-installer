@@ -30,6 +30,8 @@ checklen iso kargs
 checklen iso kargs modify
 checklen iso kargs reset
 checklen iso kargs show
+checklen iso extract
+checklen iso extract pxe
 checklen pxe
 checklen pxe ignition
 checklen pxe ignition wrap
