@@ -31,7 +31,7 @@ use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 
 const FILENAME: &str = "config.ign";
-const COREOS_IGNITION_HEADER_MAGIC: &[u8] = b"coreiso+";
+const COREOS_IGNITION_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
@@ -265,8 +265,10 @@ struct IsoConfig {
 
 impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
+        let mut iso = IsoFs::from_file(file.try_clone().context("cloning file")?)
+            .context("parsing ISO9660 image")?;
         Ok(Self {
-            ignition: ignition_embed_area(file)?,
+            ignition: ignition_embed_area(&mut iso)?,
             kargs: KargEmbedAreas::for_file(file)?,
         })
     }
@@ -579,31 +581,14 @@ impl KargEmbedAreas {
     }
 }
 
-fn ignition_embed_area(file: &mut File) -> Result<Region> {
-    // The ISO 9660 System Area is 32 KiB.  The last 24 bytes should be:
-    // 8 bytes: magic string "coreiso+"
-    // 8 bytes little-endian: offset of embed area from start of file
-    // 8 bytes little-endian: length of embed area
-    let region = Region::read(
-        file,
-        32768 - COREOS_IGNITION_HEADER_SIZE,
-        COREOS_IGNITION_HEADER_SIZE as usize,
-    )
-    .context("reading Ignition embed header")?;
-    let mut header = &region.contents[..];
-    // magic number
-    if header.copy_to_bytes(8) != COREOS_IGNITION_HEADER_MAGIC {
-        bail!("Unrecognized CoreOS ISO image.");
-    }
-    // offset
-    let offset = header.get_u64_le();
-    // length
-    let length: usize = header
-        .get_u64_le()
-        .try_into()
-        .context("embed area too large to allocate")?;
+fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
+    let f = iso
+        .get_path(COREOS_IGNITION_EMBED_PATH)
+        .context("finding Ignition embed area")?
+        .try_into_file()?;
     // read (checks offset/length as a side effect)
-    Region::read(file, offset, length).context("reading Ignition embed area")
+    Region::read(iso.as_file()?, f.address.as_offset(), f.length as usize)
+        .context("reading Ignition embed area")
 }
 
 /// Make a gzipped CPIO archive containing the specified Ignition config.
