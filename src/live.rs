@@ -17,7 +17,7 @@ use bytes::Buf;
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
 use openat_ext::FileExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fs::{read, write, File, OpenOptions};
 use std::io::{self, copy, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
@@ -37,6 +37,7 @@ const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
 const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
+const COREOS_KARG_EMBED_INFO_PATH: &str = "COREOS/KARGS.JSO";
 const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 
 pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
@@ -269,7 +270,7 @@ impl IsoConfig {
             .context("parsing ISO9660 image")?;
         Ok(Self {
             ignition: ignition_embed_area(&mut iso)?,
-            kargs: KargEmbedAreas::for_file(file)?,
+            kargs: KargEmbedAreas::for_iso(&mut iso)?,
         })
     }
 
@@ -456,9 +457,76 @@ struct KargEmbedAreas {
     args: String,
 }
 
+#[derive(Deserialize)]
+struct KargEmbedInfo {
+    default: String,
+    files: Vec<KargEmbedLocation>,
+    size: usize,
+}
+
+#[derive(Deserialize)]
+struct KargEmbedLocation {
+    path: String,
+    offset: u64,
+}
+
 impl KargEmbedAreas {
     // Return Ok(None) if no kargs embed areas exist.
-    pub fn for_file(file: &mut File) -> Result<Option<Self>> {
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Option<Self>> {
+        let iso_file = match iso.get_path(COREOS_KARG_EMBED_INFO_PATH) {
+            Ok(record) => record.try_into_file()?,
+            // old ISO without info JSON
+            Err(e) if e.is::<iso9660::NotFound>() => {
+                return Self::for_file_via_system_area(iso.as_file()?)
+            }
+            Err(e) => return Err(e),
+        };
+        let info: KargEmbedInfo = serde_json::from_reader(
+            iso.read_file(&iso_file)
+                .context("reading kargs embed area info")?,
+        )
+        .context("decoding kargs embed area info")?;
+
+        // sanity-check size against a reasonable limit
+        if info.size > COREOS_KARG_EMBED_AREA_MAX_SIZE {
+            bail!(
+                "karg embed area size larger than {} (found {})",
+                COREOS_KARG_EMBED_AREA_MAX_SIZE,
+                info.size
+            );
+        }
+        if info.default.len() > info.size {
+            bail!(
+                "default kargs size {} larger than embed areas ({})",
+                info.default.len(),
+                info.size
+            );
+        }
+
+        // writable regions
+        let mut regions = Vec::new();
+        for loc in info.files {
+            let iso_file = iso
+                .get_path(&loc.path.to_uppercase())
+                .with_context(|| format!("looking up '{}'", loc.path))?
+                .try_into_file()?;
+            // we rely on Region::read() to verify that the offset/length
+            // pair is in bounds
+            regions.push(
+                Region::read(
+                    iso.as_file()?,
+                    iso_file.address.as_offset() + loc.offset,
+                    info.size,
+                )
+                .context("reading kargs embed area")?,
+            );
+        }
+        regions.sort_unstable_by_key(|r| r.offset);
+
+        Some(Self::build(info.size, info.default, regions)).transpose()
+    }
+
+    fn for_file_via_system_area(file: &mut File) -> Result<Option<Self>> {
         // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
         // before the initrd embed area (see EmbedArea below):
         // 8 bytes: magic string "coreKarg"
@@ -508,7 +576,11 @@ impl KargEmbedAreas {
             regions.push(Region::read(file, offset, length).context("reading kargs embed area")?);
         }
 
-        // we expect at least one
+        Some(Self::build(length, default, regions)).transpose()
+    }
+
+    fn build(length: usize, default: String, regions: Vec<Region>) -> Result<Self> {
+        // we expect at least one region
         if regions.is_empty() {
             bail!("No karg embed areas found; corrupted CoreOS ISO image.");
         }
@@ -527,12 +599,12 @@ impl KargEmbedAreas {
             }
         }
 
-        Ok(Some(KargEmbedAreas {
-            length: default_region.length,
+        Ok(Self {
+            length,
             default,
             regions,
             args,
-        }))
+        })
     }
 
     fn parse(region: &Region) -> Result<String> {
