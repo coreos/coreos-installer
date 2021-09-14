@@ -447,10 +447,8 @@ impl Stream for [&Region] {
 
 #[derive(Serialize)]
 struct KargEmbedAreas {
-    #[serde(rename = "default_kargs")]
-    default_region: Region,
-    #[serde(skip_serializing)]
-    default_args: String,
+    length: usize,
+    default: String,
 
     #[serde(rename = "kargs")]
     regions: Vec<Region>,
@@ -498,7 +496,7 @@ impl KargEmbedAreas {
         // default kargs
         let offset = header.get_u64_le();
         let default_region = Region::read(file, offset, length).context("reading default kargs")?;
-        let default_args = Self::parse(&default_region)?;
+        let default = Self::parse(&default_region)?;
 
         // writable regions
         let mut regions = Vec::new();
@@ -530,8 +528,8 @@ impl KargEmbedAreas {
         }
 
         Ok(Some(KargEmbedAreas {
-            default_region,
-            default_args,
+            length: default_region.length,
+            default,
             regions,
             args,
         }))
@@ -546,7 +544,7 @@ impl KargEmbedAreas {
     }
 
     pub fn kargs_default(&self) -> &str {
-        &self.default_args
+        &self.default
     }
 
     pub fn kargs(&self) -> &str {
@@ -556,14 +554,14 @@ impl KargEmbedAreas {
     pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
         let unformatted = kargs.trim();
         let formatted = unformatted.to_string() + "\n";
-        if formatted.len() > self.default_region.length {
+        if formatted.len() > self.length {
             bail!(
                 "kargs too large for area: {} vs {}",
                 formatted.len(),
-                self.default_region.length
+                self.length
             );
         }
-        let mut contents = vec![b'#'; self.default_region.length];
+        let mut contents = vec![b'#'; self.length];
         contents[..formatted.len()].copy_from_slice(formatted.as_bytes());
         for region in &mut self.regions {
             region.contents = contents.clone();

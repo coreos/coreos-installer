@@ -63,7 +63,7 @@ fi
 
 # Test the largest karg; we get the full area length from --header and subtract
 # the default kargs size to get the size of the overflow embed area.
-embed_size=$(coreos-installer iso kargs show --header "${iso}" | jq .default_kargs.length)
+embed_size=$(coreos-installer iso kargs show --header "${iso}" | jq .length)
 embed_default_kargs_size=$(coreos-installer iso kargs show --default "${iso}" | wc -c)
 embed_usable_size=$((${embed_size} - ${embed_default_kargs_size} - 1))
 
