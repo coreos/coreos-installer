@@ -38,6 +38,7 @@ fn main() -> Result<()> {
                 IsoKargsCmd::Reset(c) => live::iso_kargs_reset(&c),
                 IsoKargsCmd::Show(c) => live::iso_kargs_show(&c),
             },
+            IsoCmd::Inspect(c) => live::iso_inspect(&c),
         },
         Cmd::Osmet(c) => match c {
             OsmetCmd::Fiemap(c) => osmet::osmet_fiemap(&c),

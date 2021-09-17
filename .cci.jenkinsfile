@@ -37,5 +37,6 @@ cosaPod(buildroot: true, runAsUser: 0) {
         )
         shwrap("tests/iso-ignition.sh /srv/fcos/builds/latest/x86_64/*.iso")
         shwrap("tests/iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
+        shwrap("tests/iso-inspect.sh /srv/fcos/builds/latest/x86_64/*.iso")
     }
 }

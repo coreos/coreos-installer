@@ -68,6 +68,10 @@ pub enum IsoCmd {
     Ignition(IsoIgnitionCmd),
     /// Modify kernel args in a CoreOS live ISO image
     Kargs(IsoKargsCmd),
+    /// Inspect the CoreOS live ISO image
+    // for testing and debugging purposes only
+    #[structopt(setting(AppSettings::Hidden))]
+    Inspect(IsoInspectConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -375,6 +379,13 @@ pub struct IsoKargsShowConfig {
     /// Show ISO header (for debugging/testing only)
     #[structopt(long, hidden = true)]
     pub header: bool,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoInspectConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,

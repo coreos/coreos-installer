@@ -28,6 +28,7 @@ use std::path::Path;
 use crate::cmdline::*;
 use crate::install::*;
 use crate::io::*;
+use crate::iso9660::IsoFs;
 
 const FILENAME: &str = "config.ign";
 const COREOS_IGNITION_HEADER_MAGIC: &[u8] = b"coreiso+";
@@ -645,6 +646,32 @@ fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
         }
         decompressor = reader.finish().context("finishing reading CPIO entry")?;
     }
+}
+
+#[derive(Serialize)]
+struct IsoInspectOutput {
+    header: IsoFs,
+    records: Vec<String>,
+}
+
+pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
+    let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
+    let records = iso
+        .walk()?
+        .map(|r| r.map(|(path, _)| path))
+        .collect::<Result<Vec<String>>>()
+        .context("while walking ISO filesystem")?;
+    let inspect_out = IsoInspectOutput {
+        header: iso,
+        records,
+    };
+
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    serde_json::to_writer_pretty(&mut out, &inspect_out)
+        .context("failed to serialize ISO metadata")?;
+    out.write_all(b"\n").context("failed to write newline")?;
+    Ok(())
 }
 
 #[cfg(test)]
