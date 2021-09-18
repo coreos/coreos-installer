@@ -217,11 +217,11 @@ pub struct LimitReader<R: Read> {
     source: R,
     length: u64,
     remaining: u64,
-    conflict: Option<String>,
+    conflict: String,
 }
 
 impl<R: Read> LimitReader<R> {
-    pub fn new(source: R, length: u64, conflict: Option<String>) -> Self {
+    pub fn new(source: R, length: u64, conflict: String) -> Self {
         Self {
             source,
             length,
@@ -238,17 +238,14 @@ impl<R: Read> Read for LimitReader<R> {
         }
         let allowed = self.remaining.min(buf.len() as u64);
         if allowed == 0 {
-            return match self.conflict {
-                None => return Ok(0),
-                // reached the limit; only error if we're not at EOF
-                Some(ref msg) => match self.source.read(&mut buf[..1]) {
-                    Ok(0) => Ok(0),
-                    Ok(_) => Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("collision with {} at offset {}", msg, self.length),
-                    )),
-                    Err(e) => Err(e),
-                },
+            // reached the limit; only error if we're not at EOF
+            return match self.source.read(&mut buf[..1]) {
+                Ok(0) => Ok(0),
+                Ok(_) => Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("collision with {} at offset {}", self.conflict, self.length),
+                )),
+                Err(e) => Err(e),
             };
         }
         let count = self.source.read(&mut buf[..allowed as usize])?;
@@ -478,7 +475,7 @@ mod tests {
 
         // limit larger than file
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 150, Some("foo".into()));
+        let mut lim = LimitReader::new(&mut file, 150, "foo".into());
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -488,7 +485,7 @@ mod tests {
 
         // limit exactly equal to file
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 100, Some("foo".into()));
+        let mut lim = LimitReader::new(&mut file, 100, "foo".into());
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -498,7 +495,7 @@ mod tests {
 
         // buffer smaller than limit
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 90, Some("foo".into()));
+        let mut lim = LimitReader::new(&mut file, 90, "foo".into());
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -511,7 +508,7 @@ mod tests {
 
         // buffer exactly equal to limit
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 60, Some("foo".into()));
+        let mut lim = LimitReader::new(&mut file, 60, "foo".into());
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 60);
         assert_eq!(buf[..], data[0..60]);
@@ -522,7 +519,7 @@ mod tests {
 
         // buffer larger than limit
         let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 50, Some("foo".into()));
+        let mut lim = LimitReader::new(&mut file, 50, "foo".into());
         let mut buf = [0u8; 60];
         assert_eq!(lim.read(&mut buf).unwrap(), 50);
         assert_eq!(buf[..50], data[0..50]);
@@ -530,13 +527,5 @@ mod tests {
             lim.read(&mut buf).unwrap_err().to_string(),
             "collision with foo at offset 50"
         );
-
-        // test no collision
-        let mut file = Cursor::new(data.clone());
-        let mut lim = LimitReader::new(&mut file, 50, None);
-        let mut buf = [0u8; 60];
-        assert_eq!(lim.read(&mut buf).unwrap(), 50);
-        assert_eq!(buf[..50], data[0..50]);
-        assert_eq!(lim.read(&mut buf).unwrap(), 0);
     }
 }
