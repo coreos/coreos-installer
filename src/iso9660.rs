@@ -291,7 +291,7 @@ impl PrimaryVolumeDescriptor {
             parse_iso9660_string(eat(buf, 1), 32, IsoString::StrA).context("parsing system id")?;
         let volume_id = // technically should be StrD, but non-compliance is common
             parse_iso9660_string(buf, 32, IsoString::StrA).context("parsing volume id")?;
-        let root = match get_next_directory_record(eat(buf, 156 - 72), 34)? {
+        let root = match get_next_directory_record(eat(buf, 156 - 72), 34, true)? {
             Some(DirectoryRecord::Directory(d)) => d,
             _ => bail!("failed to parse root directory record from primary descriptor"),
         };
@@ -345,7 +345,7 @@ impl IsoFsIterator {
 impl Iterator for IsoFsIterator {
     type Item = Result<DirectoryRecord>;
     fn next(&mut self) -> Option<Self::Item> {
-        get_next_directory_record(&mut self.dir, self.length)
+        get_next_directory_record(&mut self.dir, self.length, false)
             .context("reading next record")
             .transpose()
     }
@@ -376,9 +376,6 @@ impl<'a> IsoFsWalkIterator<'a> {
                     let mut path = self.dirpath.clone();
                     match r {
                         DirectoryRecord::Directory(ref d) => {
-                            if d.name == "." || d.name == ".." {
-                                continue;
-                            }
                             self.parent_dirs.push(self.current_dir.take().unwrap());
                             self.dirpath.push(&d.name);
                             self.current_dir = Some(IsoFsIterator::new(self.iso, d)?);
@@ -401,7 +398,11 @@ impl<'a> IsoFsWalkIterator<'a> {
 }
 
 /// Reads the directory record at cursor and advances to the next one.
-fn get_next_directory_record(buf: &mut Bytes, length: u32) -> Result<Option<DirectoryRecord>> {
+fn get_next_directory_record(
+    buf: &mut Bytes,
+    length: u32,
+    is_root: bool,
+) -> Result<Option<DirectoryRecord>> {
     loop {
         if !buf.has_remaining() {
             return Ok(None);
@@ -430,39 +431,41 @@ fn get_next_directory_record(buf: &mut Bytes, length: u32) -> Result<Option<Dire
         let length = eat(buf, 4).get_u32_le();
         let flags = eat(buf, 25 - 14).get_u8();
         let name_length = eat(buf, 32 - 26).get_u8() as usize;
-        let name = parse_iso9660_path(buf, name_length).context("parsing record name")?;
+        let name = if name_length == 1 && (buf[0] == 0 || buf[0] == 1) {
+            let c = buf.get_u8();
+            if is_root && c == 0 {
+                // as a special case, allow "." when reading the root directory
+                // record from the primary volume descriptor
+                Some(".".into())
+            } else {
+                // "." or ".."
+                None
+            }
+        } else {
+            Some(
+                parse_iso9660_string(buf, name_length, IsoString::File)
+                    .context("parsing record name")?,
+            )
+        };
 
         // advance to next record
         eat(buf, len - (33 + name_length));
 
-        if flags & 2 > 0 {
-            return Ok(Some(DirectoryRecord::Directory(Directory {
-                name,
-                address,
-                length,
-            })));
-        } else {
-            return Ok(Some(DirectoryRecord::File(File {
-                name,
-                address,
-                length,
-            })));
+        if let Some(name) = name {
+            if flags & 2 > 0 {
+                return Ok(Some(DirectoryRecord::Directory(Directory {
+                    name,
+                    address,
+                    length,
+                })));
+            } else {
+                return Ok(Some(DirectoryRecord::File(File {
+                    name,
+                    address,
+                    length,
+                })));
+            }
         }
-    }
-}
-
-/// Reads a directory record path. This is similar to a regular ISO9660 string, but supports '\0'
-/// to mean current directory, and '\1' for the parent directory.
-fn parse_iso9660_path(buf: &mut Bytes, len: usize) -> Result<String> {
-    if len == 1 && (buf[0] == 0 || buf[0] == 1) {
-        let c = buf.get_u8();
-        if c == 0 {
-            Ok(".".into())
-        } else {
-            Ok("..".into())
-        }
-    } else {
-        parse_iso9660_string(buf, len, IsoString::File)
     }
 }
 
