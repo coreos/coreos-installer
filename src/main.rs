@@ -39,6 +39,9 @@ fn main() -> Result<()> {
                 IsoKargsCmd::Show(c) => live::iso_kargs_show(&c),
             },
             IsoCmd::Inspect(c) => live::iso_inspect(&c),
+            IsoCmd::Extract(c) => match c {
+                IsoExtractCmd::Pxe(c) => live::iso_extract_pxe(&c),
+            },
         },
         Cmd::Osmet(c) => match c {
             OsmetCmd::Fiemap(c) => osmet::osmet_fiemap(&c),

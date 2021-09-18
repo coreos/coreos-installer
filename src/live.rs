@@ -28,7 +28,7 @@ use std::path::Path;
 use crate::cmdline::*;
 use crate::install::*;
 use crate::io::*;
-use crate::iso9660::IsoFs;
+use crate::iso9660::{self, IsoFs};
 
 const FILENAME: &str = "config.ign";
 const COREOS_IGNITION_HEADER_MAGIC: &[u8] = b"coreiso+";
@@ -37,6 +37,7 @@ const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
 const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
+const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 
 pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -671,6 +672,43 @@ pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
     serde_json::to_writer_pretty(&mut out, &inspect_out)
         .context("failed to serialize ISO metadata")?;
     out.write_all(b"\n").context("failed to write newline")?;
+    Ok(())
+}
+
+pub fn iso_extract_pxe(config: &IsoExtractPxeConfig) -> Result<()> {
+    let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
+    let pxeboot = iso.get_dir(COREOS_ISO_PXEBOOT_DIR)?;
+    std::fs::create_dir_all(&config.output_dir)?;
+
+    let base = {
+        // this can't be None since we successfully opened the live ISO at the location
+        let mut s = Path::new(&config.input).file_stem().unwrap().to_os_string();
+        s.push("-");
+        s
+    };
+
+    for record in iso.list_dir(&pxeboot)? {
+        match record? {
+            iso9660::DirectoryRecord::Directory(_) => continue,
+            iso9660::DirectoryRecord::File(file) => {
+                let filename = {
+                    let mut s = base.clone();
+                    s.push(file.name.to_lowercase());
+                    s
+                };
+                let path = Path::new(&config.output_dir).join(&filename);
+                let mut outf = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .with_context(|| format!("opening {}", path.display()))?;
+                let mut bufw = BufWriter::with_capacity(BUFFER_SIZE, &mut outf);
+                println!("{}", path.display());
+                copy(&mut iso.read_file(&file)?, &mut bufw)?;
+                bufw.flush()?;
+            }
+        }
+    }
     Ok(())
 }
 
