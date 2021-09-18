@@ -105,13 +105,13 @@ impl IsoFs {
         for component in parent_dir.components() {
             if let std::path::Component::Normal(c) = component {
                 let c = c.to_str().unwrap(); // `path` is &str
-                match self.get_dir_record(&dir, c)? {
-                    Some(DirectoryRecord::Directory(d)) => dir = d,
-                    Some(DirectoryRecord::File(_)) => {
-                        bail!("component {:?} in path {} is not a directory", c, path)
-                    }
-                    None => bail!("intermediate directory {} does not exist", c),
-                }
+                dir = self
+                    .get_dir_record(&dir, c)?
+                    .ok_or_else(|| anyhow!("intermediate directory {} does not exist", c))?
+                    .try_into_dir()
+                    .map_err(|_| {
+                        anyhow!("component {:?} in path {} is not a directory", c, path)
+                    })?;
             } else {
                 bail!("path is not canonical: {}", path);
             }
@@ -124,22 +124,6 @@ impl IsoFs {
                 parent_dir.display()
             )
         })
-    }
-
-    /// Returns the record for a specific directory.
-    pub fn get_dir(&mut self, path: &str) -> Result<Directory> {
-        match self.get_path(path)? {
-            DirectoryRecord::Directory(d) => Ok(d),
-            DirectoryRecord::File(_) => Err(anyhow!("path {} is a file", path)),
-        }
-    }
-
-    /// Returns the record for a specific file.
-    pub fn get_file(&mut self, path: &str) -> Result<File> {
-        match self.get_path(path)? {
-            DirectoryRecord::Directory(_) => Err(anyhow!("path {} is a directory", path)),
-            DirectoryRecord::File(f) => Ok(f),
-        }
     }
 
     /// Returns the record for a specific name in a directory if it exists.
@@ -210,6 +194,22 @@ struct PrimaryVolumeDescriptor {
 pub enum DirectoryRecord {
     Directory(Directory),
     File(File),
+}
+
+impl DirectoryRecord {
+    pub fn try_into_dir(self) -> Result<Directory> {
+        match self {
+            Self::Directory(d) => Ok(d),
+            Self::File(f) => Err(anyhow!("entry {} is a file", f.name)),
+        }
+    }
+
+    pub fn try_into_file(self) -> Result<File> {
+        match self {
+            Self::Directory(f) => Err(anyhow!("entry {} is a directory", f.name)),
+            Self::File(f) => Ok(f),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Clone)]
