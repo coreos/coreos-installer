@@ -34,7 +34,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use bytes::{Buf, Bytes};
 use serde::Serialize;
 
-use crate::io::{LimitReader, BUFFER_SIZE};
+use crate::io::BUFFER_SIZE;
 
 // technically the standard supports others, but this is the only one we support
 const ISO9660_SECTOR_SIZE: usize = 2048;
@@ -169,7 +169,7 @@ impl IsoFs {
             .with_context(|| format!("seeking to file {}", file.name))?;
         Ok(BufReader::with_capacity(
             BUFFER_SIZE,
-            LimitReader::new(&self.file, file.length as u64, None),
+            (&self.file).take(file.length as u64),
         ))
     }
 
