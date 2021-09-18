@@ -107,10 +107,15 @@ impl IsoFs {
                 let c = c.to_str().unwrap(); // `path` is &str
                 dir = self
                     .get_dir_record(&dir, c)?
-                    .ok_or_else(|| anyhow!("intermediate directory {} does not exist", c))?
+                    .ok_or_else(|| {
+                        NotFound(format!("intermediate directory {} does not exist", c))
+                    })?
                     .try_into_dir()
                     .map_err(|_| {
-                        anyhow!("component {:?} in path {} is not a directory", c, path)
+                        NotFound(format!(
+                            "component {:?} in path {} is not a directory",
+                            c, path
+                        ))
                     })?;
             } else {
                 bail!("path is not canonical: {}", path);
@@ -118,20 +123,16 @@ impl IsoFs {
         }
 
         self.get_dir_record(&dir, filename)?.ok_or_else(|| {
-            anyhow!(
+            anyhow!(NotFound(format!(
                 "no record for {} in directory {}",
                 filename,
                 parent_dir.display()
-            )
+            )))
         })
     }
 
     /// Returns the record for a specific name in a directory if it exists.
-    pub fn get_dir_record(
-        &mut self,
-        dir: &Directory,
-        name: &str,
-    ) -> Result<Option<DirectoryRecord>> {
+    fn get_dir_record(&mut self, dir: &Directory, name: &str) -> Result<Option<DirectoryRecord>> {
         for record in self
             .list_dir(dir)
             .with_context(|| format!("listing directory {}", dir.name))?
@@ -225,6 +226,11 @@ pub struct File {
     pub address: u64,
     pub length: u32,
 }
+
+/// Requested path was not found.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct NotFound(String);
 
 /// Reads all the volume descriptors.
 fn get_volume_descriptors(f: &mut fs::File) -> Result<Vec<VolumeDescriptor>> {
