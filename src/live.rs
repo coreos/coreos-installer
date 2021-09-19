@@ -28,7 +28,7 @@ use std::path::Path;
 use crate::cmdline::*;
 use crate::install::*;
 use crate::io::*;
-use crate::iso9660::{self, IsoFs};
+use crate::iso9660::{self, IsoFs, IsoPath};
 
 const FILENAME: &str = "config.ign";
 const COREOS_IGNITION_HEADER_MAGIC: &[u8] = b"coreiso+";
@@ -652,7 +652,7 @@ fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
 #[derive(Serialize)]
 struct IsoInspectOutput {
     header: IsoFs,
-    records: Vec<String>,
+    records: Vec<IsoPath>,
 }
 
 pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
@@ -660,7 +660,7 @@ pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
     let records = iso
         .walk()?
         .map(|r| r.map(|(path, _)| path))
-        .collect::<Result<Vec<String>>>()
+        .collect::<Result<Vec<IsoPath>>>()
         .context("while walking ISO filesystem")?;
     let inspect_out = IsoInspectOutput {
         header: iso,
@@ -677,7 +677,8 @@ pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
 
 pub fn iso_extract_pxe(config: &IsoExtractPxeConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
-    let pxeboot = iso.get_path(COREOS_ISO_PXEBOOT_DIR)?.try_into_dir()?;
+    let path = COREOS_ISO_PXEBOOT_DIR.parse().unwrap();
+    let pxeboot = iso.get_path(&path)?.try_into_dir()?;
     std::fs::create_dir_all(&config.output_dir)?;
 
     let base = {
@@ -693,7 +694,7 @@ pub fn iso_extract_pxe(config: &IsoExtractPxeConfig) -> Result<()> {
             iso9660::DirectoryRecord::File(file) => {
                 let filename = {
                     let mut s = base.clone();
-                    s.push(&file.name);
+                    s.push(file.name.as_str());
                     s
                 };
                 let path = Path::new(&config.output_dir).join(&filename);

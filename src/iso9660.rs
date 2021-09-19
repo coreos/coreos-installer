@@ -26,11 +26,13 @@
 // Many magic numbers corresponding to offsets and lengths have not been const-ified. It should be
 // straightforward to see to what they correspond using the referenced linked above.
 
+use std::fmt;
 use std::fs;
 use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::str::FromStr;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Error, Result};
 use bytes::{Buf, Bytes};
 use serde::Serialize;
 
@@ -73,7 +75,7 @@ impl IsoFs {
             iso: &mut self.file,
             parent_dirs: Vec::new(),
             current_dir: Some(buf),
-            dirpath: PathBuf::new(),
+            dirpath: Vec::new(),
         })
     }
 
@@ -83,64 +85,54 @@ impl IsoFs {
     }
 
     /// Returns the record for a specific path.
-    pub fn get_path(&mut self, path: &str) -> Result<DirectoryRecord> {
+    pub fn get_path(&mut self, path: &IsoPath) -> Result<DirectoryRecord> {
         let root_dir = self.get_root_directory()?;
-        let as_path = Path::new(path);
-        let mut parent_dir = if let Some(p) = as_path.parent() {
-            p
-        } else {
+        if path.is_root() {
             return Ok(DirectoryRecord::Directory(root_dir));
-        };
-        if parent_dir.has_root() {
-            parent_dir = parent_dir
-                .strip_prefix("/")
-                .with_context(|| format!("making path '{}' relative", path))?;
         }
-        let filename = as_path
-            .file_name()
-            .ok_or_else(|| anyhow!("path {} has no base", path))?;
-        let filename = filename.to_str().unwrap(); // `path` is &str
+        let parent_dir = path.parent();
+        let filename = path.file_name();
 
         let mut dir = root_dir;
-        for component in parent_dir.components() {
-            if let std::path::Component::Normal(c) = component {
-                let c = c.to_str().unwrap(); // `path` is &str
-                dir = self
-                    .get_dir_record(&dir, c)?
-                    .ok_or_else(|| {
-                        NotFound(format!("intermediate directory {} does not exist", c))
-                    })?
-                    .try_into_dir()
-                    .map_err(|_| {
-                        NotFound(format!(
-                            "component {:?} in path {} is not a directory",
-                            c, path
-                        ))
-                    })?;
-            } else {
-                bail!("path is not canonical: {}", path);
+        for c in parent_dir.components() {
+            if c.is_root() {
+                // happens when path is a file or dir in the root directory
+                continue;
             }
+            dir = self
+                .get_dir_record(&dir, &c)?
+                .ok_or_else(|| NotFound(format!("intermediate directory {} does not exist", c)))?
+                .try_into_dir()
+                .map_err(|_| {
+                    NotFound(format!(
+                        "component {:?} in path {} is not a directory",
+                        c, path
+                    ))
+                })?;
         }
 
-        self.get_dir_record(&dir, filename)?.ok_or_else(|| {
+        self.get_dir_record(&dir, &filename)?.ok_or_else(|| {
             anyhow!(NotFound(format!(
                 "no record for {} in directory {}",
-                filename,
-                parent_dir.display()
+                filename, parent_dir
             )))
         })
     }
 
     /// Returns the record for a specific name in a directory if it exists.
-    fn get_dir_record(&mut self, dir: &Directory, name: &str) -> Result<Option<DirectoryRecord>> {
+    fn get_dir_record(
+        &mut self,
+        dir: &Directory,
+        name: &IsoPath,
+    ) -> Result<Option<DirectoryRecord>> {
         for record in self
             .list_dir(dir)
             .with_context(|| format!("listing directory {}", dir.name))?
         {
             let record = record?;
             match &record {
-                DirectoryRecord::Directory(d) if d.name == name => return Ok(Some(record)),
-                DirectoryRecord::File(f) if f.name == name => return Ok(Some(record)),
+                DirectoryRecord::Directory(d) if &d.name == name => return Ok(Some(record)),
+                DirectoryRecord::File(f) if &f.name == name => return Ok(Some(record)),
                 _ => continue,
             }
         }
@@ -215,14 +207,14 @@ impl DirectoryRecord {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Directory {
-    pub name: String,
+    pub name: IsoPath,
     pub address: u64,
     pub length: u32,
 }
 
 #[derive(Debug, Serialize, Clone)]
 pub struct File {
-    pub name: String,
+    pub name: IsoPath,
     pub address: u64,
     pub length: u32,
 }
@@ -355,11 +347,11 @@ pub struct IsoFsWalkIterator<'a> {
     iso: &'a mut fs::File,
     parent_dirs: Vec<IsoFsIterator>,
     current_dir: Option<IsoFsIterator>,
-    dirpath: PathBuf,
+    dirpath: Vec<IsoPath>,
 }
 
 impl<'a> Iterator for IsoFsWalkIterator<'a> {
-    type Item = Result<(String, DirectoryRecord)>;
+    type Item = Result<(IsoPath, DirectoryRecord)>;
     fn next(&mut self) -> Option<Self::Item> {
         self.walk_iterator_next().transpose()
     }
@@ -367,24 +359,25 @@ impl<'a> Iterator for IsoFsWalkIterator<'a> {
 
 impl<'a> IsoFsWalkIterator<'a> {
     // This is simply split out of next() above for easier error-handling
-    fn walk_iterator_next(&mut self) -> Result<Option<(String, DirectoryRecord)>> {
+    fn walk_iterator_next(&mut self) -> Result<Option<(IsoPath, DirectoryRecord)>> {
         while let Some(ref mut current_dir) = self.current_dir {
             match current_dir.next() {
                 Some(Ok(r)) => {
-                    // ideally, we'd return a ref and avoid cloning, but there's no way for an
-                    // iterator to return a reference to data within itself
-                    let mut path = self.dirpath.clone();
-                    match r {
+                    let path = match r {
                         DirectoryRecord::Directory(ref d) => {
                             self.parent_dirs.push(self.current_dir.take().unwrap());
-                            self.dirpath.push(&d.name);
+                            self.dirpath.push(d.name.clone());
                             self.current_dir = Some(IsoFsIterator::new(self.iso, d)?);
-                            path.push(&d.name);
+                            IsoPath::from_components(&self.dirpath)
                         }
-                        DirectoryRecord::File(ref f) => path.push(&f.name),
+                        DirectoryRecord::File(ref f) => {
+                            self.dirpath.push(f.name.clone());
+                            let path = IsoPath::from_components(&self.dirpath);
+                            self.dirpath.pop();
+                            path
+                        }
                     };
-                    // paths are all UTF-8
-                    return Ok(Some((path.into_os_string().into_string().unwrap(), r)));
+                    return Ok(Some((path, r)));
                 }
                 Some(Err(e)) => return Err(e),
                 None => {
@@ -436,14 +429,14 @@ fn get_next_directory_record(
             if is_root && c == 0 {
                 // as a special case, allow "." when reading the root directory
                 // record from the primary volume descriptor
-                Some(".".into())
+                Some(".".parse().unwrap())
             } else {
                 // "." or ".."
                 None
             }
         } else {
             Some(
-                parse_iso9660_string(buf, name_length, IsoString::File)
+                IsoPath::try_from_record_identifier(buf, name_length)
                     .context("parsing record name")?,
             )
         };
@@ -469,6 +462,106 @@ fn get_next_directory_record(
     }
 }
 
+// Invariants:
+// - Paths may contain one or more components
+// - Paths are relative (do not start with "/")
+// - Paths do not contain "." components unless the path is exactly "."
+// - Paths do not contain ".." components
+// - Components are valid in the superset of ISO 9660 that we accept:
+//   lowercase 8.3 filenames with certain special characters prohibited
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct IsoPath(String);
+
+impl FromStr for IsoPath {
+    type Err = Error;
+
+    /// Parse a path.  Normalize to relative path with "." and ".." components
+    /// removed, except that a reference to the root is normalized to ".".
+    fn from_str(s: &str) -> Result<Self> {
+        use std::path::Component::*;
+        let mut components = Vec::new();
+        for c in Path::new(s).components() {
+            match c {
+                Prefix(_) | RootDir | CurDir => (),
+                ParentDir => {
+                    components.pop();
+                }
+                Normal(c) => {
+                    let c = c.to_str().unwrap(); // path came from &str
+                    let len = c.len();
+                    components.push(parse_iso9660_string(
+                        &mut c.as_bytes(),
+                        len,
+                        IsoString::File,
+                    )?);
+                }
+            }
+        }
+        if components.is_empty() {
+            components.push(".".into());
+        }
+        Ok(Self(components.join("/")))
+    }
+}
+
+impl IsoPath {
+    pub fn from_components<'a>(components: impl IntoIterator<Item = &'a Self>) -> Self {
+        // to preserve invariants, we can't assume that elements have a
+        // single component each, and we need to strip "." components
+        let s = components
+            .into_iter()
+            .flat_map(|c| c.as_str().split('/'))
+            .filter(|c| c != &".")
+            .collect::<Vec<&str>>()
+            .join("/");
+        if !s.is_empty() {
+            Self(s)
+        } else {
+            Self(".".into())
+        }
+    }
+
+    /// Read a single pathname component from a directory record.
+    fn try_from_record_identifier(buf: &mut Bytes, len: usize) -> Result<Self> {
+        let s = parse_iso9660_string(buf, len, IsoString::File)?;
+        if s == "." || s == ".." {
+            // sneaky image contains a literal "." or ".."
+            bail!("found invalid filename '{}'", s);
+        }
+        Ok(Self(s))
+    }
+
+    /// Return true if this path represents the root directory.
+    pub fn is_root(&self) -> bool {
+        self.0 == "."
+    }
+
+    /// Return an iterator over path components.
+    pub fn components(&self) -> impl Iterator<Item = Self> + '_ {
+        self.0.split('/').map(|s| Self(s.into()))
+    }
+
+    /// Return the parent directory of this path, possibly ".".
+    pub fn parent(&self) -> Self {
+        Self(self.0.rsplitn(2, '/').nth(1).unwrap_or(".").into())
+    }
+
+    /// Return the filename of this path.
+    pub fn file_name(&self) -> Self {
+        self.components().last().unwrap()
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for IsoPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        self.0.fmt(f)
+    }
+}
+
 #[allow(unused)]
 enum IsoString {
     StrA,
@@ -477,7 +570,7 @@ enum IsoString {
 }
 
 /// Reads an ISO9660 string.
-fn parse_iso9660_string(buf: &mut Bytes, len: usize, kind: IsoString) -> Result<String> {
+fn parse_iso9660_string(buf: &mut impl Buf, len: usize, kind: IsoString) -> Result<String> {
     // References:
     // https://wiki.osdev.org/ISO_9660#String_format
     // https://github.com/torvalds/linux/blob/ddf21bd8ab984ccaa924f090fc7f515bb6d51414/fs/isofs/dir.c#L17
@@ -545,4 +638,128 @@ fn parse_iso9660_string(buf: &mut Bytes, len: usize, kind: IsoString) -> Result<
 fn eat(buf: &mut Bytes, n: usize) -> &mut Bytes {
     buf.advance(n);
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iso_path_from_str() {
+        // basic
+        assert_eq!("z".parse::<IsoPath>().unwrap().as_str(), "z");
+        // mixed case, longer than 8.3
+        assert_eq!(
+            "aBcdEfghi.Json".parse::<IsoPath>().unwrap().as_str(),
+            "abcdefgh.jso"
+        );
+        // longer than 8, no extension
+        assert_eq!("aBcdEfghi".parse::<IsoPath>().unwrap().as_str(), "abcdefgh");
+        // longer than 3, no filename
+        assert_eq!(".aBcdEfghi".parse::<IsoPath>().unwrap().as_str(), ".abc");
+        // two dots (ISO 9660 forbids this but we accept it)
+        assert_eq!(
+            "abcde.fghij.klmno".parse::<IsoPath>().unwrap().as_str(),
+            "abcde.fg.klm"
+        );
+        // specials
+        assert_eq!(
+            "!\"%&'()*".parse::<IsoPath>().unwrap().as_str(),
+            "!\"%&'()*"
+        );
+        assert_eq!("+,-:<=>?".parse::<IsoPath>().unwrap().as_str(), "+,-:<=>?");
+        // invalid character
+        "asd|fg".parse::<IsoPath>().unwrap_err();
+        // semicolon mapping
+        assert_eq!("foo;2".parse::<IsoPath>().unwrap().as_str(), "foo.2");
+        // absolute path with . and ..
+        assert_eq!("/a/./../b".parse::<IsoPath>().unwrap().as_str(), "b");
+        // relative path, traversal past root
+        assert_eq!("./a/../../b".parse::<IsoPath>().unwrap().as_str(), "b");
+        // multiple slashes
+        assert_eq!("a//b//c".parse::<IsoPath>().unwrap().as_str(), "a/b/c");
+        // just the root
+        assert_eq!("/".parse::<IsoPath>().unwrap().as_str(), ".");
+        assert_eq!("".parse::<IsoPath>().unwrap().as_str(), ".");
+    }
+
+    #[test]
+    fn iso_path_from_components() {
+        // elements containing multiple components, plus a root
+        assert_eq!(
+            IsoPath::from_components(&[
+                "a/b/c".parse::<IsoPath>().unwrap(),
+                ".".parse::<IsoPath>().unwrap(),
+                "d/e".parse::<IsoPath>().unwrap(),
+                "f".parse::<IsoPath>().unwrap(),
+            ])
+            .as_str(),
+            "a/b/c/d/e/f"
+        );
+        // root components
+        assert_eq!(
+            IsoPath::from_components(&[
+                ".".parse::<IsoPath>().unwrap(),
+                "b".parse::<IsoPath>().unwrap(),
+                ".".parse::<IsoPath>().unwrap(),
+            ])
+            .as_str(),
+            "b"
+        );
+        // all components are root
+        assert_eq!(
+            IsoPath::from_components(&[
+                ".".parse::<IsoPath>().unwrap(),
+                ".".parse::<IsoPath>().unwrap(),
+            ])
+            .as_str(),
+            "."
+        );
+        // no components
+        assert_eq!(IsoPath::from_components(&[]).as_str(), ".");
+    }
+
+    #[test]
+    fn iso_path_splits() {
+        // multi-element path
+        assert_eq!(
+            "a/b/c/d"
+                .parse::<IsoPath>()
+                .unwrap()
+                .components()
+                .map(|c| c.as_str().to_string())
+                .collect::<Vec<String>>(),
+            vec!["a", "b", "c", "d"]
+        );
+        assert_eq!(
+            "a/b/c/d".parse::<IsoPath>().unwrap().parent().as_str(),
+            "a/b/c"
+        );
+        assert_eq!(
+            "a/b/c/d".parse::<IsoPath>().unwrap().file_name().as_str(),
+            "d"
+        );
+        // single-element path
+        assert_eq!(
+            "a".parse::<IsoPath>()
+                .unwrap()
+                .components()
+                .map(|c| c.as_str().to_string())
+                .collect::<Vec<String>>(),
+            vec!["a"]
+        );
+        assert_eq!("a".parse::<IsoPath>().unwrap().parent().as_str(), ".");
+        assert_eq!("a".parse::<IsoPath>().unwrap().file_name().as_str(), "a");
+        // the root
+        assert_eq!(
+            ".".parse::<IsoPath>()
+                .unwrap()
+                .components()
+                .map(|c| c.as_str().to_string())
+                .collect::<Vec<String>>(),
+            vec!["."]
+        );
+        assert_eq!(".".parse::<IsoPath>().unwrap().parent().as_str(), ".");
+        assert_eq!(".".parse::<IsoPath>().unwrap().file_name().as_str(), ".");
+    }
 }
