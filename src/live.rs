@@ -37,7 +37,7 @@ const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
 const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
-const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
+const COREOS_ISO_PXEBOOT_DIR: &str = "images/pxeboot";
 
 pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -693,7 +693,7 @@ pub fn iso_extract_pxe(config: &IsoExtractPxeConfig) -> Result<()> {
             iso9660::DirectoryRecord::File(file) => {
                 let filename = {
                     let mut s = base.clone();
-                    s.push(file.name.to_lowercase());
+                    s.push(&file.name);
                     s
                 };
                 let path = Path::new(&config.output_dir).join(&filename);

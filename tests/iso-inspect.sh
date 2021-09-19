@@ -31,10 +31,10 @@ jq -e '.header.descriptors[]|select(.type == "primary")|.volume_id|contains("fed
 jq -e '.header.descriptors[]|select(.type == "boot")|.boot_system_id|contains("EL TORITO")' inspect.json
 
 # check that it found some various files and directories at various depths
-jq -e '.records|index("EFI") >= 0' inspect.json
-jq -e '.records|index("IMAGES/PXEBOOT") >= 0' inspect.json
-jq -e '.records|index("IMAGES/PXEBOOT/ROOTFS.IMG") >= 0' inspect.json
-jq -e '.records|index("ZIPL.PRM") >= 0' inspect.json
+jq -e '.records|index("efi") >= 0' inspect.json
+jq -e '.records|index("images/pxeboot") >= 0' inspect.json
+jq -e '.records|index("images/pxeboot/rootfs.img") >= 0' inspect.json
+jq -e '.records|index("zipl.prm") >= 0' inspect.json
 
 # Done
 echo "Success."

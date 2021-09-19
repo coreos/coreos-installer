@@ -512,8 +512,32 @@ fn parse_iso9660_string(buf: &mut Bytes, len: usize, kind: IsoString) -> Result<
             bail!("invalid string name {:?}", bytes);
         }
     }
-    if matches!(kind, IsoString::StrA | IsoString::StrD) {
-        s.truncate(s.trim_end_matches(' ').len());
+    match kind {
+        IsoString::StrA | IsoString::StrD => {
+            s.truncate(s.trim_end_matches(' ').len());
+        }
+        IsoString::File => {
+            // Truncate to 8.3 and lowercase.  ISO filenames are probably
+            // already 8.3, but in principle nothing requires the ISO to be
+            // using interchange level 1, and the rest of the codebase needs
+            // consistent rules for mapping arbitrary filenames to ISO
+            // filenames.
+            let parts = s.rsplitn(2, '.').collect::<Vec<&str>>();
+            s = parts
+                .iter()
+                .rev()
+                .enumerate()
+                .map(|(i, s)| {
+                    if i == 0 {
+                        &s[0..s.len().min(8)]
+                    } else {
+                        &s[0..s.len().min(3)]
+                    }
+                })
+                .collect::<Vec<&str>>()
+                .join(".")
+                .to_lowercase();
+        }
     }
     Ok(s)
 }
