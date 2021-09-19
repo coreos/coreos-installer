@@ -9,6 +9,10 @@ fatal() {
 iso=$1; shift
 iso=$(realpath "${iso}")
 
+tmpd=$(mktemp -d)
+trap 'rm -rf "${tmpd}"' EXIT
+cd "${tmpd}"
+
 coreos-installer iso inspect "${iso}" | tee inspect.json
 
 # check that we found the descriptors
