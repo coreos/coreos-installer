@@ -402,51 +402,52 @@ impl<'a> IsoFsWalkIterator<'a> {
 
 /// Reads the directory record at cursor and advances to the next one.
 fn get_next_directory_record(buf: &mut Bytes, length: u32) -> Result<Option<DirectoryRecord>> {
-    if !buf.has_remaining() {
-        return Ok(None);
-    }
-
-    let mut len = buf.get_u8() as usize;
-    if len == 0 {
-        let jump = {
-            // calculate where we are we in the directory
-            let pos = length as usize - buf.remaining();
-            // get distance to next 2k-aligned address
-            ((pos + ISO9660_SECTOR_SIZE) & !(ISO9660_SECTOR_SIZE - 1)) - pos
-        };
-        if jump >= buf.remaining() {
+    loop {
+        if !buf.has_remaining() {
             return Ok(None);
         }
-        buf.advance(jump);
-        len = buf.get_u8() as usize;
-    }
 
-    // + 1 because len includes the length of the length byte itself, which we already read
-    if buf.remaining() + 1 < len {
-        bail!("incomplete directory record; corrupt ISO?");
-    }
+        let len = buf.get_u8() as usize;
+        if len == 0 {
+            let jump = {
+                // calculate where we are we in the directory
+                let pos = length as usize - buf.remaining();
+                // get distance to next 2k-aligned address
+                ((pos + ISO9660_SECTOR_SIZE) & !(ISO9660_SECTOR_SIZE - 1)) - pos
+            };
+            if jump >= buf.remaining() {
+                return Ok(None);
+            }
+            buf.advance(jump);
+            continue;
+        } else if len > buf.remaining() + 1 {
+            // + 1 because len includes the length of the length byte
+            // itself, which we already read
+            bail!("incomplete directory record; corrupt ISO?");
+        }
 
-    let address = (eat(buf, 1).get_u32_le() as u64) * (ISO9660_SECTOR_SIZE as u64);
-    let length = eat(buf, 4).get_u32_le();
-    let flags = eat(buf, 25 - 14).get_u8();
-    let name_length = eat(buf, 32 - 26).get_u8() as usize;
-    let name = parse_iso9660_path(buf, name_length).context("parsing record name")?;
+        let address = (eat(buf, 1).get_u32_le() as u64) * (ISO9660_SECTOR_SIZE as u64);
+        let length = eat(buf, 4).get_u32_le();
+        let flags = eat(buf, 25 - 14).get_u8();
+        let name_length = eat(buf, 32 - 26).get_u8() as usize;
+        let name = parse_iso9660_path(buf, name_length).context("parsing record name")?;
 
-    // advance to next record
-    eat(buf, len - (33 + name_length));
+        // advance to next record
+        eat(buf, len - (33 + name_length));
 
-    if flags & 2 > 0 {
-        Ok(Some(DirectoryRecord::Directory(Directory {
-            name,
-            address,
-            length,
-        })))
-    } else {
-        Ok(Some(DirectoryRecord::File(File {
-            name,
-            address,
-            length,
-        })))
+        if flags & 2 > 0 {
+            return Ok(Some(DirectoryRecord::Directory(Directory {
+                name,
+                address,
+                length,
+            })));
+        } else {
+            return Ok(Some(DirectoryRecord::File(File {
+                name,
+                address,
+                length,
+            })));
+        }
     }
 }
 
