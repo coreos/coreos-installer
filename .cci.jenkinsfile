@@ -35,8 +35,12 @@ cosaPod(buildroot: true, runAsUser: 0) {
             scenarios4k: "iso-install,iso-offline-install",
             skipUEFI: true
         )
+        // for embed commands, test both the built ISO and a minimal fixture
+        // with the legacy embed areas
         shwrap("tests/iso-ignition.sh /srv/fcos/builds/latest/x86_64/*.iso")
+        shwrap("tests/iso-ignition.sh fixtures/iso/embed-areas-2021-09.iso.xz")
         shwrap("tests/iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
+        shwrap("tests/iso-kargs.sh fixtures/iso/embed-areas-2021-09.iso.xz")
         shwrap("tests/iso-inspect.sh /srv/fcos/builds/latest/x86_64/*.iso")
         // just pass the build dir; this test also uses the other live artifacts
         shwrap("tests/iso-extract-pxe.sh /srv/fcos/builds/latest/x86_64")

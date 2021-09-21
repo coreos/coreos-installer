@@ -18,7 +18,11 @@ tmpd=$(mktemp -d)
 trap 'rm -rf "${tmpd}"' EXIT
 cd "${tmpd}"
 
-cp --reflink=auto "${iso}" "test.iso"
+if [ "${iso%.xz}" != "${iso}" ]; then
+    xz -dc "${iso}" > test.iso
+else
+    cp --reflink=auto "${iso}" "test.iso"
+fi
 iso=test.iso
 out_iso="${iso}.out"
 orig_hash=$(digest "${iso}")
