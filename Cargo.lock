@@ -186,6 +186,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "tempfile",
+ "thiserror",
  "url",
  "uuid",
  "walkdir",

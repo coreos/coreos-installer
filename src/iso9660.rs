@@ -34,7 +34,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use bytes::{Buf, Bytes};
 use serde::Serialize;
 
-use crate::io::{LimitReader, BUFFER_SIZE};
+use crate::io::BUFFER_SIZE;
 
 // technically the standard supports others, but this is the only one we support
 const ISO9660_SECTOR_SIZE: usize = 2048;
@@ -84,70 +84,37 @@ impl IsoFs {
 
     /// Returns the record for a specific path.
     pub fn get_path(&mut self, path: &str) -> Result<DirectoryRecord> {
-        let root_dir = self.get_root_directory()?;
-        let as_path = Path::new(path);
-        let mut parent_dir = if let Some(p) = as_path.parent() {
-            p
-        } else {
-            return Ok(DirectoryRecord::Directory(root_dir));
+        let mut dir = self.get_root_directory()?;
+        let mut components = path_components(path);
+        let filename = match components.pop() {
+            Some(f) => f,
+            None => return Ok(DirectoryRecord::Directory(dir)),
         };
-        if parent_dir.has_root() {
-            parent_dir = parent_dir
-                .strip_prefix("/")
-                .with_context(|| format!("making path '{}' relative", path))?;
-        }
-        let filename = as_path
-            .file_name()
-            .ok_or_else(|| anyhow!("path {} has no base", path))?;
-        let filename = filename.to_str().unwrap(); // `path` is &str
 
-        let mut dir = root_dir;
-        for component in parent_dir.components() {
-            if let std::path::Component::Normal(c) = component {
-                let c = c.to_str().unwrap(); // `path` is &str
-                match self.get_dir_record(&dir, c)? {
-                    Some(DirectoryRecord::Directory(d)) => dir = d,
-                    Some(DirectoryRecord::File(_)) => {
-                        bail!("component {:?} in path {} is not a directory", c, path)
-                    }
-                    None => bail!("intermediate directory {} does not exist", c),
-                }
-            } else {
-                bail!("path is not canonical: {}", path);
-            }
+        for c in &components {
+            dir = self
+                .get_dir_record(&dir, c)?
+                .ok_or_else(|| NotFound(format!("intermediate directory {} does not exist", c)))?
+                .try_into_dir()
+                .map_err(|_| {
+                    NotFound(format!(
+                        "component {:?} in path {} is not a directory",
+                        c, path
+                    ))
+                })?;
         }
 
         self.get_dir_record(&dir, filename)?.ok_or_else(|| {
-            anyhow!(
+            anyhow!(NotFound(format!(
                 "no record for {} in directory {}",
                 filename,
-                parent_dir.display()
-            )
+                components.join("/")
+            )))
         })
     }
 
-    /// Returns the record for a specific directory.
-    pub fn get_dir(&mut self, path: &str) -> Result<Directory> {
-        match self.get_path(path)? {
-            DirectoryRecord::Directory(d) => Ok(d),
-            DirectoryRecord::File(_) => Err(anyhow!("path {} is a file", path)),
-        }
-    }
-
-    /// Returns the record for a specific file.
-    pub fn get_file(&mut self, path: &str) -> Result<File> {
-        match self.get_path(path)? {
-            DirectoryRecord::Directory(_) => Err(anyhow!("path {} is a directory", path)),
-            DirectoryRecord::File(f) => Ok(f),
-        }
-    }
-
     /// Returns the record for a specific name in a directory if it exists.
-    pub fn get_dir_record(
-        &mut self,
-        dir: &Directory,
-        name: &str,
-    ) -> Result<Option<DirectoryRecord>> {
+    fn get_dir_record(&mut self, dir: &Directory, name: &str) -> Result<Option<DirectoryRecord>> {
         for record in self
             .list_dir(dir)
             .with_context(|| format!("listing directory {}", dir.name))?
@@ -169,7 +136,7 @@ impl IsoFs {
             .with_context(|| format!("seeking to file {}", file.name))?;
         Ok(BufReader::with_capacity(
             BUFFER_SIZE,
-            LimitReader::new(&self.file, file.length as u64, None),
+            (&self.file).take(file.length as u64),
         ))
     }
 
@@ -212,6 +179,22 @@ pub enum DirectoryRecord {
     File(File),
 }
 
+impl DirectoryRecord {
+    pub fn try_into_dir(self) -> Result<Directory> {
+        match self {
+            Self::Directory(d) => Ok(d),
+            Self::File(f) => Err(anyhow!("entry {} is a file", f.name)),
+        }
+    }
+
+    pub fn try_into_file(self) -> Result<File> {
+        match self {
+            Self::Directory(f) => Err(anyhow!("entry {} is a directory", f.name)),
+            Self::File(f) => Ok(f),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct Directory {
     pub name: String,
@@ -225,6 +208,11 @@ pub struct File {
     pub address: u64,
     pub length: u32,
 }
+
+/// Requested path was not found.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct NotFound(String);
 
 /// Reads all the volume descriptors.
 fn get_volume_descriptors(f: &mut fs::File) -> Result<Vec<VolumeDescriptor>> {
@@ -285,7 +273,7 @@ impl PrimaryVolumeDescriptor {
             parse_iso9660_string(eat(buf, 1), 32, IsoString::StrA).context("parsing system id")?;
         let volume_id = // technically should be StrD, but non-compliance is common
             parse_iso9660_string(buf, 32, IsoString::StrA).context("parsing volume id")?;
-        let root = match get_next_directory_record(eat(buf, 156 - 72), 34)? {
+        let root = match get_next_directory_record(eat(buf, 156 - 72), 34, true)? {
             Some(DirectoryRecord::Directory(d)) => d,
             _ => bail!("failed to parse root directory record from primary descriptor"),
         };
@@ -339,7 +327,7 @@ impl IsoFsIterator {
 impl Iterator for IsoFsIterator {
     type Item = Result<DirectoryRecord>;
     fn next(&mut self) -> Option<Self::Item> {
-        get_next_directory_record(&mut self.dir, self.length)
+        get_next_directory_record(&mut self.dir, self.length, false)
             .context("reading next record")
             .transpose()
     }
@@ -370,9 +358,6 @@ impl<'a> IsoFsWalkIterator<'a> {
                     let mut path = self.dirpath.clone();
                     match r {
                         DirectoryRecord::Directory(ref d) => {
-                            if d.name == "." || d.name == ".." {
-                                continue;
-                            }
                             self.parent_dirs.push(self.current_dir.take().unwrap());
                             self.dirpath.push(&d.name);
                             self.current_dir = Some(IsoFsIterator::new(self.iso, d)?);
@@ -395,67 +380,74 @@ impl<'a> IsoFsWalkIterator<'a> {
 }
 
 /// Reads the directory record at cursor and advances to the next one.
-fn get_next_directory_record(buf: &mut Bytes, length: u32) -> Result<Option<DirectoryRecord>> {
-    if !buf.has_remaining() {
-        return Ok(None);
-    }
-
-    let mut len = buf.get_u8() as usize;
-    if len == 0 {
-        let jump = {
-            // calculate where we are we in the directory
-            let pos = length as usize - buf.remaining();
-            // get distance to next 2k-aligned address
-            ((pos + ISO9660_SECTOR_SIZE) & !(ISO9660_SECTOR_SIZE - 1)) - pos
-        };
-        if jump >= buf.remaining() {
+fn get_next_directory_record(
+    buf: &mut Bytes,
+    length: u32,
+    is_root: bool,
+) -> Result<Option<DirectoryRecord>> {
+    loop {
+        if !buf.has_remaining() {
             return Ok(None);
         }
-        buf.advance(jump);
-        len = buf.get_u8() as usize;
-    }
 
-    // + 1 because len includes the length of the length byte itself, which we already read
-    if buf.remaining() + 1 < len {
-        bail!("incomplete directory record; corrupt ISO?");
-    }
-
-    let address = (eat(buf, 1).get_u32_le() as u64) * (ISO9660_SECTOR_SIZE as u64);
-    let length = eat(buf, 4).get_u32_le();
-    let flags = eat(buf, 25 - 14).get_u8();
-    let name_length = eat(buf, 32 - 26).get_u8() as usize;
-    let name = parse_iso9660_path(buf, name_length).context("parsing record name")?;
-
-    // advance to next record
-    eat(buf, len - (33 + name_length));
-
-    if flags & 2 > 0 {
-        Ok(Some(DirectoryRecord::Directory(Directory {
-            name,
-            address,
-            length,
-        })))
-    } else {
-        Ok(Some(DirectoryRecord::File(File {
-            name,
-            address,
-            length,
-        })))
-    }
-}
-
-/// Reads a directory record path. This is similar to a regular ISO9660 string, but supports '\0'
-/// to mean current directory, and '\1' for the parent directory.
-fn parse_iso9660_path(buf: &mut Bytes, len: usize) -> Result<String> {
-    if len == 1 && (buf[0] == 0 || buf[0] == 1) {
-        let c = buf.get_u8();
-        if c == 0 {
-            Ok(".".into())
-        } else {
-            Ok("..".into())
+        let len = buf.get_u8() as usize;
+        if len == 0 {
+            let jump = {
+                // calculate where we are we in the directory
+                let pos = length as usize - buf.remaining();
+                // get distance to next 2k-aligned address
+                ((pos + ISO9660_SECTOR_SIZE) & !(ISO9660_SECTOR_SIZE - 1)) - pos
+            };
+            if jump >= buf.remaining() {
+                return Ok(None);
+            }
+            buf.advance(jump);
+            continue;
+        } else if len > buf.remaining() + 1 {
+            // + 1 because len includes the length of the length byte
+            // itself, which we already read
+            bail!("incomplete directory record; corrupt ISO?");
         }
-    } else {
-        parse_iso9660_string(buf, len, IsoString::File)
+
+        let address = (eat(buf, 1).get_u32_le() as u64) * (ISO9660_SECTOR_SIZE as u64);
+        let length = eat(buf, 4).get_u32_le();
+        let flags = eat(buf, 25 - 14).get_u8();
+        let name_length = eat(buf, 32 - 26).get_u8() as usize;
+        let name = if name_length == 1 && (buf[0] == 0 || buf[0] == 1) {
+            let c = buf.get_u8();
+            if is_root && c == 0 {
+                // as a special case, allow "." when reading the root directory
+                // record from the primary volume descriptor
+                Some(".".into())
+            } else {
+                // "." or ".."
+                None
+            }
+        } else {
+            Some(
+                parse_iso9660_string(buf, name_length, IsoString::File)
+                    .context("parsing record name")?,
+            )
+        };
+
+        // advance to next record
+        eat(buf, len - (33 + name_length));
+
+        if let Some(name) = name {
+            if flags & 2 > 0 {
+                return Ok(Some(DirectoryRecord::Directory(Directory {
+                    name,
+                    address,
+                    length,
+                })));
+            } else {
+                return Ok(Some(DirectoryRecord::File(File {
+                    name,
+                    address,
+                    length,
+                })));
+            }
+        }
     }
 }
 
@@ -511,4 +503,43 @@ fn parse_iso9660_string(buf: &mut Bytes, len: usize, kind: IsoString) -> Result<
 fn eat(buf: &mut Bytes, n: usize) -> &mut Bytes {
     buf.advance(n);
     buf
+}
+
+/// Parse path into a Vec<&str> with zero or more components.  Convert path
+/// to relative and resolve all "." and ".." components.
+fn path_components(s: &str) -> Vec<&str> {
+    // empty paths are treated the same as "/" to allow round-tripping
+    use std::path::Component::*;
+    let mut ret = Vec::new();
+    for c in Path::new(s).components() {
+        match c {
+            Prefix(_) | RootDir | CurDir => (),
+            ParentDir => {
+                ret.pop();
+            }
+            Normal(c) => {
+                ret.push(c.to_str().unwrap()); // `s` is &str
+            }
+        }
+    }
+    ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_path_components() {
+        // basic
+        assert_eq!(path_components("z"), vec!["z"]);
+        // absolute path with . and ..
+        assert_eq!(path_components("/a/./../b"), vec!["b"]);
+        // relative path, traversal past root
+        assert_eq!(path_components("./a/../../b"), vec!["b"]);
+        // just the root
+        assert_eq!(path_components("/"), Vec::new() as Vec<&str>);
+        // empty string
+        assert_eq!(path_components(""), Vec::new() as Vec<&str>);
+    }
 }

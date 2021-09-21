@@ -230,9 +230,7 @@ where
     let byte_limit = saved.map(|saved| saved.get_offset()).transpose()?.flatten();
     let mut limit_reader: Box<dyn Read> = match byte_limit {
         None => Box::new(decompress_reader),
-        Some((limit, conflict)) => {
-            Box::new(LimitReader::new(decompress_reader, limit, Some(conflict)))
-        }
+        Some((limit, conflict)) => Box::new(LimitReader::new(decompress_reader, limit, conflict)),
     };
 
     // Read the first MiB of input and, if requested, check it against the

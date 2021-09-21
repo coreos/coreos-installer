@@ -677,7 +677,7 @@ pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
 
 pub fn iso_extract_pxe(config: &IsoExtractPxeConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
-    let pxeboot = iso.get_dir(COREOS_ISO_PXEBOOT_DIR)?;
+    let pxeboot = iso.get_path(COREOS_ISO_PXEBOOT_DIR)?.try_into_dir()?;
     std::fs::create_dir_all(&config.output_dir)?;
 
     let base = {
