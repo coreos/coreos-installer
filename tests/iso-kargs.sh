@@ -117,21 +117,29 @@ run_tests() {
     coreos-installer iso kargs reset "${iso}"
 }
 
-echo "============== Both headers =============="
+echo "============== Default headers =============="
 run_tests
 
-echo "============== Only JSON =============="
-dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
-run_tests
+if [ "$(dd if=${iso} skip=32672 count=8 bs=1 status=none | tr -dc [:alnum:])" = "coreKarg" ]; then
+    coreKarg=1
+    echo "============== Only JSON =============="
+    dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
+    run_tests
 
-echo "============== Only System Area =============="
-echo -n "coreKarg" | dd of="${iso}" seek=32672 bs=1 conv=notrunc status=none
-# Rename KARGS.JSO to XARGS.JSO
-echo -n "X" | dd of="${iso}" seek=$(grep --byte-offset --only-matching --text 'KARGS.JSO;1' "${iso}" | cut -f1 -d:) bs=1 conv=notrunc status=none
-run_tests
+    echo "============== Only System Area =============="
+    echo -n "coreKarg" | dd of="${iso}" seek=32672 bs=1 conv=notrunc status=none
+    # Rename KARGS.JSO to XARGS.JSO
+    echo -n "X" | dd of="${iso}" seek=$(grep --byte-offset --only-matching --text 'KARGS.JSO;1' "${iso}" | cut -f1 -d:) bs=1 conv=notrunc status=none
+    run_tests
 
-echo "============== Neither header =============="
-dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
+    dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
+else
+    coreKarg=
+    # Rename KARGS.JSO to XARGS.JSO
+    echo -n "X" | dd of="${iso}" seek=$(grep --byte-offset --only-matching --text 'KARGS.JSO;1' "${iso}" | cut -f1 -d:) bs=1 conv=notrunc status=none
+fi
+
+echo "============== No header =============="
 # Make sure we fail
 (coreos-installer iso kargs modify -a foobar "${iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
 (coreos-installer iso kargs modify -a foobar "${iso}" -o "${out_iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
@@ -143,4 +151,8 @@ dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
 (coreos-installer iso kargs reset "${iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
 
 # Done
-echo "Success."
+if [ -n "${coreKarg}" ]; then
+    echo "Success; tested with legacy header."
+else
+    echo "Success.  Legacy header unavailable; tested JSON only."
+fi
