@@ -84,49 +84,31 @@ impl IsoFs {
 
     /// Returns the record for a specific path.
     pub fn get_path(&mut self, path: &str) -> Result<DirectoryRecord> {
-        let root_dir = self.get_root_directory()?;
-        let as_path = Path::new(path);
-        let mut parent_dir = if let Some(p) = as_path.parent() {
-            p
-        } else {
-            return Ok(DirectoryRecord::Directory(root_dir));
+        let mut dir = self.get_root_directory()?;
+        let mut components = path_components(path);
+        let filename = match components.pop() {
+            Some(f) => f,
+            None => return Ok(DirectoryRecord::Directory(dir)),
         };
-        if parent_dir.has_root() {
-            parent_dir = parent_dir
-                .strip_prefix("/")
-                .with_context(|| format!("making path '{}' relative", path))?;
-        }
-        let filename = as_path
-            .file_name()
-            .ok_or_else(|| anyhow!("path {} has no base", path))?;
-        let filename = filename.to_str().unwrap(); // `path` is &str
 
-        let mut dir = root_dir;
-        for component in parent_dir.components() {
-            if let std::path::Component::Normal(c) = component {
-                let c = c.to_str().unwrap(); // `path` is &str
-                dir = self
-                    .get_dir_record(&dir, c)?
-                    .ok_or_else(|| {
-                        NotFound(format!("intermediate directory {} does not exist", c))
-                    })?
-                    .try_into_dir()
-                    .map_err(|_| {
-                        NotFound(format!(
-                            "component {:?} in path {} is not a directory",
-                            c, path
-                        ))
-                    })?;
-            } else {
-                bail!("path is not canonical: {}", path);
-            }
+        for c in &components {
+            dir = self
+                .get_dir_record(&dir, c)?
+                .ok_or_else(|| NotFound(format!("intermediate directory {} does not exist", c)))?
+                .try_into_dir()
+                .map_err(|_| {
+                    NotFound(format!(
+                        "component {:?} in path {} is not a directory",
+                        c, path
+                    ))
+                })?;
         }
 
         self.get_dir_record(&dir, filename)?.ok_or_else(|| {
             anyhow!(NotFound(format!(
                 "no record for {} in directory {}",
                 filename,
-                parent_dir.display()
+                components.join("/")
             )))
         })
     }
@@ -521,4 +503,43 @@ fn parse_iso9660_string(buf: &mut Bytes, len: usize, kind: IsoString) -> Result<
 fn eat(buf: &mut Bytes, n: usize) -> &mut Bytes {
     buf.advance(n);
     buf
+}
+
+/// Parse path into a Vec<&str> with zero or more components.  Convert path
+/// to relative and resolve all "." and ".." components.
+fn path_components(s: &str) -> Vec<&str> {
+    // empty paths are treated the same as "/" to allow round-tripping
+    use std::path::Component::*;
+    let mut ret = Vec::new();
+    for c in Path::new(s).components() {
+        match c {
+            Prefix(_) | RootDir | CurDir => (),
+            ParentDir => {
+                ret.pop();
+            }
+            Normal(c) => {
+                ret.push(c.to_str().unwrap()); // `s` is &str
+            }
+        }
+    }
+    ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_path_components() {
+        // basic
+        assert_eq!(path_components("z"), vec!["z"]);
+        // absolute path with . and ..
+        assert_eq!(path_components("/a/./../b"), vec!["b"]);
+        // relative path, traversal past root
+        assert_eq!(path_components("./a/../../b"), vec!["b"]);
+        // just the root
+        assert_eq!(path_components("/"), Vec::new() as Vec<&str>);
+        // empty string
+        assert_eq!(path_components(""), Vec::new() as Vec<&str>);
+    }
 }
