@@ -109,7 +109,7 @@ run_tests() {
     local expected_args="$(coreos-installer iso kargs show --default "${iso}") foobar=val"
     local expected_args_len="$(echo -n "${expected_args}" | wc -c)"
     local filler="$(printf '%*s' $((${length} - ${expected_args_len} - 1)) | tr ' ' '#')"
-    if ! echo -en "${expected_args}\n${filler}" | cmp -s <(dd if=${iso} skip=${offset} count=${length} bs=1) -; then
+    if ! echo -en "${expected_args}\n${filler}" | cmp -s <(dd if=${iso} skip=${offset} count=${length} bs=1 status=none) -; then
         fatal "Failed to manually round-trip kargs"
     fi
 

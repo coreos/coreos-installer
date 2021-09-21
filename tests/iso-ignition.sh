@@ -49,7 +49,7 @@ fi
 # Check the actual file bits.
 offset=$(coreos-installer iso ignition show --header "${iso}" | jq -r .offset)
 length=$(coreos-installer iso ignition show --header "${iso}" | jq -r .length)
-if [ "${config}" != "$(dd if=${iso} skip=${offset} count=${length} bs=1 | xzcat | cpio -i --to-stdout --quiet)" ]; then
+if [ "${config}" != "$(dd if=${iso} skip=${offset} count=${length} bs=1 status=none | xzcat | cpio -i --to-stdout --quiet)" ]; then
     fatal "Failed to manually round-trip Ignition config"
 fi
 
