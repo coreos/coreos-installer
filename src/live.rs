@@ -341,7 +341,7 @@ impl IsoConfig {
     }
 }
 
-#[derive(Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 struct Region {
     // sort order is derived from field order
     pub offset: u64,
@@ -775,6 +775,69 @@ fn copy_file_from_iso(iso: &mut IsoFs, file: &iso9660::File, output_path: &Path)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::io::copy;
+
+    use tempfile::tempfile;
+    use xz2::read::XzDecoder;
+
+    fn open_iso_file() -> File {
+        let iso_bytes: &[u8] = include_bytes!("../fixtures/iso/embed-areas-2021-09.iso.xz");
+        let mut decoder = XzDecoder::new(iso_bytes);
+        let mut iso_file = tempfile().unwrap();
+        copy(&mut decoder, &mut iso_file).unwrap();
+        iso_file
+    }
+
+    #[test]
+    fn test_ignition_embed_area() {
+        let mut iso_file = open_iso_file();
+        // normal read
+        let mut iso = IsoFs::from_file(iso_file.try_clone().unwrap()).unwrap();
+        let region = ignition_embed_area(&mut iso).unwrap();
+        assert_eq!(region.offset, 102400);
+        assert_eq!(region.length, 262144);
+        // missing embed area
+        iso_file.seek(SeekFrom::Start(65903)).unwrap();
+        iso_file.write_all(b"Z").unwrap();
+        let mut iso = IsoFs::from_file(iso_file).unwrap();
+        ignition_embed_area(&mut iso).unwrap_err();
+    }
+
+    #[test]
+    fn test_karg_embed_area() {
+        let mut iso_file = open_iso_file();
+        // normal read
+        check_karg_embed_areas(&mut iso_file);
+        // JSON only
+        iso_file.seek(SeekFrom::Start(32672)).unwrap();
+        iso_file.write_all(&[0; 8]).unwrap();
+        check_karg_embed_areas(&mut iso_file);
+        // legacy header only
+        iso_file.seek(SeekFrom::Start(32672)).unwrap();
+        iso_file.write_all(b"coreKarg").unwrap();
+        iso_file.seek(SeekFrom::Start(63725)).unwrap();
+        iso_file.write_all(b"Z").unwrap();
+        check_karg_embed_areas(&mut iso_file);
+        // neither header
+        iso_file.seek(SeekFrom::Start(32672)).unwrap();
+        iso_file.write_all(&[0; 8]).unwrap();
+        let mut iso = IsoFs::from_file(iso_file).unwrap();
+        assert!(KargEmbedAreas::for_iso(&mut iso).unwrap().is_none());
+    }
+
+    fn check_karg_embed_areas(iso_file: &mut File) {
+        let iso_file = iso_file.try_clone().unwrap();
+        let mut iso = IsoFs::from_file(iso_file).unwrap();
+        let areas = KargEmbedAreas::for_iso(&mut iso).unwrap().unwrap();
+        assert_eq!(areas.length, 1139);
+        assert_eq!(areas.default, "mitigations=auto,nosmt coreos.liveiso=fedora-coreos-34.20210921.dev.0 ignition.firstboot ignition.platform.id=metal");
+        assert_eq!(areas.regions.len(), 2);
+        assert_eq!(areas.regions[0].offset, 98126);
+        assert_eq!(areas.regions[0].length, 1139);
+        assert_eq!(areas.regions[1].offset, 371658);
+        assert_eq!(areas.regions[1].length, 1139);
+    }
 
     #[test]
     fn test_cpio_roundtrip() {
