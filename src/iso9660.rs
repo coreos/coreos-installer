@@ -529,6 +529,146 @@ fn path_components(s: &str) -> Vec<&str> {
 mod tests {
     use super::*;
 
+    use std::io::copy;
+
+    use tempfile::tempfile;
+    use xz2::read::XzDecoder;
+
+    fn open_iso() -> IsoFs {
+        let iso_bytes: &[u8] = include_bytes!("../fixtures/synthetic.iso.xz");
+        let mut decoder = XzDecoder::new(iso_bytes);
+        let mut iso_file = tempfile().unwrap();
+        copy(&mut decoder, &mut iso_file).unwrap();
+        IsoFs::from_file(iso_file).unwrap()
+    }
+
+    #[test]
+    fn test_primary_volume_descriptor() {
+        let iso = open_iso();
+        let desc = iso.get_primary_volume_descriptor().unwrap();
+        assert_eq!(desc.system_id, "system-ID-string");
+        assert_eq!(desc.volume_id, "volume-ID-string");
+        assert_eq!(desc.root.name, ".");
+    }
+
+    #[test]
+    fn test_get_path() {
+        let mut iso = open_iso();
+        // special case for root dir
+        assert_eq!(iso.get_path("/").unwrap().try_into_dir().unwrap().name, ".");
+        // directory
+        assert_eq!(
+            iso.get_path("./CONTENT")
+                .unwrap()
+                .try_into_dir()
+                .unwrap()
+                .name,
+            "CONTENT"
+        );
+        // directory is not a file
+        iso.get_path("./CONTENT")
+            .unwrap()
+            .try_into_file()
+            .unwrap_err();
+        // file is not a directory
+        iso.get_path("CONTENT/FILE.TXT")
+            .unwrap()
+            .try_into_dir()
+            .unwrap_err();
+        // missing object
+        assert!(iso.get_path("MISSING").unwrap_err().is::<NotFound>());
+        // missing intermediate directory
+        assert!(iso
+            .get_path("MISSING/STUFF.TXT")
+            .unwrap_err()
+            .is::<NotFound>());
+        // intermediate directory is file
+        assert!(iso
+            .get_path("CONTENT/FILE.TXT/STUFF.TXT")
+            .unwrap_err()
+            .is::<NotFound>());
+    }
+
+    #[test]
+    fn test_list_dir() {
+        let mut iso = open_iso();
+        let dir = iso.get_path("CONTENT").unwrap().try_into_dir().unwrap();
+        let names = iso
+            .list_dir(&dir)
+            .unwrap()
+            .map(|e| match e {
+                Ok(DirectoryRecord::Directory(d)) => d.name,
+                Ok(DirectoryRecord::File(f)) => f.name,
+                Err(e) => panic!("{}", e),
+            })
+            .collect::<Vec<String>>();
+        assert_eq!(names, vec!["DIR", "FILE.TXT"]);
+    }
+
+    #[test]
+    fn test_read_file() {
+        let mut iso = open_iso();
+        let file = iso
+            .get_path("REALLY/VERY/DEEPLY/NESTED/FILE.TXT")
+            .unwrap()
+            .try_into_file()
+            .unwrap();
+        let mut data = String::new();
+        iso.read_file(&file)
+            .unwrap()
+            .read_to_string(&mut data)
+            .unwrap();
+        assert_eq!(data.as_str(), "foo\n");
+    }
+
+    #[test]
+    fn test_walk() {
+        let expected = vec![
+            "CONTENT",
+            "CONTENT/DIR",
+            "CONTENT/DIR/SUBFILE.TXT",
+            "CONTENT/FILE.TXT",
+            "LARGEDIR",
+            // largedir contents populated programmatically
+            "NAMES",
+            r#"NAMES/!"%&'()*.+,-"#,
+            "NAMES/:<=>?",
+            "NAMES/ABC",
+            "NAMES/ABC.D",
+            "NAMES/ABC.DE",
+            "NAMES/ABC.DEF",
+            "NAMES/ABCDE000",
+            "NAMES/ABCDEFGH",
+            "NAMES/ABCDEFGH.I",
+            "NAMES/ABCDEFGH.IJ",
+            "NAMES/ABCDEFGH.IJK",
+            "NAMES/ABCDEFGH.M",
+            "NAMES/ABCDEFGH.MN",
+            "NAMES/ABCDEFGH.MNO",
+            "REALLY",
+            "REALLY/VERY",
+            "REALLY/VERY/DEEPLY",
+            "REALLY/VERY/DEEPLY/NESTED",
+            "REALLY/VERY/DEEPLY/NESTED/FILE.TXT",
+        ];
+        let mut expected = expected
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        for i in 1..=150 {
+            expected.push(format!("LARGEDIR/{}.DAT", i));
+        }
+        expected.sort_unstable();
+
+        let mut iso = open_iso();
+        let names = iso
+            .walk()
+            .unwrap()
+            .map(|v| v.unwrap().0)
+            .collect::<Vec<String>>();
+        assert_eq!(names, expected);
+    }
+
     #[test]
     fn test_path_components() {
         // basic
