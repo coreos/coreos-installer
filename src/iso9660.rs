@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::{Buf, Bytes};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::io::BUFFER_SIZE;
 
@@ -132,7 +132,7 @@ impl IsoFs {
     /// Returns a reader for a file record.
     pub fn read_file(&mut self, file: &File) -> Result<impl Read + '_> {
         self.file
-            .seek(SeekFrom::Start(file.address))
+            .seek(SeekFrom::Start(file.address.as_offset()))
             .with_context(|| format!("seeking to file {}", file.name))?;
         Ok(BufReader::with_capacity(
             BUFFER_SIZE,
@@ -198,15 +198,28 @@ impl DirectoryRecord {
 #[derive(Debug, Serialize, Clone)]
 pub struct Directory {
     pub name: String,
-    pub address: u64,
+    pub address: Address,
     pub length: u32,
 }
 
 #[derive(Debug, Serialize, Clone)]
 pub struct File {
     pub name: String,
-    pub address: u64,
+    pub address: Address,
     pub length: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub struct Address(u32);
+
+impl Address {
+    pub fn as_offset(&self) -> u64 {
+        self.0 as u64 * ISO9660_SECTOR_SIZE as u64
+    }
+
+    pub fn as_sector(&self) -> u32 {
+        self.0
+    }
 }
 
 /// Requested path was not found.
@@ -216,8 +229,8 @@ pub struct NotFound(String);
 
 /// Reads all the volume descriptors.
 fn get_volume_descriptors(f: &mut fs::File) -> Result<Vec<VolumeDescriptor>> {
-    const ISO9660_VOLUME_DESCRIPTORS: u64 = 0x10 * (ISO9660_SECTOR_SIZE as u64);
-    f.seek(SeekFrom::Start(ISO9660_VOLUME_DESCRIPTORS))
+    const ISO9660_VOLUME_DESCRIPTORS: Address = Address(0x10);
+    f.seek(SeekFrom::Start(ISO9660_VOLUME_DESCRIPTORS.as_offset()))
         .context("seeking to volume descriptors")?;
 
     let mut descriptors: Vec<VolumeDescriptor> = Vec::new();
@@ -310,7 +323,7 @@ pub struct IsoFsIterator {
 
 impl IsoFsIterator {
     fn new(iso: &mut fs::File, dir: &Directory) -> Result<Self> {
-        iso.seek(SeekFrom::Start(dir.address))
+        iso.seek(SeekFrom::Start(dir.address.as_offset()))
             .with_context(|| format!("seeking to directory {}", dir.name))?;
 
         let mut buf = vec![0; dir.length as usize];
@@ -409,7 +422,7 @@ fn get_next_directory_record(
             bail!("incomplete directory record; corrupt ISO?");
         }
 
-        let address = (eat(buf, 1).get_u32_le() as u64) * (ISO9660_SECTOR_SIZE as u64);
+        let address = Address(eat(buf, 1).get_u32_le());
         let length = eat(buf, 4).get_u32_le();
         let flags = eat(buf, 25 - 14).get_u8();
         let name_length = eat(buf, 32 - 26).get_u8() as usize;
