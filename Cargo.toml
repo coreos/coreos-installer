@@ -35,6 +35,8 @@ required-features = ["rdcore"]
 
 [profile.release]
 lto = true
+# We assume we're being delivered via e.g. RPM which supports split debuginfo
+debug = true
 
 [dependencies]
 anyhow = ">= 1.0.38, < 2"
