@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use anyhow::{bail, ensure, Context, Error, Result};
+use bincode::Options;
 use flate2::read::GzDecoder;
 use openssl::hash::{Hasher, MessageDigest};
 use openssl::sha;
@@ -396,6 +397,16 @@ impl<W: Write> TryFrom<WriteHasher<W>> for Sha256Digest {
     fn try_from(wrapper: WriteHasher<W>) -> std::result::Result<Self, Self::Error> {
         Sha256Digest::try_from(wrapper.hasher)
     }
+}
+
+/// Provides uniform bincode options for all our serialization operations.
+pub fn bincoder() -> impl bincode::Options {
+    bincode::options()
+        .allow_trailing_bytes()
+        // make the defaults explicit
+        .with_no_limit()
+        .with_little_endian()
+        .with_varint_encoding()
 }
 
 #[cfg(test)]
