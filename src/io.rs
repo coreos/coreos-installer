@@ -468,10 +468,7 @@ mod tests {
     #[test]
     fn limit_reader_test() {
         // build input data
-        let mut data: Vec<u8> = Vec::new();
-        for i in 0..100 {
-            data.push(i);
-        }
+        let data: Vec<u8> = (0..100).collect();
 
         // limit larger than file
         let mut file = Cursor::new(data.clone());
