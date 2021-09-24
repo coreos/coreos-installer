@@ -27,14 +27,14 @@
 // straightforward to see to what they correspond using the referenced linked above.
 
 use std::fs;
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::{Buf, Bytes};
 use serde::{Deserialize, Serialize};
 
-use crate::io::BUFFER_SIZE;
+use crate::io::*;
 
 // technically the standard supports others, but this is the only one we support
 const ISO9660_SECTOR_SIZE: usize = 2048;
@@ -137,6 +137,18 @@ impl IsoFs {
         Ok(BufReader::with_capacity(
             BUFFER_SIZE,
             (&self.file).take(file.length as u64),
+        ))
+    }
+
+    /// Returns a writer for a file record.
+    pub fn overwrite_file(&mut self, file: &File) -> Result<impl Write + '_> {
+        self.file
+            .seek(SeekFrom::Start(file.address.as_offset()))
+            .with_context(|| format!("seeking to file {}", file.name))?;
+        Ok(LimitWriter::new(
+            &mut self.file,
+            file.length as u64,
+            format!("end of file {}", file.name),
         ))
     }
 
