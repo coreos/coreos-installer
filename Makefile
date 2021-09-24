@@ -25,7 +25,7 @@ docs: all
 install: install-bin install-man install-scripts install-systemd install-dracut
 
 .PHONY: install-bin
-install-bin: all
+install-bin:
 	install -D -t ${DESTDIR}/usr/bin target/${PROFILE}/coreos-installer
 
 .PHONY: install-man
@@ -43,8 +43,8 @@ install-systemd:
 	install -D -t $(DESTDIR)/usr/lib/systemd/system-generators systemd/coreos-installer-generator
 
 .PHONY: install-dracut
-install-dracut: all
-	if [ "${RDCORE}" = "1" ]; then \
+install-dracut:
+	if test -f target/${PROFILE}/rdcore; then \
 		for x in dracut/*; do \
 			bn=$$(basename $$x); \
 			install -D -t $(DESTDIR)/usr/lib/dracut/modules.d/$${bn} $$x/*; \
