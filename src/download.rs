@@ -198,45 +198,42 @@ pub fn write_image<F>(
 where
     F: FnOnce(&[u8], &mut dyn Read, &mut File, &Path, Option<&SavedPartitions>) -> Result<()>,
 {
+    let mut reader: Box<dyn Read> = Box::new(&mut source.reader);
+
     // wrap source for GPG verification
-    let mut verify_reader: Box<dyn Read> = {
-        if let Some(signature) = source.signature.as_ref() {
-            Box::new(GpgReader::new(&mut source.reader, signature)?)
-        } else {
-            Box::new(&mut source.reader)
-        }
-    };
+    if let Some(signature) = source.signature.as_ref() {
+        reader = Box::new(GpgReader::new(reader, signature)?);
+    }
 
     // wrap again for progress reporting
-    let mut progress_reader = ProgressReader::new(
-        &mut verify_reader,
+    reader = Box::new(ProgressReader::new(
+        reader,
         source.length_hint,
         &source.artifact_type,
-    );
+    ));
 
     // Wrap in a BufReader so DecompressReader can peek at the first few
     // bytes for format sniffing, and to amortize read overhead.  Don't
     // trust the content-type since the server may not be configured
     // correctly, or the file might be local.  Then wrap in a
     // DecompressReader for decompression.
-    let mut buf_reader = BufReader::with_capacity(BUFFER_SIZE, &mut progress_reader);
-    let decompress_reader: Box<dyn Read> = if decompress {
-        Box::new(DecompressReader::new(&mut buf_reader)?)
+    let buf_reader = BufReader::with_capacity(BUFFER_SIZE, reader);
+    if decompress {
+        reader = Box::new(DecompressReader::new(buf_reader)?);
     } else {
-        Box::new(buf_reader)
-    };
+        reader = Box::new(buf_reader);
+    }
 
     // Wrap again for limit checking.
     let byte_limit = saved.map(|saved| saved.get_offset()).transpose()?.flatten();
-    let mut limit_reader: Box<dyn Read> = match byte_limit {
-        None => Box::new(decompress_reader),
-        Some((limit, conflict)) => Box::new(LimitReader::new(decompress_reader, limit, conflict)),
-    };
+    if let Some((limit, conflict)) = byte_limit {
+        reader = Box::new(LimitReader::new(reader, limit, conflict));
+    }
 
     // Read the first MiB of input and, if requested, check it against the
     // image's formatted sector size.
     let mut first_mb = [0u8; 1024 * 1024];
-    limit_reader
+    reader
         .read_exact(&mut first_mb)
         .context("decoding first MiB of image")?;
     // Were we asked to check sector size?
@@ -255,7 +252,7 @@ where
     }
 
     // call the callback to copy the image
-    image_copy(&first_mb, &mut limit_reader, dest, dest_path, saved)?;
+    image_copy(&first_mb, &mut reader, dest, dest_path, saved)?;
 
     // finish I/O before closing the progress bar
     dest.sync_all().context("syncing data to disk")?;
