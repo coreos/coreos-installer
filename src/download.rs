@@ -162,7 +162,11 @@ fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Re
         .with_context(|| format!("opening {}", path.display()))?;
 
     // perform GPG verification
-    let mut reader = GpgReader::new(BufReader::with_capacity(BUFFER_SIZE, &mut file), signature)?;
+    let mut reader = GpgReader::new(
+        BufReader::with_capacity(BUFFER_SIZE, &mut file),
+        signature,
+        VerifyKeys::Production,
+    )?;
     copy(&mut reader, &mut io::sink())?;
 
     Ok(())
@@ -229,7 +233,7 @@ where
 
     // wrap source for GPG verification
     if let Some(signature) = source.signature.as_ref() {
-        reader = Box::new(GpgReader::new(reader, signature)?);
+        reader = Box::new(GpgReader::new(reader, signature, VerifyKeys::Production)?);
     }
 
     // wrap again for progress reporting

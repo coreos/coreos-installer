@@ -19,6 +19,15 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Stdio};
 use tempfile::{self, TempDir};
 
+#[derive(Debug)]
+pub enum VerifyKeys {
+    /// Production keys
+    Production,
+    /// Snake oil key
+    #[cfg(test)]
+    InsecureTest,
+}
+
 pub struct GpgReader<R: Read> {
     _gpgdir: TempDir,
     source: R,
@@ -26,7 +35,7 @@ pub struct GpgReader<R: Read> {
 }
 
 impl<R: Read> GpgReader<R> {
-    pub fn new(source: R, signature: &[u8]) -> Result<Self> {
+    pub fn new(source: R, signature: &[u8], keys: VerifyKeys) -> Result<Self> {
         // create GPG home directory with restrictive mode
         let gpgdir = tempfile::Builder::new()
             .prefix("coreos-installer-")
@@ -39,7 +48,13 @@ impl<R: Read> GpgReader<R> {
             .context("setting mode for temporary directory")?;
 
         // import public keys
-        let keys = include_bytes!("../signing-keys.asc");
+        let keys = match keys {
+            VerifyKeys::Production => &include_bytes!("../signing-keys.asc")[..],
+            #[cfg(test)]
+            VerifyKeys::InsecureTest => {
+                &include_bytes!("../../fixtures/verify/test-key.pub.asc")[..]
+            }
+        };
         let mut import = Command::new("gpg")
             .arg("--homedir")
             .arg(gpgdir.path())
@@ -178,5 +193,56 @@ impl<R: Read> Drop for GpgReader<R> {
     fn drop(&mut self) {
         // close stdin, reap process
         let _ = self.child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Read data with valid signature
+    #[test]
+    fn test_good_signature() {
+        let data = include_bytes!("../../fixtures/verify/test-key.priv.asc");
+        let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.sig");
+
+        let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).unwrap();
+        assert_eq!(&buf[..], &data[..]);
+    }
+
+    /// Read data with bad signature
+    #[test]
+    fn test_bad_signature() {
+        let mut data = include_bytes!("../../fixtures/verify/test-key.priv.asc").clone();
+        let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.sig");
+        data[data.len() - 1] = b'!';
+
+        let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).unwrap_err();
+    }
+
+    /// Read truncated data with otherwise-valid signature
+    #[test]
+    fn test_truncated_data() {
+        let data = include_bytes!("../../fixtures/verify/test-key.priv.asc");
+        let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.sig");
+
+        let mut reader = GpgReader::new(&data[..1000], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).unwrap_err();
+    }
+
+    /// Read data with signing key not in keyring
+    #[test]
+    fn test_no_pubkey() {
+        let data = include_bytes!("../../fixtures/verify/test-key.priv.asc");
+        let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.random.sig");
+
+        let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).unwrap_err();
     }
 }
