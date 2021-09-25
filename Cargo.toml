@@ -80,3 +80,9 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.miniz_oxide]
 opt-level = 3
+
+# If liblzma development headers aren't installed, lzma-sys builds its own
+# copy of liblzma.  The unoptimized performance is okay but optimizing gives
+# a ~2x improvement.
+[profile.dev.package.lzma-sys]
+opt-level = 3
