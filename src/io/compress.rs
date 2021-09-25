@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use anyhow::{Context, Result};
-use flate2::read::GzDecoder;
+use flate2::bufread::GzDecoder;
 use std::io::{self, BufRead, Read};
-use xz2::read::XzDecoder;
+use xz2::bufread::XzDecoder;
 
 enum CompressDecoder<R: BufRead> {
     Uncompressed(R),
