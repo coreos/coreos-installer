@@ -20,7 +20,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use bincode::Options;
 use clap::crate_version;
 use serde::{Deserialize, Serialize};
-use xz2::read::XzDecoder;
+use xz2::bufread::XzDecoder;
 
 use crate::io::BUFFER_SIZE;
 

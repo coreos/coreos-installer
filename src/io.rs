@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use anyhow::{bail, ensure, Context, Result};
-use flate2::read::GzDecoder;
+use flate2::bufread::GzDecoder;
 use openssl::sha;
 use std::io::{self, BufRead, ErrorKind, Read, Write};
 use std::result;
-use xz2::read::XzDecoder;
+use xz2::bufread::XzDecoder;
 
 // The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
 // enough to fully amortize system call overhead.
