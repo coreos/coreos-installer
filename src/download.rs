@@ -70,14 +70,13 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
                 .filename
                 .trim_end_matches(".gz")
                 .trim_end_matches(".xz")
-                .to_string()
         } else {
-            source.filename.to_string()
+            &source.filename
         };
         let mut path = PathBuf::new();
         path.push(&config.directory);
-        path.push(&filename);
-        let sig_path = path.with_file_name(format!("{}.sig", &filename));
+        path.push(filename);
+        let sig_path = path.with_file_name(format!("{}.sig", filename));
 
         // check existing image and signature; don't redownload if OK
         // If we decompressed last time, the call will fail because we can't
