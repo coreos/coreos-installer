@@ -64,15 +64,7 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
         }
 
         // calculate paths
-        let filename = if config.decompress {
-            // Drop any compression suffix.  Hacky.
-            source
-                .filename
-                .trim_end_matches(".gz")
-                .trim_end_matches(".xz")
-        } else {
-            &source.filename
-        };
+        let (decompress, filename) = should_decompress(config.decompress, &source.filename);
         let mut path = PathBuf::new();
         path.push(&config.directory);
         path.push(filename);
@@ -83,14 +75,22 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
         // check the old signature.  If we didn't decompress last time but are
         // decompressing this time, we're not smart enough to decompress the
         // existing file.
-        if !config.decompress && check_image_and_sig(source, &path, &sig_path).is_ok() {
+        if !decompress && check_image_and_sig(source, &path, &sig_path).is_ok() {
             // report the output file path and keep going
             println!("{}", path.display());
             continue;
         }
 
-        // write the image and signature
-        if let Err(err) = write_image_and_sig(&mut source, &path, &sig_path, config.decompress) {
+        // Write the image and signature.  Only write the signature if we
+        // weren't asked to decompress, regardless of whether we actually
+        // did.
+        if let Err(err) = write_image_and_sig(
+            &mut source,
+            &path,
+            &sig_path,
+            decompress,
+            !config.decompress,
+        ) {
             // delete output files, which may not have been created yet
             let _ = remove_file(&path);
             let _ = remove_file(&sig_path);
@@ -104,6 +104,34 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Take the value of the command-line compression option and the remote
+/// filename and decide whether we should actually decompress and to what
+/// output filename.
+fn should_decompress(enabled: bool, filename: &str) -> (bool, &str) {
+    // Only decompress if a recognized compression suffix exists.  This
+    // avoids trying to decompress files where the compression is an
+    // inherent part of the file format.  In particular, it avoids
+    // corrupting non-x86_64 PXE initramfs images by truncating off the
+    // appended cpio archive, or decompressing aarch64 kernels.
+
+    #[allow(clippy::if_same_then_else)] // readability
+    if !enabled {
+        (false, filename)
+    } else if filename.ends_with(".tar.gz") || filename.ends_with(".tar.xz") {
+        // In general, an uncompressed .tar file isn't especially useful,
+        // since we've only done half the decoding.  In particular, GCP
+        // images are .tar.gz but are not intended to be unpacked; GCP will
+        // not accept a bare .tar file.
+        (false, filename)
+    } else if filename.ends_with(".gz") {
+        (true, filename.trim_end_matches(".gz"))
+    } else if filename.ends_with(".xz") {
+        (true, filename.trim_end_matches(".xz"))
+    } else {
+        (false, filename)
+    }
 }
 
 // Check an existing image and signature for validity.  The image cannot
@@ -141,12 +169,13 @@ fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Re
     Ok(())
 }
 
-/// Copy the image to disk, and also the signature if appropriate.
+/// Copy the image to disk, and also the signature if requested.
 fn write_image_and_sig(
     source: &mut ImageSource,
     path: &Path,
     sig_path: &Path,
     decompress: bool,
+    save_sig: bool,
 ) -> Result<()> {
     // open output
     let mut dest = OpenOptions::new()
@@ -168,8 +197,8 @@ fn write_image_and_sig(
         None,
     )?;
 
-    // write signature, if relevant
-    if let (false, Some(signature)) = (decompress, source.signature.as_ref()) {
+    // write signature, if requested
+    if let (true, Some(signature)) = (save_sig, source.signature.as_ref()) {
         let mut sig_dest = OpenOptions::new()
             .write(true)
             .create(true)
@@ -465,6 +494,18 @@ mod tests {
     use gptman::{GPTPartitionEntry, GPT};
     use std::io::{Seek, SeekFrom};
     use uuid::Uuid;
+
+    #[test]
+    fn test_should_decompress() {
+        assert_eq!(should_decompress(true, "foo.img"), (false, "foo.img"));
+        assert_eq!(should_decompress(true, "foo.bz2"), (false, "foo.bz2"));
+        assert_eq!(should_decompress(false, "foo.gz"), (false, "foo.gz"));
+        assert_eq!(should_decompress(true, "foo.gz"), (true, "foo"));
+        assert_eq!(should_decompress(true, "foo.tar.gz"), (false, "foo.tar.gz"));
+        assert_eq!(should_decompress(false, "foo.xz"), (false, "foo.xz"));
+        assert_eq!(should_decompress(true, "foo.xz"), (true, "foo"));
+        assert_eq!(should_decompress(true, "foo.tar.xz"), (false, "foo.tar.xz"));
+    }
 
     #[test]
     fn test_write_image_limit() {
