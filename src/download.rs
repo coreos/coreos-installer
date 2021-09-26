@@ -73,7 +73,9 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
         // check the old signature.  If we didn't decompress last time but are
         // decompressing this time, we're not smart enough to decompress the
         // existing file.
-        if !decompress && check_image_and_sig(source, &path, &sig_path).is_ok() {
+        if !decompress
+            && check_image_and_sig(source, &path, &sig_path, VerifyKeys::Production).is_ok()
+        {
             // report the output file path and keep going
             println!("{}", path.display());
             continue;
@@ -88,6 +90,7 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
             &sig_path,
             decompress,
             !config.decompress,
+            VerifyKeys::Production,
         ) {
             // delete output files, which may not have been created yet
             let _ = remove_file(&path);
@@ -135,7 +138,12 @@ fn should_decompress(enabled: bool, filename: &str) -> (bool, &str) {
 // Check an existing image and signature for validity.  The image cannot
 // have been decompressed after downloading.  Return an error if invalid for
 // any reason.
-fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Result<()> {
+fn check_image_and_sig(
+    source: &ImageSource,
+    path: &Path,
+    sig_path: &Path,
+    keys: VerifyKeys,
+) -> Result<()> {
     // ensure we have something to check
     if source.signature.is_none() {
         bail!("no signature available; can't check existing file");
@@ -165,7 +173,7 @@ fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Re
     let mut reader = GpgReader::new(
         BufReader::with_capacity(BUFFER_SIZE, &mut file),
         signature,
-        VerifyKeys::Production,
+        keys,
     )?;
     copy(&mut reader, &mut io::sink())?;
 
@@ -179,6 +187,7 @@ fn write_image_and_sig(
     sig_path: &Path,
     decompress: bool,
     save_sig: bool,
+    keys: VerifyKeys,
 ) -> Result<()> {
     // open output
     let mut dest = OpenOptions::new()
@@ -198,6 +207,7 @@ fn write_image_and_sig(
         decompress,
         None,
         None,
+        keys,
     )?;
 
     // write signature, if requested
@@ -217,6 +227,7 @@ fn write_image_and_sig(
 }
 
 /// Copy the image to disk and verify its signature.
+#[allow(clippy::too_many_arguments)]
 pub fn write_image<F>(
     source: &mut ImageSource,
     dest: &mut File,
@@ -225,6 +236,7 @@ pub fn write_image<F>(
     decompress: bool,
     saved: Option<&SavedPartitions>,
     expected_sector_size: Option<NonZeroU32>,
+    keys: VerifyKeys,
 ) -> Result<()>
 where
     F: FnOnce(&[u8], &mut dyn Read, &mut File, &Path, Option<&SavedPartitions>) -> Result<()>,
@@ -233,7 +245,7 @@ where
 
     // wrap source for GPG verification
     if let Some(signature) = source.signature.as_ref() {
-        reader = Box::new(GpgReader::new(reader, signature, VerifyKeys::Production)?);
+        reader = Box::new(GpgReader::new(reader, signature, keys)?);
     }
 
     // wrap again for progress reporting
@@ -492,8 +504,101 @@ impl<'a, R: Read> Drop for ProgressReader<'a, R> {
 mod tests {
     use super::*;
     use gptman::{GPTPartitionEntry, GPT};
+    use std::fs::{read, write};
     use std::io::{Seek, SeekFrom};
+    use tempfile::TempDir;
     use uuid::Uuid;
+
+    /// Test that the fetch pipeline notices a bad signature
+    #[test]
+    fn test_signature_checks() {
+        test_one_signed_file(
+            &[0; 1 << 20][..],
+            &include_bytes!("../fixtures/verify/1M.sig")[..],
+            &[0; 1 << 20][..],
+        );
+        test_one_signed_file(
+            &include_bytes!("../fixtures/verify/1M.xz")[..],
+            &include_bytes!("../fixtures/verify/1M.xz.sig")[..],
+            &[0; 1 << 20][..],
+        );
+    }
+
+    fn test_one_signed_file(data: &[u8], sig: &[u8], decompressed_data: &[u8]) {
+        // set up input files
+        let dir = TempDir::new().unwrap();
+        let good_path = dir.path().join("good");
+        write(&good_path, data).unwrap();
+        let good_sig_path = dir.path().join("good.sig");
+        write(&good_sig_path, sig).unwrap();
+        let bad_path = dir.path().join("bad");
+        let mut bad_data = data.to_vec();
+        bad_data.push(0);
+        write(&bad_path, &bad_data).unwrap();
+        // same contents as good_sig_path, different path
+        let bad_sig_path = dir.path().join("bad.sig");
+        write(&bad_sig_path, sig).unwrap();
+
+        // check existing copy
+        let source = FileLocation::new(good_path.to_str().unwrap())
+            .sources()
+            .unwrap()
+            .remove(0);
+        check_image_and_sig(
+            &source,
+            &good_path,
+            &good_sig_path,
+            VerifyKeys::InsecureTest,
+        )
+        .unwrap();
+
+        // check existing copy with bad sig
+        let source = FileLocation::new(bad_path.to_str().unwrap())
+            .sources()
+            .unwrap()
+            .remove(0);
+        check_image_and_sig(&source, &bad_path, &bad_sig_path, VerifyKeys::InsecureTest)
+            .unwrap_err();
+
+        // new copy
+        let mut source = FileLocation::new(good_path.to_str().unwrap())
+            .sources()
+            .unwrap()
+            .remove(0);
+        let out_path = dir.path().join("out");
+        let mut out_file = File::create(&out_path).unwrap();
+        write_image(
+            &mut source,
+            &mut out_file,
+            &out_path,
+            image_copy_default,
+            true,
+            None,
+            None,
+            VerifyKeys::InsecureTest,
+        )
+        .unwrap();
+        assert_eq!(&read(&out_path).unwrap(), decompressed_data);
+
+        // new copy with bad sig
+        let mut source = FileLocation::new(bad_path.to_str().unwrap())
+            .sources()
+            .unwrap()
+            .remove(0);
+        let out_path = dir.path().join("out");
+        let mut out_file = File::create(&out_path).unwrap();
+        write_image(
+            &mut source,
+            &mut out_file,
+            &out_path,
+            image_copy_default,
+            true,
+            None,
+            None,
+            VerifyKeys::InsecureTest,
+        )
+        .unwrap_err();
+    }
 
     #[test]
     fn test_should_decompress() {
@@ -549,6 +654,7 @@ mod tests {
             false,
             Some(&saved),
             None,
+            VerifyKeys::InsecureTest,
         )
         .unwrap_err();
         assert!(
