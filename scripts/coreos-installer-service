@@ -10,6 +10,9 @@ PERSIST_KERNEL_NET_PARAMS=("ipv6.disable" "net.ifnames" "net.naming-scheme")
 # List from https://www.mankier.com/7/dracut.cmdline#Description-Network
 PERSIST_DRACUT_NET_PARAMS=("ip" "ifname" "rd.route" "bootdev" "BOOTIF" "rd.bootif" "nameserver" "rd.peerdns" "biosdevname" "vlan" "bond" "team" "bridge" "rd.net.timeout.carrier" "coreos.no_persist_ip" "coreos.force_persist_ip")
 
+# Console params to persist
+PERSIST_CONSOLE_PARAMS=("console")
+
 # IBM S390X params to persist
 PERSIST_S390X_PARAMS=("rd.dasd" "rd.zfcp" "rd.znet" "zfcp.allow_lun_scan" "cio_ignore")
 
@@ -97,7 +100,7 @@ for item in "${cmdline[@]}"; do
             firstboot_args+="${item} "
         fi
     done
-    for param in "${PERSIST_S390X_PARAMS[@]}"; do
+    for param in "${PERSIST_CONSOLE_PARAMS[@]}" "${PERSIST_S390X_PARAMS[@]}"; do
         if [[ $item =~ ^$param(=.*)?$ ]]; then
             args+=("--append-karg" "${item}")
         fi
