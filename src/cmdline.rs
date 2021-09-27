@@ -155,6 +155,9 @@ pub struct InstallConfig {
     /// Digest (type-value) of the Ignition config
     #[structopt(long, value_name = "digest")]
     pub ignition_hash: Option<IgnitionHash>,
+    /// Target CPU architecture
+    #[structopt(short, long, default_value, value_name = "name")]
+    pub architecture: Architecture,
     /// Override the Ignition platform ID
     #[structopt(short, long, value_name = "name")]
     pub platform: Option<String>,
@@ -209,9 +212,6 @@ pub struct InstallConfig {
     /// Base URL for Fedora CoreOS stream metadata
     #[structopt(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
-    /// Target CPU architecture
-    #[structopt(long, default_value, value_name = "name")]
-    pub architecture: Architecture,
     /// Don't clear partition table on error
     #[structopt(long)]
     pub preserve_on_error: bool,
@@ -243,7 +243,7 @@ pub struct DownloadConfig {
     #[structopt(short, long, value_name = "name", default_value = "stable")]
     pub stream: String,
     /// Target CPU architecture
-    #[structopt(long, value_name = "name", default_value)]
+    #[structopt(short, long, value_name = "name", default_value)]
     pub architecture: Architecture,
     /// Fedora CoreOS platform name
     #[structopt(short, long, value_name = "name", default_value = "metal")]
