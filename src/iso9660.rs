@@ -560,7 +560,7 @@ mod tests {
     use xz2::read::XzDecoder;
 
     fn open_iso() -> IsoFs {
-        let iso_bytes: &[u8] = include_bytes!("../fixtures/synthetic.iso.xz");
+        let iso_bytes: &[u8] = include_bytes!("../fixtures/iso/synthetic.iso.xz");
         let mut decoder = XzDecoder::new(iso_bytes);
         let mut iso_file = tempfile().unwrap();
         copy(&mut decoder, &mut iso_file).unwrap();
