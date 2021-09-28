@@ -18,7 +18,11 @@ tmpd=$(mktemp -d)
 trap 'rm -rf "${tmpd}"' EXIT
 cd "${tmpd}"
 
-cp --reflink=auto "${iso}" "test.iso"
+if [ "${iso%.xz}" != "${iso}" ]; then
+    xz -dc "${iso}" > test.iso
+else
+    cp --reflink=auto "${iso}" "test.iso"
+fi
 iso=test.iso
 out_iso="${iso}.out"
 orig_hash=$(digest "${iso}")
@@ -45,7 +49,7 @@ fi
 # Check the actual file bits.
 offset=$(coreos-installer iso ignition show --header "${iso}" | jq -r .offset)
 length=$(coreos-installer iso ignition show --header "${iso}" | jq -r .length)
-if [ "${config}" != "$(dd if=${iso} skip=${offset} count=${length} bs=1 | xzcat | cpio -i --to-stdout --quiet)" ]; then
+if [ "${config}" != "$(dd if=${iso} skip=${offset} count=${length} bs=1 status=none | xzcat | cpio -i --to-stdout --quiet)" ]; then
     fatal "Failed to manually round-trip Ignition config"
 fi
 

@@ -17,7 +17,7 @@ use bytes::Buf;
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
 use openat_ext::FileExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::fs::{read, write, File, OpenOptions};
 use std::io::{self, copy, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
@@ -31,12 +31,13 @@ use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 
 const FILENAME: &str = "config.ign";
-const COREOS_IGNITION_HEADER_MAGIC: &[u8] = b"coreiso+";
+const COREOS_IGNITION_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
 const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
+const COREOS_KARG_EMBED_INFO_PATH: &str = "COREOS/KARGS.JSO";
 const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 
 pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
@@ -265,9 +266,11 @@ struct IsoConfig {
 
 impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
+        let mut iso = IsoFs::from_file(file.try_clone().context("cloning file")?)
+            .context("parsing ISO9660 image")?;
         Ok(Self {
-            ignition: ignition_embed_area(file)?,
-            kargs: KargEmbedAreas::for_file(file)?,
+            ignition: ignition_embed_area(&mut iso)?,
+            kargs: KargEmbedAreas::for_iso(&mut iso)?,
         })
     }
 
@@ -338,7 +341,7 @@ impl IsoConfig {
     }
 }
 
-#[derive(Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 struct Region {
     // sort order is derived from field order
     pub offset: u64,
@@ -445,10 +448,8 @@ impl Stream for [&Region] {
 
 #[derive(Serialize)]
 struct KargEmbedAreas {
-    #[serde(rename = "default_kargs")]
-    default_region: Region,
-    #[serde(skip_serializing)]
-    default_args: String,
+    length: usize,
+    default: String,
 
     #[serde(rename = "kargs")]
     regions: Vec<Region>,
@@ -456,9 +457,76 @@ struct KargEmbedAreas {
     args: String,
 }
 
+#[derive(Deserialize)]
+struct KargEmbedInfo {
+    default: String,
+    files: Vec<KargEmbedLocation>,
+    size: usize,
+}
+
+#[derive(Deserialize)]
+struct KargEmbedLocation {
+    path: String,
+    offset: u64,
+}
+
 impl KargEmbedAreas {
     // Return Ok(None) if no kargs embed areas exist.
-    pub fn for_file(file: &mut File) -> Result<Option<Self>> {
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Option<Self>> {
+        let iso_file = match iso.get_path(COREOS_KARG_EMBED_INFO_PATH) {
+            Ok(record) => record.try_into_file()?,
+            // old ISO without info JSON
+            Err(e) if e.is::<iso9660::NotFound>() => {
+                return Self::for_file_via_system_area(iso.as_file()?)
+            }
+            Err(e) => return Err(e),
+        };
+        let info: KargEmbedInfo = serde_json::from_reader(
+            iso.read_file(&iso_file)
+                .context("reading kargs embed area info")?,
+        )
+        .context("decoding kargs embed area info")?;
+
+        // sanity-check size against a reasonable limit
+        if info.size > COREOS_KARG_EMBED_AREA_MAX_SIZE {
+            bail!(
+                "karg embed area size larger than {} (found {})",
+                COREOS_KARG_EMBED_AREA_MAX_SIZE,
+                info.size
+            );
+        }
+        if info.default.len() > info.size {
+            bail!(
+                "default kargs size {} larger than embed areas ({})",
+                info.default.len(),
+                info.size
+            );
+        }
+
+        // writable regions
+        let mut regions = Vec::new();
+        for loc in info.files {
+            let iso_file = iso
+                .get_path(&loc.path.to_uppercase())
+                .with_context(|| format!("looking up '{}'", loc.path))?
+                .try_into_file()?;
+            // we rely on Region::read() to verify that the offset/length
+            // pair is in bounds
+            regions.push(
+                Region::read(
+                    iso.as_file()?,
+                    iso_file.address.as_offset() + loc.offset,
+                    info.size,
+                )
+                .context("reading kargs embed area")?,
+            );
+        }
+        regions.sort_unstable_by_key(|r| r.offset);
+
+        Some(Self::build(info.size, info.default, regions)).transpose()
+    }
+
+    fn for_file_via_system_area(file: &mut File) -> Result<Option<Self>> {
         // The ISO 9660 System Area is 32 KiB. Karg embed area information is located in the 72 bytes
         // before the initrd embed area (see EmbedArea below):
         // 8 bytes: magic string "coreKarg"
@@ -496,7 +564,7 @@ impl KargEmbedAreas {
         // default kargs
         let offset = header.get_u64_le();
         let default_region = Region::read(file, offset, length).context("reading default kargs")?;
-        let default_args = Self::parse(&default_region)?;
+        let default = Self::parse(&default_region)?;
 
         // writable regions
         let mut regions = Vec::new();
@@ -508,7 +576,11 @@ impl KargEmbedAreas {
             regions.push(Region::read(file, offset, length).context("reading kargs embed area")?);
         }
 
-        // we expect at least one
+        Some(Self::build(length, default, regions)).transpose()
+    }
+
+    fn build(length: usize, default: String, regions: Vec<Region>) -> Result<Self> {
+        // we expect at least one region
         if regions.is_empty() {
             bail!("No karg embed areas found; corrupted CoreOS ISO image.");
         }
@@ -527,12 +599,12 @@ impl KargEmbedAreas {
             }
         }
 
-        Ok(Some(KargEmbedAreas {
-            default_region,
-            default_args,
+        Ok(Self {
+            length,
+            default,
             regions,
             args,
-        }))
+        })
     }
 
     fn parse(region: &Region) -> Result<String> {
@@ -544,7 +616,7 @@ impl KargEmbedAreas {
     }
 
     pub fn kargs_default(&self) -> &str {
-        &self.default_args
+        &self.default
     }
 
     pub fn kargs(&self) -> &str {
@@ -554,14 +626,14 @@ impl KargEmbedAreas {
     pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
         let unformatted = kargs.trim();
         let formatted = unformatted.to_string() + "\n";
-        if formatted.len() > self.default_region.length {
+        if formatted.len() > self.length {
             bail!(
                 "kargs too large for area: {} vs {}",
                 formatted.len(),
-                self.default_region.length
+                self.length
             );
         }
-        let mut contents = vec![b'#'; self.default_region.length];
+        let mut contents = vec![b'#'; self.length];
         contents[..formatted.len()].copy_from_slice(formatted.as_bytes());
         for region in &mut self.regions {
             region.contents = contents.clone();
@@ -579,31 +651,14 @@ impl KargEmbedAreas {
     }
 }
 
-fn ignition_embed_area(file: &mut File) -> Result<Region> {
-    // The ISO 9660 System Area is 32 KiB.  The last 24 bytes should be:
-    // 8 bytes: magic string "coreiso+"
-    // 8 bytes little-endian: offset of embed area from start of file
-    // 8 bytes little-endian: length of embed area
-    let region = Region::read(
-        file,
-        32768 - COREOS_IGNITION_HEADER_SIZE,
-        COREOS_IGNITION_HEADER_SIZE as usize,
-    )
-    .context("reading Ignition embed header")?;
-    let mut header = &region.contents[..];
-    // magic number
-    if header.copy_to_bytes(8) != COREOS_IGNITION_HEADER_MAGIC {
-        bail!("Unrecognized CoreOS ISO image.");
-    }
-    // offset
-    let offset = header.get_u64_le();
-    // length
-    let length: usize = header
-        .get_u64_le()
-        .try_into()
-        .context("embed area too large to allocate")?;
+fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
+    let f = iso
+        .get_path(COREOS_IGNITION_EMBED_PATH)
+        .context("finding Ignition embed area")?
+        .try_into_file()?;
     // read (checks offset/length as a side effect)
-    Region::read(file, offset, length).context("reading Ignition embed area")
+    Region::read(iso.as_file()?, f.address.as_offset(), f.length as usize)
+        .context("reading Ignition embed area")
 }
 
 /// Make a gzipped CPIO archive containing the specified Ignition config.
@@ -720,6 +775,69 @@ fn copy_file_from_iso(iso: &mut IsoFs, file: &iso9660::File, output_path: &Path)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::io::copy;
+
+    use tempfile::tempfile;
+    use xz2::read::XzDecoder;
+
+    fn open_iso_file() -> File {
+        let iso_bytes: &[u8] = include_bytes!("../fixtures/iso/embed-areas-2021-09.iso.xz");
+        let mut decoder = XzDecoder::new(iso_bytes);
+        let mut iso_file = tempfile().unwrap();
+        copy(&mut decoder, &mut iso_file).unwrap();
+        iso_file
+    }
+
+    #[test]
+    fn test_ignition_embed_area() {
+        let mut iso_file = open_iso_file();
+        // normal read
+        let mut iso = IsoFs::from_file(iso_file.try_clone().unwrap()).unwrap();
+        let region = ignition_embed_area(&mut iso).unwrap();
+        assert_eq!(region.offset, 102400);
+        assert_eq!(region.length, 262144);
+        // missing embed area
+        iso_file.seek(SeekFrom::Start(65903)).unwrap();
+        iso_file.write_all(b"Z").unwrap();
+        let mut iso = IsoFs::from_file(iso_file).unwrap();
+        ignition_embed_area(&mut iso).unwrap_err();
+    }
+
+    #[test]
+    fn test_karg_embed_area() {
+        let mut iso_file = open_iso_file();
+        // normal read
+        check_karg_embed_areas(&mut iso_file);
+        // JSON only
+        iso_file.seek(SeekFrom::Start(32672)).unwrap();
+        iso_file.write_all(&[0; 8]).unwrap();
+        check_karg_embed_areas(&mut iso_file);
+        // legacy header only
+        iso_file.seek(SeekFrom::Start(32672)).unwrap();
+        iso_file.write_all(b"coreKarg").unwrap();
+        iso_file.seek(SeekFrom::Start(63725)).unwrap();
+        iso_file.write_all(b"Z").unwrap();
+        check_karg_embed_areas(&mut iso_file);
+        // neither header
+        iso_file.seek(SeekFrom::Start(32672)).unwrap();
+        iso_file.write_all(&[0; 8]).unwrap();
+        let mut iso = IsoFs::from_file(iso_file).unwrap();
+        assert!(KargEmbedAreas::for_iso(&mut iso).unwrap().is_none());
+    }
+
+    fn check_karg_embed_areas(iso_file: &mut File) {
+        let iso_file = iso_file.try_clone().unwrap();
+        let mut iso = IsoFs::from_file(iso_file).unwrap();
+        let areas = KargEmbedAreas::for_iso(&mut iso).unwrap().unwrap();
+        assert_eq!(areas.length, 1139);
+        assert_eq!(areas.default, "mitigations=auto,nosmt coreos.liveiso=fedora-coreos-34.20210921.dev.0 ignition.firstboot ignition.platform.id=metal");
+        assert_eq!(areas.regions.len(), 2);
+        assert_eq!(areas.regions[0].offset, 98126);
+        assert_eq!(areas.regions[0].length, 1139);
+        assert_eq!(areas.regions[1].offset, 371658);
+        assert_eq!(areas.regions[1].length, 1139);
+    }
 
     #[test]
     fn test_cpio_roundtrip() {
