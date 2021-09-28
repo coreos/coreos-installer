@@ -697,18 +697,23 @@ pub fn iso_extract_pxe(config: &IsoExtractPxeConfig) -> Result<()> {
                     s
                 };
                 let path = Path::new(&config.output_dir).join(&filename);
-                let mut outf = OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&path)
-                    .with_context(|| format!("opening {}", path.display()))?;
-                let mut bufw = BufWriter::with_capacity(BUFFER_SIZE, &mut outf);
                 println!("{}", path.display());
-                copy(&mut iso.read_file(&file)?, &mut bufw)?;
-                bufw.flush()?;
+                copy_file_from_iso(&mut iso, &file, &path)?;
             }
         }
     }
+    Ok(())
+}
+
+fn copy_file_from_iso(iso: &mut IsoFs, file: &iso9660::File, output_path: &Path) -> Result<()> {
+    let mut outf = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output_path)
+        .with_context(|| format!("opening {}", output_path.display()))?;
+    let mut bufw = BufWriter::with_capacity(BUFFER_SIZE, &mut outf);
+    copy(&mut iso.read_file(file)?, &mut bufw)?;
+    bufw.flush()?;
     Ok(())
 }
 

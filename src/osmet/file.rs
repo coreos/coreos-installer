@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use structopt::clap::crate_version;
 use xz2::read::XzDecoder;
 
-use crate::io::BUFFER_SIZE;
+use crate::io::{bincoder, BUFFER_SIZE};
 
 use super::*;
 
@@ -85,10 +85,11 @@ pub(super) fn osmet_file_write(
             .tempfile_in(path.parent().unwrap())?,
     );
 
-    bincoder()
+    let coder = &mut bincoder();
+    coder
         .serialize_into(&mut f, &header)
         .context("failed to serialize osmet file header")?;
-    bincoder()
+    coder
         .serialize_into(&mut f, &osmet)
         .context("failed to serialize osmet")?;
 
@@ -200,13 +201,4 @@ fn verify_canonical(mappings: &[Mapping]) -> Result<u64> {
     }
 
     Ok(cursor)
-}
-
-fn bincoder() -> impl bincode::Options {
-    bincode::options()
-        .allow_trailing_bytes()
-        // make the defaults explicit
-        .with_no_limit()
-        .with_little_endian()
-        .with_varint_encoding()
 }

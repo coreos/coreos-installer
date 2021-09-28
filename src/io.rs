@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use anyhow::{bail, ensure, Context, Error, Result};
+use bincode::Options;
 use flate2::read::GzDecoder;
 use openssl::hash::{Hasher, MessageDigest};
 use openssl::sha;
@@ -257,6 +258,49 @@ impl<R: Read> Read for LimitReader<R> {
     }
 }
 
+pub struct LimitWriter<W: Write> {
+    sink: W,
+    length: u64,
+    remaining: u64,
+    conflict: String,
+}
+
+impl<W: Write> LimitWriter<W> {
+    pub fn new(sink: W, length: u64, conflict: String) -> Self {
+        Self {
+            sink,
+            length,
+            remaining: length,
+            conflict,
+        }
+    }
+}
+
+impl<W: Write> Write for LimitWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> result::Result<usize, io::Error> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let allowed = self.remaining.min(buf.len() as u64);
+        if allowed == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("collision with {} at offset {}", self.conflict, self.length),
+            ));
+        }
+        let count = self.sink.write(&buf[..allowed as usize])?;
+        self.remaining = self
+            .remaining
+            .checked_sub(count as u64)
+            .expect("wrote more bytes than allowed");
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> result::Result<(), io::Error> {
+        self.sink.flush()
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct Sha256Digest(pub [u8; 32]);
 
@@ -353,6 +397,16 @@ impl<W: Write> TryFrom<WriteHasher<W>> for Sha256Digest {
     fn try_from(wrapper: WriteHasher<W>) -> std::result::Result<Self, Self::Error> {
         Sha256Digest::try_from(wrapper.hasher)
     }
+}
+
+/// Provides uniform bincode options for all our serialization operations.
+pub fn bincoder() -> impl bincode::Options {
+    bincode::options()
+        .allow_trailing_bytes()
+        // make the defaults explicit
+        .with_no_limit()
+        .with_little_endian()
+        .with_varint_encoding()
 }
 
 #[cfg(test)]
@@ -468,10 +522,7 @@ mod tests {
     #[test]
     fn limit_reader_test() {
         // build input data
-        let mut data: Vec<u8> = Vec::new();
-        for i in 0..100 {
-            data.push(i);
-        }
+        let data: Vec<u8> = (0..100).collect();
 
         // limit larger than file
         let mut file = Cursor::new(data.clone());
@@ -527,5 +578,44 @@ mod tests {
             lim.read(&mut buf).unwrap_err().to_string(),
             "collision with foo at offset 50"
         );
+    }
+
+    #[test]
+    fn limit_writer_test() {
+        let data: Vec<u8> = (0..100).collect();
+
+        // limit larger than data
+        let mut outbuf: Vec<u8> = Vec::new();
+        let mut lim = LimitWriter::new(&mut outbuf, 150, "foo".into());
+        lim.write_all(&data).unwrap();
+        lim.flush().unwrap();
+        assert_eq!(data, outbuf);
+
+        // limit exactly equal to data
+        let mut outbuf: Vec<u8> = Vec::new();
+        let mut lim = LimitWriter::new(&mut outbuf, 100, "foo".into());
+        lim.write_all(&data).unwrap();
+        lim.flush().unwrap();
+        assert_eq!(data, outbuf);
+
+        // limit smaller than data
+        let mut outbuf: Vec<u8> = Vec::new();
+        let mut lim = LimitWriter::new(&mut outbuf, 90, "foo".into());
+        assert_eq!(
+            lim.write_all(&data).unwrap_err().to_string(),
+            "collision with foo at offset 90"
+        );
+
+        // directly test writing in multiple chunks
+        let mut outbuf: Vec<u8> = Vec::new();
+        let mut lim = LimitWriter::new(&mut outbuf, 90, "foo".into());
+        assert_eq!(lim.write(&data[0..60]).unwrap(), 60);
+        assert_eq!(lim.write(&data[60..100]).unwrap(), 30); // short write
+        assert_eq!(
+            lim.write(&data[90..100]).unwrap_err().to_string(),
+            "collision with foo at offset 90"
+        );
+        assert_eq!(lim.write(&data[0..0]).unwrap(), 0);
+        assert_eq!(&data[0..90], &outbuf);
     }
 }
