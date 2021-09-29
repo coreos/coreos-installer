@@ -23,6 +23,7 @@ use std::io::{copy, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use crate::blockdev::*;
 use crate::cmdline::*;
@@ -241,6 +242,10 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         bail!("install failed");
     }
 
+    // warn if we have more than 1 partition with boot/root label
+    check_single_partition("boot", &config.device)?;
+    check_single_partition("root", &config.device)?;
+
     eprintln!("Install complete.");
     Ok(())
 }
@@ -398,6 +403,37 @@ fn write_disk(
     // detect any latent write errors
     dest.sync_all().context("syncing data to disk")?;
 
+    Ok(())
+}
+
+fn check_single_partition(label: &str, disk: &str) -> Result<()> {
+    let label = format!("{} ", label);
+    let cmd = Command::new("lsblk")
+        .arg("-o")
+        .arg("LABEL,NAME")
+        .arg("--noheadings")
+        .arg("--list")
+        .arg("--paths")
+        .stderr(Stdio::inherit())
+        .output()
+        .context("reading partitions' labels")?;
+    if !cmd.status.success() {
+        bail!("lsblk failed");
+    }
+
+    let pts = std::str::from_utf8(&cmd.stdout)
+        .context("decoding lsblk output")?
+        .trim()
+        .lines()
+        .filter(|&s| s.starts_with(&label))
+        .filter_map(|s| s.split_whitespace().last())
+        .collect::<Vec<_>>();
+    if pts.len() > 1 {
+        eprintln!(
+            "System may have several partitions with '{}' label: {:?}.\nYou could `wipefs` all disks except: {}.",
+            label, pts, disk
+        );
+    }
     Ok(())
 }
 
