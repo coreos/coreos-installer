@@ -241,6 +241,17 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         bail!("install failed");
     }
 
+    drop(dest);
+    // warn if we have more than 1 partition with boot label
+    let devices = get_all_block_devices()?;
+    let amount = count_partitions_with_label("boot", &devices.blockdevices);
+    if amount != 1 {
+        eprintln!(
+            "System has {} partitions with boot label. Please 'wipefs' all except {}",
+            amount, config.device
+        );
+    }
+
     eprintln!("Install complete.");
     Ok(())
 }

@@ -17,13 +17,15 @@ use gptman::{GPTPartitionEntry, GPT};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount, sched};
 use regex::Regex;
-use std::collections::HashMap;
+use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::env;
 use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
 };
+use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::linux::fs::MetadataExt;
@@ -1512,6 +1514,360 @@ mod tests {
                 .collect::<Vec<(u32, &GPTPartitionEntry)>>(),
             "{}",
             message
+        );
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockDevices {
+    pub blockdevices: Vec<Device>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Device {
+    pub name: String,
+    pub label: Option<String>,
+    pub uuid: Option<String>,
+    pub children: Option<Vec<Device>>,
+}
+
+impl PartialEq for Device {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+impl Eq for Device {}
+
+impl Hash for Device {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+pub fn get_all_block_devices() -> Result<BlockDevices> {
+    // first of all try rereading partition table for each device
+    let mut cmd = Command::new("lsblk");
+    cmd.arg("-o")
+        .arg("NAME,LABEL,UUID")
+        .arg("--noheadings")
+        .arg("--json")
+        .arg("--paths")
+        .arg("--nodeps");
+    let output = cmd_output(&mut cmd)?;
+    let devices = serde_json::from_str::<BlockDevices>(&output)?;
+    for dev in devices.blockdevices {
+        match std::fs::File::open(&dev.name) {
+            Ok(mut fd) => {
+                if let Err(e) = reread_partition_table(&mut fd) {
+                    eprintln!("{}: {}", dev.name, e);
+                }
+            }
+            Err(e) => eprintln!("{}: {}", dev.name, e),
+        }
+    }
+
+    let mut cmd = Command::new("lsblk");
+    cmd.arg("-o")
+        .arg("NAME,LABEL,UUID")
+        .arg("--noheadings")
+        .arg("--json")
+        .arg("--paths");
+    let output = cmd_output(&mut cmd)?;
+    let devices = serde_json::from_str::<BlockDevices>(&output)?;
+    Ok(devices)
+}
+
+pub fn get_partitions_with_label<'a>(
+    label: &str,
+    devices: &'a [Device],
+) -> Option<HashSet<&'a Device>> {
+    fn disks_flatten<'a>(label: &str, devices: &'a [Device], out: &mut HashSet<&'a Device>) {
+        for dev in devices {
+            if let Some(l) = dev.label.as_ref() {
+                if l == label {
+                    out.insert(dev);
+                }
+            }
+            if let Some(children) = dev.children.as_ref() {
+                disks_flatten(label, children, out)
+            }
+        }
+    }
+
+    let mut out = HashSet::new();
+    disks_flatten(label, devices, &mut out);
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+pub fn count_partitions_with_label(label: &str, devices: &[Device]) -> usize {
+    let partitions = get_partitions_with_label(label, devices);
+    match partitions {
+        Some(v) => {
+            let with_uuids = v
+                .iter()
+                .filter_map(|d| d.uuid.as_ref())
+                .collect::<HashSet<_>>()
+                .len();
+            let without_uuids = v.iter().filter(|d| d.uuid.is_none()).count();
+            with_uuids + without_uuids
+        }
+        None => 0,
+    }
+}
+
+#[cfg(test)]
+mod partitions_by_label_tests {
+    use super::*;
+
+    macro_rules! assert_same_partitions {
+        ($expected:expr, $actual:expr) => {{
+            let mut left = $expected;
+            let mut right = $actual.iter().map(|f| f.name.as_str()).collect::<Vec<_>>();
+            right.sort();
+            left.sort();
+            assert_eq!(left, right);
+        }};
+    }
+
+    #[test]
+    fn count_two_disks() {
+        let json = r#"
+        {
+            "blockdevices": [
+               {"name":"/dev/sda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/sda3", "label":"boot", "uuid":"b168dfd5-7ea6-49fb-a006-a241c35b46da"},
+                     {"name":"/dev/sda4", "label":"root", "uuid":"50a003eb-6708-4f52-8ece-3e9a4a6c838f"}
+                  ]
+               },
+               {"name":"/dev/dasda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/dasda1", "label":"boot", "uuid":"0ca76601-1ddd-4e1f-9d5a-f8a50fdcd091"},
+                     {"name":"/dev/dasda2", "label":"root", "uuid":"82496045-9743-4484-89d5-869265d4a15c"}
+                  ]
+               }
+            ]
+        }"#;
+
+        //when
+        let disks: BlockDevices = serde_json::from_str(&json).unwrap();
+        let pts = get_partitions_with_label("boot", &disks.blockdevices).unwrap();
+
+        //then
+        assert_eq!(2, count_partitions_with_label("boot", &disks.blockdevices));
+        assert_same_partitions!(vec!["/dev/dasda1", "/dev/sda3"], pts);
+    }
+
+    #[test]
+    fn count_two_paths_to_disk() {
+        let json = r#"
+        {
+            "blockdevices": [
+            {"name":"/dev/sda", "label":null, "uuid":null,
+                "children": [
+                    {"name":"/dev/sda3", "label":"boot", "uuid":"b168dfd5-7ea6-49fb-a006-a241c35b46da"},
+                    {"name":"/dev/sda4", "label":"root", "uuid":"50a003eb-6708-4f52-8ece-3e9a4a6c838f"}
+                ]
+            },
+            {"name":"/dev/sdb", "label":null, "uuid":null,
+                "children": [
+                    {"name":"/dev/sdb3", "label":"boot", "uuid":"b168dfd5-7ea6-49fb-a006-a241c35b46da"},
+                    {"name":"/dev/sdb4", "label":"root", "uuid":"50a003eb-6708-4f52-8ece-3e9a4a6c838f"}
+                ]
+            }
+            ]
+        }"#;
+
+        //when
+        let disks: BlockDevices = serde_json::from_str(&json).unwrap();
+        let pts = get_partitions_with_label("boot", &disks.blockdevices).unwrap();
+
+        //then
+        assert_eq!(1, count_partitions_with_label("boot", &disks.blockdevices));
+        assert_same_partitions!(vec!["/dev/sdb3", "/dev/sda3"], pts);
+    }
+
+    #[test]
+    fn count_multipath() {
+        // given
+        let json = r#"
+        {
+            "blockdevices": [
+               {"name":"/dev/sda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b168dfd5-7ea6-49fb-a006-a241c35b46da"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"50a003eb-6708-4f52-8ece-3e9a4a6c838f"}
+                        ]
+                     }
+                  ]
+               },
+               {"name":"/dev/sdb", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b168dfd5-7ea6-49fb-a006-a241c35b46da"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"50a003eb-6708-4f52-8ece-3e9a4a6c838f"}
+                        ]
+                     }
+                  ]
+               }
+            ]
+        }"#;
+
+        //when
+        let disks: BlockDevices = serde_json::from_str(&json).unwrap();
+        let pts = get_partitions_with_label("boot", &disks.blockdevices).unwrap();
+
+        //then
+        assert_eq!(1, count_partitions_with_label("boot", &disks.blockdevices));
+        assert_same_partitions!(vec!["/dev/mapper/mpatha3"], pts);
+    }
+
+    #[test]
+    fn count_multipath_with_blockdevice() {
+        // given
+        let json = r#"
+        {
+            "blockdevices": [
+               {"name":"/dev/sda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/sda3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                     {"name":"/dev/sda4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"},
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"}
+                        ]
+                     }
+                  ]
+               },
+               {"name":"/dev/sdb", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/sdb3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                     {"name":"/dev/sdb4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"},
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"}
+                        ]
+                     }
+                  ]
+               }
+            ]
+        }"#;
+
+        //when
+        let disks: BlockDevices = serde_json::from_str(&json).unwrap();
+        let pts = get_partitions_with_label("boot", &disks.blockdevices).unwrap();
+
+        //then
+        assert_eq!(1, count_partitions_with_label("boot", &disks.blockdevices));
+        assert_same_partitions!(vec!["/dev/sda3", "/dev/mapper/mpatha3", "/dev/sdb3"], pts);
+    }
+
+    #[test]
+    fn count_disk_and_multipath() {
+        // given
+        let json = r#"
+        {
+            "blockdevices": [
+               {"name":"/dev/sda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b168dfd5-7ea6-49fb-a006-a241c35b46da"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"50a003eb-6708-4f52-8ece-3e9a4a6c838f"}
+                        ]
+                     }
+                  ]
+               },
+               {"name":"/dev/sdb", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b168dfd5-7ea6-49fb-a006-a241c35b46da"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"50a003eb-6708-4f52-8ece-3e9a4a6c838f"}
+                        ]
+                     }
+                  ]
+               },
+               {"name":"/dev/dasda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/dasda1", "label":"boot", "uuid":"0ca76601-1ddd-4e1f-9d5a-f8a50fdcd091"},
+                     {"name":"/dev/dasda2", "label":"root", "uuid":"82496045-9743-4484-89d5-869265d4a15c"}
+                  ]
+               }
+            ]
+        }"#;
+
+        //when
+        let disks: BlockDevices = serde_json::from_str(&json).unwrap();
+        let pts = get_partitions_with_label("boot", &disks.blockdevices).unwrap();
+
+        //then
+        assert_eq!(2, count_partitions_with_label("boot", &disks.blockdevices));
+        assert_same_partitions!(vec!["/dev/mapper/mpatha3", "/dev/dasda1"], pts);
+    }
+
+    #[test]
+    fn count_disk_and_multipath_with_blockdevice() {
+        // given
+        let json = r#"
+        {
+            "blockdevices": [
+               {"name":"/dev/sda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/sda3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                     {"name":"/dev/sda4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"},
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"}
+                        ]
+                     }
+                  ]
+               },
+               {"name":"/dev/sdb", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/sdb3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                     {"name":"/dev/sdb4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"},
+                     {"name":"/dev/mapper/mpatha", "label":null, "uuid":null,
+                        "children": [
+                           {"name":"/dev/mapper/mpatha3", "label":"boot", "uuid":"b5aea785-3d60-4455-ae8d-a3ba06132157"},
+                           {"name":"/dev/mapper/mpatha4", "label":"root", "uuid":"1948b11c-40ec-47d0-af67-0869928e50b8"}
+                        ]
+                     }
+                  ]
+               },
+               {"name":"/dev/dasda", "label":null, "uuid":null,
+                  "children": [
+                     {"name":"/dev/dasda1", "label":"boot", "uuid":"0ca76601-1ddd-4e1f-9d5a-f8a50fdcd091"},
+                     {"name":"/dev/dasda2", "label":"root", "uuid":"82496045-9743-4484-89d5-869265d4a15c"}
+                  ]
+               }
+            ]
+        }"#;
+
+        //when
+        let disks: BlockDevices = serde_json::from_str(&json).unwrap();
+        let pts = get_partitions_with_label("boot", &disks.blockdevices).unwrap();
+
+        //then
+        assert_eq!(2, count_partitions_with_label("boot", &disks.blockdevices));
+        assert_same_partitions!(
+            vec![
+                "/dev/mapper/mpatha3",
+                "/dev/sda3",
+                "/dev/sdb3",
+                "/dev/dasda1"
+            ],
+            pts
         );
     }
 }
