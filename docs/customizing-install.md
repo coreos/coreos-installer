@@ -17,7 +17,7 @@ after the installer.  To do this, specify an Ignition config to the live
 boot that runs the installer.  This config is separate and distinct from the
 Ignition config that governs the installed system.
 
-This is a sample Fedora CoreOS Config with hooks that run both before and
+This is a sample Butane config with hooks that run both before and
 after the installer:
 
 ```
@@ -77,10 +77,10 @@ systemd:
         RequiredBy=coreos-installer.target
 ```
 
-Convert this FCC to an Ignition config with:
+Convert this Butane config to an Ignition config with:
 
 ```
-fcct < hooks.fcc > hooks.ign
+butane < hooks.bu > hooks.ign
 ```
 
 For live ISO booting, embed the resulting config in the live ISO:
@@ -104,7 +104,7 @@ instead of the default invocation that runs with the
 customizing the coreos-installer command-line arguments, e.g. to
 automatically select the target install disk.
 
-This is a sample Fedora CoreOS config to run coreos-installer:
+This is a sample Butane config to run coreos-installer:
 
 ```
 variant: fcos
@@ -138,10 +138,10 @@ systemd:
         RequiredBy=default.target
 ```
 
-Convert this FCC to an Ignition config with:
+Convert this Butane config to an Ignition config with:
 
 ```
-fcct < install.fcc > install.ign
+butane < install.bu > install.ign
 ```
 
 For live ISO booting, embed the resulting config in the live ISO:
