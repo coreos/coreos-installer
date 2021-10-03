@@ -15,7 +15,6 @@
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 use std::io::{self, BufRead, Read};
-use std::result;
 use xz2::read::XzDecoder;
 
 enum CompressDecoder<R: BufRead> {
@@ -45,7 +44,7 @@ impl<R: BufRead> DecompressReader<R> {
 }
 
 impl<R: BufRead> Read for DecompressReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> result::Result<usize, io::Error> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         use CompressDecoder::*;
         match &mut self.decoder {
             Uncompressed(d) => d.read(buf),

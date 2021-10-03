@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::io::{self, Read, Write};
-use std::result;
 
 pub struct LimitReader<R: Read> {
     source: R,
@@ -34,7 +33,7 @@ impl<R: Read> LimitReader<R> {
 }
 
 impl<R: Read> Read for LimitReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> result::Result<usize, io::Error> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -78,7 +77,7 @@ impl<W: Write> LimitWriter<W> {
 }
 
 impl<W: Write> Write for LimitWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> result::Result<usize, io::Error> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -97,7 +96,7 @@ impl<W: Write> Write for LimitWriter<W> {
         Ok(count)
     }
 
-    fn flush(&mut self) -> result::Result<(), io::Error> {
+    fn flush(&mut self) -> io::Result<()> {
         self.sink.flush()
     }
 }

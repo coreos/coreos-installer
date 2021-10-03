@@ -21,7 +21,6 @@ use std::io::{self, copy, stderr, BufReader, BufWriter, Cursor, Read, Seek, Seek
 use std::num::{NonZeroU32, NonZeroU64};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::result;
 use std::time::{Duration, Instant};
 
 use crate::blockdev::{detect_formatted_sector_size, get_gpt_size, SavedPartitions};
@@ -444,7 +443,7 @@ impl<'a, R: Read> ProgressReader<'a, R> {
 }
 
 impl<'a, R: Read> Read for ProgressReader<'a, R> {
-    fn read(&mut self, buf: &mut [u8]) -> result::Result<usize, io::Error> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let count = self.source.read(buf)?;
         self.position += count as u64;
         if self.last_report.elapsed() >= Duration::from_secs(1)
