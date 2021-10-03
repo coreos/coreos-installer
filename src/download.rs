@@ -170,12 +170,13 @@ fn check_image_and_sig(
         .with_context(|| format!("opening {}", path.display()))?;
 
     // perform GPG verification
-    let mut reader = GpgReader::new(
+    let mut reader = VerifyReader::new(
         BufReader::with_capacity(BUFFER_SIZE, &mut file),
-        signature,
+        Some(signature),
         keys,
     )?;
     copy(&mut reader, &mut io::sink())?;
+    reader.verify()?;
 
     Ok(())
 }
@@ -241,16 +242,14 @@ pub fn write_image<F>(
 where
     F: FnOnce(&[u8], &mut dyn Read, &mut File, &Path, Option<&SavedPartitions>) -> Result<()>,
 {
-    let mut reader: Box<dyn Read> = Box::new(&mut source.reader);
-
-    // wrap source for GPG verification
-    if let Some(signature) = source.signature.as_ref() {
-        reader = Box::new(GpgReader::new(reader, signature, keys)?);
-    }
+    // wrap source for signature verification, if available
+    // keep the reader so we can explicitly check the result afterward
+    let mut verify_reader =
+        VerifyReader::new(&mut source.reader, source.signature.as_deref(), keys)?;
 
     // wrap again for progress reporting
-    reader = Box::new(ProgressReader::new(
-        reader,
+    let mut reader: Box<dyn Read> = Box::new(ProgressReader::new(
+        &mut verify_reader,
         source.length_hint,
         &source.artifact_type,
     ));
@@ -296,6 +295,10 @@ where
 
     // call the callback to copy the image
     image_copy(&first_mb, &mut reader, dest, dest_path, saved)?;
+
+    // check signature
+    drop(reader);
+    verify_reader.verify()?;
 
     // finish I/O before closing the progress bar
     dest.sync_all().context("syncing data to disk")?;
@@ -515,6 +518,11 @@ mod tests {
         test_one_signed_file(
             &[0; 1 << 20][..],
             &include_bytes!("../fixtures/verify/1M.sig")[..],
+            &[0; 1 << 20][..],
+        );
+        test_one_signed_file(
+            &include_bytes!("../fixtures/verify/1M.gz")[..],
+            &include_bytes!("../fixtures/verify/1M.gz.sig")[..],
             &[0; 1 << 20][..],
         );
         test_one_signed_file(

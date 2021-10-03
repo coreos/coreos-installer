@@ -37,7 +37,46 @@ enum VerifyReport {
     Ignore,
 }
 
-pub struct GpgReader<R: Read> {
+pub struct VerifyReader<R: Read> {
+    typ: VerifyType<R>,
+}
+
+enum VerifyType<R: Read> {
+    None(R),
+    Gpg(GpgReader<R>),
+}
+
+impl<R: Read> VerifyReader<R> {
+    pub fn new(source: R, gpg_signature: Option<&[u8]>, keys: VerifyKeys) -> Result<Self> {
+        let typ = if let Some(signature) = gpg_signature {
+            VerifyType::Gpg(GpgReader::new(source, signature, keys)?)
+        } else {
+            VerifyType::None(source)
+        };
+        Ok(VerifyReader { typ })
+    }
+
+    /// Return an error if signature verification fails, and report the
+    /// result to stderr
+    pub fn verify(&mut self) -> Result<()> {
+        match &mut self.typ {
+            VerifyType::None(_) => (),
+            VerifyType::Gpg(reader) => reader.finish(VerifyReport::Stderr)?,
+        }
+        Ok(())
+    }
+}
+
+impl<R: Read> Read for VerifyReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match &mut self.typ {
+            VerifyType::None(reader) => reader.read(buf),
+            VerifyType::Gpg(reader) => reader.read(buf),
+        }
+    }
+}
+
+struct GpgReader<R: Read> {
     _gpgdir: TempDir,
     source: R,
     child: Child,
@@ -45,7 +84,7 @@ pub struct GpgReader<R: Read> {
 }
 
 impl<R: Read> GpgReader<R> {
-    pub fn new(source: R, signature: &[u8], keys: VerifyKeys) -> Result<Self> {
+    fn new(source: R, signature: &[u8], keys: VerifyKeys) -> Result<Self> {
         // create GPG home directory with restrictive mode
         let gpgdir = tempfile::Builder::new()
             .prefix("coreos-installer-")
@@ -235,9 +274,6 @@ impl<R: Read> Read for GpgReader<R> {
                 .as_mut()
                 .unwrap()
                 .write_all(&buf[0..count])?;
-        } else {
-            // end of input; check result
-            self.finish(VerifyReport::Stderr)?;
         }
         Ok(count)
     }
@@ -261,11 +297,12 @@ mod tests {
         let data = include_bytes!("../../fixtures/verify/test-key.priv.asc");
         let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.sig");
 
-        let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut reader =
+            VerifyReader::new(&data[..], Some(&sig[..]), VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap();
-        reader.finish(VerifyReport::Stderr).unwrap();
-        reader.finish(VerifyReport::Stderr).unwrap();
+        reader.verify().unwrap();
+        reader.verify().unwrap();
         assert_eq!(&buf[..], &data[..]);
     }
 
@@ -276,11 +313,13 @@ mod tests {
         let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.sig");
         data[data.len() - 1] = b'!';
 
-        let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut reader =
+            VerifyReader::new(&data[..], Some(&sig[..]), VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).unwrap_err();
-        reader.finish(VerifyReport::Stderr).unwrap_err();
-        reader.finish(VerifyReport::Stderr).unwrap_err();
+        reader.read_to_end(&mut buf).unwrap();
+        reader.verify().unwrap_err();
+        reader.verify().unwrap_err();
+        assert_eq!(&buf[..], &data[..]);
     }
 
     /// Read truncated data with otherwise-valid signature
@@ -289,11 +328,13 @@ mod tests {
         let data = include_bytes!("../../fixtures/verify/test-key.priv.asc");
         let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.sig");
 
-        let mut reader = GpgReader::new(&data[..1000], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut reader =
+            VerifyReader::new(&data[..1000], Some(&sig[..]), VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).unwrap_err();
-        reader.finish(VerifyReport::Stderr).unwrap_err();
-        reader.finish(VerifyReport::Stderr).unwrap_err();
+        reader.read_to_end(&mut buf).unwrap();
+        reader.verify().unwrap_err();
+        reader.verify().unwrap_err();
+        assert_eq!(&buf[..], &data[..1000]);
     }
 
     /// Read data with signing key not in keyring
@@ -302,10 +343,12 @@ mod tests {
         let data = include_bytes!("../../fixtures/verify/test-key.priv.asc");
         let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.random.sig");
 
-        let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
+        let mut reader =
+            VerifyReader::new(&data[..], Some(&sig[..]), VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).unwrap_err();
-        reader.finish(VerifyReport::Stderr).unwrap_err();
-        reader.finish(VerifyReport::Stderr).unwrap_err();
+        reader.read_to_end(&mut buf).unwrap();
+        reader.verify().unwrap_err();
+        reader.verify().unwrap_err();
+        assert_eq!(&buf[..], &data[..]);
     }
 }
