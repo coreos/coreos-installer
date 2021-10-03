@@ -40,7 +40,7 @@ impl<R: Read> GpgReader<R> {
             .context("setting mode for temporary directory")?;
 
         // import public keys
-        let keys = include_bytes!("signing-keys.asc");
+        let keys = include_bytes!("../signing-keys.asc");
         let mut import = Command::new("gpg")
             .arg("--homedir")
             .arg(gpgdir.path())

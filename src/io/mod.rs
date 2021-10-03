@@ -19,10 +19,12 @@ use std::io::{ErrorKind, Read, Write};
 mod compress;
 mod hash;
 mod limit;
+mod verify;
 
 pub use self::compress::*;
 pub use self::hash::*;
 pub use self::limit::*;
+pub use self::verify::*;
 
 // The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
 // enough to fully amortize system call overhead.

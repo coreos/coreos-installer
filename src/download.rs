@@ -28,7 +28,6 @@ use crate::blockdev::{detect_formatted_sector_size, get_gpt_size, SavedPartition
 use crate::cmdline::*;
 use crate::io::*;
 use crate::source::*;
-use crate::verify::*;
 
 // Download all artifacts for an image and verify their signatures.
 pub fn download(config: &DownloadConfig) -> Result<()> {
