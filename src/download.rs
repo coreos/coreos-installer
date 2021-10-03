@@ -478,6 +478,11 @@ mod tests {
             &[0; 1 << 20][..],
         );
         test_one_signed_file(
+            &include_bytes!("../fixtures/verify/1M.gz")[..],
+            &include_bytes!("../fixtures/verify/1M.gz.sig")[..],
+            &[0; 1 << 20][..],
+        );
+        test_one_signed_file(
             &include_bytes!("../fixtures/verify/1M.xz")[..],
             &include_bytes!("../fixtures/verify/1M.xz.sig")[..],
             &[0; 1 << 20][..],
