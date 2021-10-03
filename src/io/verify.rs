@@ -17,6 +17,7 @@ use std::fs::{metadata, set_permissions, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Stdio};
+use std::thread::{self, JoinHandle};
 use tempfile::{self, TempDir};
 
 #[derive(Debug)]
@@ -28,10 +29,19 @@ pub enum VerifyKeys {
     InsecureTest,
 }
 
+#[derive(Debug)]
+enum VerifyReport {
+    /// Report verification result to stderr
+    Stderr,
+    /// Verify silently
+    Ignore,
+}
+
 pub struct GpgReader<R: Read> {
     _gpgdir: TempDir,
     source: R,
     child: Child,
+    stderr_thread: Option<JoinHandle<io::Result<Vec<u8>>>>,
 }
 
 impl<R: Read> GpgReader<R> {
@@ -142,7 +152,7 @@ impl<R: Read> GpgReader<R> {
             .context("writing signature file")?;
 
         // start verification
-        let verify = Command::new("gpg")
+        let mut verify = Command::new("gpg")
             .arg("--homedir")
             .arg(gpgdir.path())
             .arg("--batch")
@@ -150,14 +160,63 @@ impl<R: Read> GpgReader<R> {
             .arg(&signature_path)
             .arg("-")
             .stdin(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .context("running gpg --verify")?;
+
+        // spawn stderr reader
+        let mut stderr = verify.stderr.take().unwrap();
+        let stderr_thread = thread::Builder::new()
+            .name("gpg-stderr".into())
+            .spawn(move || -> io::Result<Vec<u8>> {
+                let mut buf = Vec::new();
+                stderr.read_to_end(&mut buf)?;
+                Ok(buf)
+            })
+            .context("spawning GPG stderr reader")?;
 
         Ok(GpgReader {
             _gpgdir: gpgdir,
             source,
             child: verify,
+            stderr_thread: Some(stderr_thread),
         })
+    }
+
+    /// Stop GPG, forward its stderr if requested, and check its exit status.
+    /// The exit status check happens on every call, but stderr forwarding
+    /// only happens on the first call.
+    fn finish(&mut self, report: VerifyReport) -> io::Result<()> {
+        // do cleanup first: wait for child process and join on thread
+        let wait_result = self.child.wait();
+        let join_result = self.stderr_thread.take().map(|t| t.join());
+
+        // possibly copy GPG's stderr to ours
+        match join_result {
+            // thread returned GPG's stderr
+            Some(Ok(Ok(stderr))) => match report {
+                // use eprint rather than io::stderr() so the output is
+                // captured when running tests
+                VerifyReport::Stderr => eprint!("{}", String::from_utf8_lossy(&stderr)),
+                VerifyReport::Ignore => (),
+            },
+            // thread returned error
+            Some(Ok(Err(e))) => return Err(e),
+            // thread panicked; propagate the panic
+            Some(Err(e)) => std::panic::resume_unwind(e),
+            // already joined the thread on a previous call
+            None => (),
+        }
+
+        // check GPG exit status
+        if !wait_result?.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "GPG verification failure",
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -178,12 +237,7 @@ impl<R: Read> Read for GpgReader<R> {
                 .write_all(&buf[0..count])?;
         } else {
             // end of input; check result
-            if !self.child.wait()?.success() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "GPG verification failure",
-                ));
-            }
+            self.finish(VerifyReport::Stderr)?;
         }
         Ok(count)
     }
@@ -191,8 +245,9 @@ impl<R: Read> Read for GpgReader<R> {
 
 impl<R: Read> Drop for GpgReader<R> {
     fn drop(&mut self) {
-        // close stdin, reap process
-        let _ = self.child.wait();
+        // if we haven't already forwarded GPG's stderr, avoid doing it now,
+        // so we don't imply that we're checking the result
+        self.finish(VerifyReport::Ignore).ok();
     }
 }
 
@@ -209,6 +264,8 @@ mod tests {
         let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap();
+        reader.finish(VerifyReport::Stderr).unwrap();
+        reader.finish(VerifyReport::Stderr).unwrap();
         assert_eq!(&buf[..], &data[..]);
     }
 
@@ -222,6 +279,8 @@ mod tests {
         let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap_err();
+        reader.finish(VerifyReport::Stderr).unwrap_err();
+        reader.finish(VerifyReport::Stderr).unwrap_err();
     }
 
     /// Read truncated data with otherwise-valid signature
@@ -233,6 +292,8 @@ mod tests {
         let mut reader = GpgReader::new(&data[..1000], &sig[..], VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap_err();
+        reader.finish(VerifyReport::Stderr).unwrap_err();
+        reader.finish(VerifyReport::Stderr).unwrap_err();
     }
 
     /// Read data with signing key not in keyring
@@ -244,5 +305,7 @@ mod tests {
         let mut reader = GpgReader::new(&data[..], &sig[..], VerifyKeys::InsecureTest).unwrap();
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap_err();
+        reader.finish(VerifyReport::Stderr).unwrap_err();
+        reader.finish(VerifyReport::Stderr).unwrap_err();
     }
 }
