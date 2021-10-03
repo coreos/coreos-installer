@@ -176,7 +176,7 @@ fn check_image_and_sig(
         keys,
     )?;
     copy(&mut reader, &mut io::sink())?;
-    reader.verify()?;
+    reader.verify_without_logging_failure()?;
 
     Ok(())
 }

@@ -33,6 +33,8 @@ pub enum VerifyKeys {
 enum VerifyReport {
     /// Report verification result to stderr
     Stderr,
+    /// Report verification result to stderr only if successful
+    StderrOnSuccess,
     /// Verify silently
     Ignore,
 }
@@ -62,6 +64,16 @@ impl<R: Read> VerifyReader<R> {
         match &mut self.typ {
             VerifyType::None(_) => (),
             VerifyType::Gpg(reader) => reader.finish(VerifyReport::Stderr)?,
+        }
+        Ok(())
+    }
+
+    /// Return an error if signature verification fails.  Report the result
+    /// to stderr if verification is successful, but not if it fails.
+    pub fn verify_without_logging_failure(&mut self) -> Result<()> {
+        match &mut self.typ {
+            VerifyType::None(_) => (),
+            VerifyType::Gpg(reader) => reader.finish(VerifyReport::StderrOnSuccess)?,
         }
         Ok(())
     }
@@ -231,12 +243,16 @@ impl<R: Read> GpgReader<R> {
         let join_result = self.stderr_thread.take().map(|t| t.join());
 
         // possibly copy GPG's stderr to ours
+        let success = wait_result?.success();
         match join_result {
             // thread returned GPG's stderr
             Some(Ok(Ok(stderr))) => match report {
+                VerifyReport::StderrOnSuccess if !success => (),
                 // use eprint rather than io::stderr() so the output is
                 // captured when running tests
-                VerifyReport::Stderr => eprint!("{}", String::from_utf8_lossy(&stderr)),
+                VerifyReport::Stderr | VerifyReport::StderrOnSuccess => {
+                    eprint!("{}", String::from_utf8_lossy(&stderr))
+                }
                 VerifyReport::Ignore => (),
             },
             // thread returned error
@@ -248,7 +264,7 @@ impl<R: Read> GpgReader<R> {
         }
 
         // check GPG exit status
-        if !wait_result?.success() {
+        if !success {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "GPG verification failure",
@@ -303,6 +319,7 @@ mod tests {
         reader.read_to_end(&mut buf).unwrap();
         reader.verify().unwrap();
         reader.verify().unwrap();
+        reader.verify_without_logging_failure().unwrap();
         assert_eq!(&buf[..], &data[..]);
     }
 
@@ -319,6 +336,7 @@ mod tests {
         reader.read_to_end(&mut buf).unwrap();
         reader.verify().unwrap_err();
         reader.verify().unwrap_err();
+        reader.verify_without_logging_failure().unwrap_err();
         assert_eq!(&buf[..], &data[..]);
     }
 
@@ -334,6 +352,7 @@ mod tests {
         reader.read_to_end(&mut buf).unwrap();
         reader.verify().unwrap_err();
         reader.verify().unwrap_err();
+        reader.verify_without_logging_failure().unwrap_err();
         assert_eq!(&buf[..], &data[..1000]);
     }
 
@@ -349,6 +368,7 @@ mod tests {
         reader.read_to_end(&mut buf).unwrap();
         reader.verify().unwrap_err();
         reader.verify().unwrap_err();
+        reader.verify_without_logging_failure().unwrap_err();
         assert_eq!(&buf[..], &data[..]);
     }
 }
