@@ -17,7 +17,6 @@ use std::fs::{metadata, set_permissions, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Stdio};
-use std::result;
 use tempfile::{self, TempDir};
 
 pub struct GpgReader<R: Read> {
@@ -40,7 +39,7 @@ impl<R: Read> GpgReader<R> {
             .context("setting mode for temporary directory")?;
 
         // import public keys
-        let keys = include_bytes!("signing-keys.asc");
+        let keys = include_bytes!("../signing-keys.asc");
         let mut import = Command::new("gpg")
             .arg("--homedir")
             .arg(gpgdir.path())
@@ -156,7 +155,7 @@ impl<R: Read> GpgReader<R> {
 }
 
 impl<R: Read> Read for GpgReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> result::Result<usize, io::Error> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }

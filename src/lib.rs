@@ -24,4 +24,3 @@ pub mod osmet;
 pub mod s390x;
 pub mod source;
 pub mod util;
-pub mod verify;
