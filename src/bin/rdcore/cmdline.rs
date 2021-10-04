@@ -34,6 +34,8 @@ pub enum Cmd {
     Kargs(KargsConfig),
     /// Copy data from stdin to stdout, checking piecewise hashes
     StreamHash(StreamHashConfig),
+    /// Verify that system has only 1 partition with given label
+    SinglePartition(PartitionLabelConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -94,4 +96,11 @@ pub struct StreamHashConfig {
     /// Path to the piecewise hash file
     #[structopt(value_name = "hash-file")]
     pub hash_file: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct PartitionLabelConfig {
+    /// Path to the piecewise hash file
+    #[structopt(value_name = "label")]
+    pub label: String,
 }

@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod cmdline;
-mod kargs;
-mod rootmap;
-mod single_partition;
-mod stream_hash;
-
-use anyhow::Result;
-use structopt::StructOpt;
-
 use crate::cmdline::*;
+use anyhow::{bail, Result};
 
-fn main() -> Result<()> {
-    match Cmd::from_args() {
-        Cmd::Kargs(c) => kargs::kargs(&c),
-        Cmd::Rootmap(c) => rootmap::rootmap(&c),
-        Cmd::StreamHash(c) => stream_hash::stream_hash(&c),
-        Cmd::SinglePartition(c) => single_partition::verify_single_partition(&c),
+use libcoreinst::blockdev::*;
+
+pub fn verify_single_partition(config: &PartitionLabelConfig) -> Result<()> {
+    // fail if we have more than 1 partition with boot label
+    let devices = get_all_block_devices()?;
+    let amount = count_partitions_with_label(&config.label, &devices.blockdevices);
+    if amount != 1 {
+        bail!(
+            "System has {} partitions with '{}' label",
+            amount,
+            config.label
+        );
     }
+    Ok(())
 }
