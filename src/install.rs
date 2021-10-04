@@ -356,11 +356,8 @@ fn write_disk(
         || network_config.is_some()
         || cfg!(target_arch = "s390x")
     {
-        let mount = Disk::new(&config.device)?.mount_partition_by_label(
-            "boot",
-            false,
-            mount::MsFlags::empty(),
-        )?;
+        let mount =
+            Disk::new(&config.device)?.mount_partition_by_label("boot", mount::MsFlags::empty())?;
         if let Some(ignition) = ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .context("writing Ignition configuration")?;
