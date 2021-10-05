@@ -65,8 +65,8 @@ pub fn rootmap(config: &RootmapConfig) -> Result<()> {
         })
         .context("appending rootmap kargs")?;
         eprintln!("Injected kernel arguments into BLS: {}", kargs.join(" "));
-        // Note here we're not calling `zipl` on s390x; it will be called anyway on firstboot by
-        // `coreos-ignition-firstboot-complete.service`, so might as well batch them.
+    // Note here we're not calling `zipl` on s390x; it will be called anyway on firstboot by
+    // `coreos-ignition-firstboot-complete.service`, so might as well batch them.
     } else {
         // without /boot options, we just print the kargs; note we output to stdout here
         println!("{}", kargs.join(" "));
@@ -83,13 +83,13 @@ pub fn get_boot_mount_from_cmdline_args(
     if let Some(path) = boot_mount {
         Ok(Some(Mount::from_existing(path)?))
     } else if let Some(devpath) = boot_device {
-        let devinfo = lsblk_single(Path::new(devpath))?;
+        let devinfo = Device::lsblk(Path::new(devpath), false)?;
         let fs = devinfo
-            .get("FSTYPE")
-            .with_context(|| format!("failed to query filesystem for {}", devpath))?;
+            .fstype
+            .ok_or_else(|| anyhow::anyhow!("failed to query filesystem for {}", devpath))?;
         Ok(Some(Mount::try_mount(
             devpath,
-            fs,
+            &fs,
             mount::MsFlags::empty(),
         )?))
     } else {
@@ -98,19 +98,19 @@ pub fn get_boot_mount_from_cmdline_args(
 }
 
 fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>> {
-    let blkinfo = lsblk_single(&device)?;
-    let blktype = blkinfo
-        .get("TYPE")
-        .with_context(|| format!("missing TYPE for {}", device.display()))?;
+    let blkinfo = Device::lsblk(&device, false)?;
+    let blktypeinfo = blkinfo
+        .blktype
+        .ok_or_else(|| anyhow::anyhow!("missing type for {}", device.display()))?;
     // a `match {}` construct would be nice here, but for RAID it's a prefix match
-    if blktype.starts_with("raid") {
+    if blktypeinfo.starts_with("raid") {
         Ok(Some(get_raid_kargs(&device)?))
-    } else if blktype == "crypt" {
+    } else if blktypeinfo == "crypt" {
         Ok(Some(get_luks_kargs(root, &device)?))
-    } else if blktype == "part" || blktype == "disk" || blktype == "mpath" {
+    } else if blktypeinfo == "part" || blktypeinfo == "disk" || blktypeinfo == "mpath" {
         Ok(None)
     } else {
-        bail!("unknown block device type {}", blktype)
+        bail!("unknown block device type {}", blktypeinfo)
     }
 }
 
