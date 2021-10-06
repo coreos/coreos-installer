@@ -251,14 +251,14 @@ impl Display for StreamLocation {
         if self.stream_base_url.is_some() {
             write!(
                 f,
-                "Downloading image ({}) and signature referenced from {}",
-                self.format, self.stream_url
+                "Downloading {} {} image ({}) and signature referenced from {}",
+                self.architecture, self.platform, self.format, self.stream_url
             )
         } else {
             write!(
                 f,
-                "Downloading {} image ({}) and signature",
-                self.stream, self.format
+                "Downloading Fedora CoreOS {} {} {} image ({}) and signature",
+                self.stream, self.architecture, self.platform, self.format
             )
         }
     }
