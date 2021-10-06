@@ -45,6 +45,7 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
             config.fetch_retries,
         )?)
     };
+    eprintln!("{}", location);
 
     // walk sources
     let mut sources = location.sources()?;
