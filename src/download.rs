@@ -120,7 +120,7 @@ fn check_image_and_sig(source: &ImageSource, path: &Path, sig_path: &Path) -> Re
         .with_context(|| format!("opening {}", path.display()))?;
 
     // perform GPG verification
-    GpgReader::new(&mut file, signature)?.consume()?;
+    GpgReader::new(&mut file, signature, VerifyKeys::Production)?.consume()?;
 
     Ok(())
 }
@@ -184,7 +184,11 @@ where
     // wrap source for GPG verification
     let mut verify_reader: Box<dyn Read> = {
         if let Some(signature) = source.signature.as_ref() {
-            Box::new(GpgReader::new(&mut source.reader, signature)?)
+            Box::new(GpgReader::new(
+                &mut source.reader,
+                signature,
+                VerifyKeys::Production,
+            )?)
         } else {
             Box::new(&mut source.reader)
         }
