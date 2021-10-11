@@ -344,6 +344,7 @@ fn write_disk(
         true,
         Some(saved),
         Some(sector_size),
+        VerifyKeys::Production,
     )?;
     table.reread()?;
 

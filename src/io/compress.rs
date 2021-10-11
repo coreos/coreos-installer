@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use anyhow::{Context, Result};
-use flate2::read::GzDecoder;
-use std::io::{self, BufRead, Read};
-use xz2::read::XzDecoder;
+use flate2::bufread::GzDecoder;
+use std::io::{self, BufRead, ErrorKind, Read};
+use xz2::bufread::XzDecoder;
 
 enum CompressDecoder<R: BufRead> {
     Uncompressed(R),
@@ -48,8 +48,60 @@ impl<R: BufRead> Read for DecompressReader<R> {
         use CompressDecoder::*;
         match &mut self.decoder {
             Uncompressed(d) => d.read(buf),
-            Gzip(d) => d.read(buf),
+            Gzip(d) => {
+                let count = d.read(buf)?;
+                if count == 0 {
+                    // GzDecoder stops reading as soon as it encounters the
+                    // gzip trailer, so it doesn't notice trailing data,
+                    // which indicates something wrong with the input.  Try
+                    // reading one more byte, and fail if there is one.
+                    let mut buf = [0; 1];
+                    if d.get_mut().read(&mut buf)? > 0 {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "found trailing data after compressed gzip stream",
+                        ));
+                    }
+                }
+                Ok(count)
+            }
             Xz(d) => d.read(buf),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::BufReader;
+
+    /// Test that DecompressReader fails if data is appended to the
+    /// compressed stream.
+    #[test]
+    fn test_decompress_reader_trailing_data() {
+        test_decompress_reader_trailing_data_one(
+            &include_bytes!("../../fixtures/verify/1M.gz")[..],
+        );
+        test_decompress_reader_trailing_data_one(
+            &include_bytes!("../../fixtures/verify/1M.xz")[..],
+        );
+    }
+
+    fn test_decompress_reader_trailing_data_one(input: &[u8]) {
+        let mut input = input.to_vec();
+        let mut output = Vec::new();
+
+        // successful run
+        DecompressReader::new(BufReader::new(&*input))
+            .unwrap()
+            .read_to_end(&mut output)
+            .unwrap();
+
+        // add trailing garbage, make sure we notice
+        input.push(0);
+        DecompressReader::new(BufReader::new(&*input))
+            .unwrap()
+            .read_to_end(&mut output)
+            .unwrap_err();
     }
 }
