@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use anyhow::{bail, ensure, Context, Result};
-use flate2::read::GzDecoder;
+use flate2::bufread::GzDecoder;
 use openssl::sha;
 use std::io::{self, BufRead, ErrorKind, Read, Write};
 use std::result;
-use xz2::read::XzDecoder;
+use xz2::bufread::XzDecoder;
 
 // The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
 // enough to fully amortize system call overhead.
@@ -196,7 +196,23 @@ impl<R: BufRead> Read for DecompressReader<R> {
         use CompressDecoder::*;
         match &mut self.decoder {
             Uncompressed(d) => d.read(buf),
-            Gzip(d) => d.read(buf),
+            Gzip(d) => {
+                let count = d.read(buf)?;
+                if count == 0 {
+                    // GzDecoder stops reading as soon as it encounters the
+                    // gzip trailer, so it doesn't notice trailing data,
+                    // which indicates something wrong with the input.  Try
+                    // reading one more byte, and fail if there is one.
+                    let mut buf = [0; 1];
+                    if d.get_mut().read(&mut buf)? > 0 {
+                        return Err(io::Error::new(
+                            ErrorKind::InvalidData,
+                            "found trailing data after compressed gzip stream",
+                        ));
+                    }
+                }
+                Ok(count)
+            }
             Xz(d) => d.read(buf),
         }
     }
@@ -249,7 +265,7 @@ impl<R: Read> Read for LimitReader<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use std::io::{BufReader, Cursor};
 
     #[test]
     fn test_ignition_hash_cli_parse() {
@@ -418,5 +434,31 @@ mod tests {
             lim.read(&mut buf).unwrap_err().to_string(),
             "collision with foo at offset 50"
         );
+    }
+
+    /// Test that DecompressReader fails if data is appended to the
+    /// compressed stream.
+    #[test]
+    fn test_decompress_reader_trailing_data() {
+        test_decompress_reader_trailing_data_one(&include_bytes!("../fixtures/verify/1M.gz")[..]);
+        test_decompress_reader_trailing_data_one(&include_bytes!("../fixtures/verify/1M.xz")[..]);
+    }
+
+    fn test_decompress_reader_trailing_data_one(input: &[u8]) {
+        let mut input = input.to_vec();
+        let mut output = Vec::new();
+
+        // successful run
+        DecompressReader::new(BufReader::new(&*input))
+            .unwrap()
+            .read_to_end(&mut output)
+            .unwrap();
+
+        // add trailing garbage, make sure we notice
+        input.push(0);
+        DecompressReader::new(BufReader::new(&*input))
+            .unwrap()
+            .read_to_end(&mut output)
+            .unwrap_err();
     }
 }

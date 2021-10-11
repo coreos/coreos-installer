@@ -30,6 +30,7 @@ use crate::io::*;
 #[cfg(target_arch = "s390x")]
 use crate::s390x;
 use crate::source::*;
+use crate::verify::VerifyKeys;
 
 pub fn install(config: &InstallConfig) -> Result<()> {
     // set up image source
@@ -171,6 +172,7 @@ fn write_disk(
         true,
         Some(saved),
         Some(sector_size),
+        VerifyKeys::Production,
     )?;
     table.reread()?;
 
