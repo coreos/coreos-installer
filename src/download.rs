@@ -67,7 +67,7 @@ pub fn download(config: &DownloadConfig) -> Result<()> {
         // check the old signature.  If we didn't decompress last time but are
         // decompressing this time, we're not smart enough to decompress the
         // existing file.
-        if !config.decompress && check_image_and_sig(&source, &path, &sig_path).is_ok() {
+        if !config.decompress && check_image_and_sig(source, &path, &sig_path).is_ok() {
             // report the output file path and keep going
             println!("{}", path.display());
             continue;

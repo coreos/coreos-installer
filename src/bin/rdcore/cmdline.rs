@@ -167,9 +167,9 @@ pub fn parse_args() -> Result<Config> {
         .get_matches();
 
     match app_matches.subcommand() {
-        ("kargs", Some(matches)) => parse_kargs(&matches),
-        ("rootmap", Some(matches)) => parse_rootmap(&matches),
-        ("stream-hash", Some(matches)) => parse_stream_hash(&matches),
+        ("kargs", Some(matches)) => parse_kargs(matches),
+        ("rootmap", Some(matches)) => parse_rootmap(matches),
+        ("stream-hash", Some(matches)) => parse_stream_hash(matches),
         _ => bail!("unrecognized subcommand"),
     }
 }
