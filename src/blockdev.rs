@@ -17,7 +17,7 @@ use gptman::{GPTPartitionEntry, GPT};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount, sched};
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::env;
 use std::fs::{
@@ -806,6 +806,55 @@ pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
         bail!("no lsblk results for {}", dev.display());
     }
     Ok(devinfos.remove(0))
+}
+
+/// Rereads partition table and than returns all available filesystems
+/// rereading mitigates possble issue with outdated UUIDs on different
+/// paths to the same disk: after 'ignition-ostree-firstboot-uuid'
+/// '/dev/sdaX' path gets new UUID, but '/dev/sdbX/' path has an old one
+fn lsblk_all_and_reread_partition_tables() -> Result<Vec<HashMap<String, String>>> {
+    let mut cmd = Command::new("lsblk");
+    cmd.arg("--noheadings")
+        .arg("--nodeps")
+        .arg("--list")
+        .arg("--paths")
+        .arg("--output")
+        .arg("NAME");
+    let output = cmd_output(&mut cmd)?;
+    for dev in output.lines() {
+        if let Ok(mut fd) = std::fs::File::open(dev) {
+            let _ = reread_partition_table(&mut fd);
+        }
+    }
+    udev_settle()?;
+    let mut result: Vec<HashMap<String, String>> = Vec::new();
+    for dev in output.lines() {
+        let mut info = lsblk(Path::new(dev), true)?;
+        result.append(&mut info);
+    }
+    Ok(result)
+}
+
+/// Returns filesystems with given label.
+/// If multiple filesystems with the label have the same UUID, we only return one of them.
+pub fn get_filesystems_with_label(label: &str) -> Result<Vec<String>> {
+    let mut uuids = HashSet::new();
+    let result = lsblk_all_and_reread_partition_tables()?
+        .iter()
+        .filter(|v| v.get("LABEL").map(|l| l.as_str()) == Some(label))
+        .filter(|v| match v.get("UUID") {
+            Some(uuid) => {
+                if !uuid.is_empty() {
+                    uuids.insert(uuid)
+                } else {
+                    true
+                }
+            }
+            None => true,
+        })
+        .filter_map(|v| v.get("NAME").map(<_>::to_owned))
+        .collect();
+    Ok(result)
 }
 
 pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>> {
