@@ -1,5 +1,4 @@
 ---
-layout: default
 parent: Development
 nav_order: 1
 ---

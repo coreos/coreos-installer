@@ -1,5 +1,4 @@
 ---
-layout: default
 parent: Command line reference
 nav_order: 5
 ---
