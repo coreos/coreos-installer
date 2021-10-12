@@ -10,6 +10,7 @@ version = "0.10.1-alpha.0"
 
 [package.metadata.release]
 sign-commit = true
+sign-tag = true
 disable-push = true
 disable-publish = true
 pre-release-commit-message = "cargo: coreos-installer release {{version}}"
