@@ -1,0 +1,5 @@
+[allowlist]
+description = "Exclude snake-oil GPG private key from Red Hat secret scanning"
+files = [
+    '''test-key.priv.asc$''',
+]
