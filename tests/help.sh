@@ -4,38 +4,32 @@
 set -euo pipefail
 
 fail=0
+total=0
 checklen() {
-    local length
+    local length subcommand subcommands
+    total=$((${total} + 1))
+    echo "Checking coreos-installer $*..."
     length=$(target/debug/coreos-installer $* --help | wc -L)
     if [ "${length}" -gt 80 ] ; then
         echo "$* --help line length ${length} > 80"
         fail=1
     fi
+    subcommands=$(target/debug/coreos-installer $* --help | awk 'BEGIN {subcommands=0} {if (subcommands) print $1} /SUBCOMMANDS:/ {subcommands=1}')
+    for subcommand in ${subcommands}; do
+        checklen $* ${subcommand}
+    done
 }
 
 checklen
-checklen install
-checklen download
-checklen list-stream
-checklen iso
+if [ ${total} -lt 2 ]; then
+    echo "Detected no subcommands"
+    fail=1
+fi
+
+# Hidden commands that users might invoke anyway (i.e. deprecated ones)
 checklen iso embed
 checklen iso show
 checklen iso remove
-checklen iso ignition
-checklen iso ignition embed
-checklen iso ignition show
-checklen iso ignition remove
-checklen iso inspect
-checklen iso kargs
-checklen iso kargs modify
-checklen iso kargs reset
-checklen iso kargs show
-checklen iso extract
-checklen iso extract pxe
-checklen pxe
-checklen pxe ignition
-checklen pxe ignition wrap
-checklen pxe ignition unwrap
 
 if [ "${fail}" = 1 ]; then
     exit 1
