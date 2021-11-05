@@ -124,10 +124,8 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 }
 
 pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
-    if config.output.is_none()
-        && isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")?
-    {
-        bail!("Refusing to write binary data to terminal");
+    if config.output.is_none() {
+        verify_stdout_not_tty()?;
     }
 
     let ignition = match config.ignition_file {
@@ -232,9 +230,7 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
             iso.write(input)?;
         }
         Some("-") => {
-            if isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
-                bail!("Refusing to write binary data to terminal");
-            }
+            verify_stdout_not_tty()?;
             iso.stream(input, &mut io::stdout().lock())?;
         }
         Some(output_path) => {
@@ -769,6 +765,13 @@ fn copy_file_from_iso(iso: &mut IsoFs, file: &iso9660::File, output_path: &Path)
     let mut bufw = BufWriter::with_capacity(BUFFER_SIZE, &mut outf);
     copy(&mut iso.read_file(file)?, &mut bufw)?;
     bufw.flush()?;
+    Ok(())
+}
+
+fn verify_stdout_not_tty() -> Result<()> {
+    if isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
+        bail!("Refusing to write binary data to terminal");
+    }
     Ok(())
 }
 
