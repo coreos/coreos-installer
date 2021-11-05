@@ -470,15 +470,13 @@ struct KargEmbedLocation {
     offset: u64,
 }
 
-impl KargEmbedAreas {
-    // Return Ok(None) if no kargs embed areas exist.
+impl KargEmbedInfo {
+    // Returns Ok(None) if `kargs.json` doesn't exist.
     pub fn for_iso(iso: &mut IsoFs) -> Result<Option<Self>> {
         let iso_file = match iso.get_path(COREOS_KARG_EMBED_INFO_PATH) {
             Ok(record) => record.try_into_file()?,
             // old ISO without info JSON
-            Err(e) if e.is::<iso9660::NotFound>() => {
-                return Self::for_file_via_system_area(iso.as_file()?)
-            }
+            Err(e) if e.is::<iso9660::NotFound>() => return Ok(None),
             Err(e) => return Err(e),
         };
         let info: KargEmbedInfo = serde_json::from_reader(
@@ -486,6 +484,17 @@ impl KargEmbedAreas {
                 .context("reading kargs embed area info")?,
         )
         .context("decoding kargs embed area info")?;
+        Ok(Some(info))
+    }
+}
+
+impl KargEmbedAreas {
+    // Return Ok(None) if no kargs embed areas exist.
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Option<Self>> {
+        let info = match KargEmbedInfo::for_iso(iso)? {
+            Some(info) => info,
+            None => return Self::for_file_via_system_area(iso.as_file()?),
+        };
 
         // sanity-check size against a reasonable limit
         if info.size > COREOS_KARG_EMBED_AREA_MAX_SIZE {
