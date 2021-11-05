@@ -264,9 +264,13 @@ impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
         let mut iso = IsoFs::from_file(file.try_clone().context("cloning file")?)
             .context("parsing ISO9660 image")?;
+        IsoConfig::for_iso(&mut iso)
+    }
+
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
         Ok(Self {
-            ignition: ignition_embed_area(&mut iso)?,
-            kargs: KargEmbedAreas::for_iso(&mut iso)?,
+            ignition: ignition_embed_area(iso)?,
+            kargs: KargEmbedAreas::for_iso(iso)?,
         })
     }
 
