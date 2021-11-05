@@ -41,6 +41,8 @@ fn main() -> Result<()> {
             IsoCmd::Inspect(c) => live::iso_inspect(&c),
             IsoCmd::Extract(c) => match c {
                 IsoExtractCmd::Pxe(c) => live::iso_extract_pxe(&c),
+                IsoExtractCmd::MinimalIso(c) => live::iso_extract_minimal_iso(&c),
+                IsoExtractCmd::PackMinimalIso(c) => live::iso_pack_minimal_iso(&c),
             },
         },
         Cmd::Osmet(c) => match c {
