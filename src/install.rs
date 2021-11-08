@@ -607,6 +607,8 @@ fn bls_entry_options_write_platform(orig_options: &str, platform: &str) -> Resul
 ///
 /// Note that on s390x, this does not handle the call to `zipl`. We expect it to be done at a
 /// higher level if needed for batching purposes.
+///
+/// Returns `true` if BLS content was modified.
 pub fn visit_bls_entry(
     mountpoint: &Path,
     f: impl Fn(&str) -> Result<Option<String>>,
@@ -675,7 +677,7 @@ pub fn visit_bls_entry(
 
 /// Wrapper around `visit_bls_entry` to specifically visit just the BLS entry's `options` line and
 /// optionally update it if the function returns new content. Errors out if none or more than one
-/// `options` field was found.
+/// `options` field was found. Returns `true` if BLS content was modified.
 pub fn visit_bls_entry_options(
     mountpoint: &Path,
     f: impl Fn(&str) -> Result<Option<String>>,
