@@ -143,56 +143,84 @@ pub fn bls_entry_options_delete_and_append_kargs(
     if delete_args.is_empty() && append_args.is_empty() && append_args_if_missing.is_empty() {
         return Ok(None);
     }
-    Ok(Some(modify_kargs(
-        orig_options,
-        append_args,
-        append_args_if_missing,
-        &[],
-        delete_args,
-    )?))
+    Ok(Some(
+        KargsEditor::new()
+            .delete(delete_args)
+            .append(append_args)
+            .append_if_missing(append_args_if_missing)
+            .apply_to(orig_options)?,
+    ))
 }
 
-// XXX: Need a proper parser here and share it with afterburn. The approach we use here
-// is to just do a dumb substring search and replace. This is naive (e.g. doesn't
-// handle occurrences in quoted args) but will work for now (one thing that saves us is
-// that we're acting on our baked configs, which have straight-forward kargs).
-pub fn modify_kargs(
-    current_kargs: &str,
-    kargs_append: &[String],
-    kargs_append_if_missing: &[String],
-    kargs_replace: &[String],
-    kargs_delete: &[String],
-) -> Result<String> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"^([^=]+)=([^=]+)=([^=]+)$").unwrap();
+#[derive(Default)]
+pub struct KargsEditor {
+    append: Vec<String>,
+    append_if_missing: Vec<String>,
+    replace: Vec<String>,
+    delete: Vec<String>,
+}
+
+impl KargsEditor {
+    pub fn new() -> Self {
+        Default::default()
     }
-    let mut new_kargs: String = format!(" {} ", current_kargs);
-    for karg in kargs_delete {
-        let s = format!(" {} ", karg.trim());
-        new_kargs = new_kargs.replace(&s, " ");
+
+    pub fn append(&mut self, args: &[String]) -> &mut Self {
+        self.append.extend_from_slice(args);
+        self
     }
-    for karg in kargs_append {
-        new_kargs.push_str(karg.trim());
-        new_kargs.push(' ');
+
+    pub fn append_if_missing(&mut self, args: &[String]) -> &mut Self {
+        self.append_if_missing.extend_from_slice(args);
+        self
     }
-    for karg in kargs_append_if_missing {
-        let karg = karg.trim();
-        let s = format!(" {} ", karg);
-        if !new_kargs.contains(&s) {
-            new_kargs.push_str(karg);
+
+    pub fn replace(&mut self, args: &[String]) -> &mut Self {
+        self.replace.extend_from_slice(args);
+        self
+    }
+
+    pub fn delete(&mut self, args: &[String]) -> &mut Self {
+        self.delete.extend_from_slice(args);
+        self
+    }
+
+    // XXX: Need a proper parser here and share it with afterburn. The approach we use here
+    // is to just do a dumb substring search and replace. This is naive (e.g. doesn't
+    // handle occurrences in quoted args) but will work for now (one thing that saves us is
+    // that we're acting on our baked configs, which have straight-forward kargs).
+    pub fn apply_to(&self, current_kargs: &str) -> Result<String> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^([^=]+)=([^=]+)=([^=]+)$").unwrap();
+        }
+        let mut new_kargs: String = format!(" {} ", current_kargs);
+        for karg in &self.delete {
+            let s = format!(" {} ", karg.trim());
+            new_kargs = new_kargs.replace(&s, " ");
+        }
+        for karg in &self.append {
+            new_kargs.push_str(karg.trim());
             new_kargs.push(' ');
         }
+        for karg in &self.append_if_missing {
+            let karg = karg.trim();
+            let s = format!(" {} ", karg);
+            if !new_kargs.contains(&s) {
+                new_kargs.push_str(karg);
+                new_kargs.push(' ');
+            }
+        }
+        for karg in &self.replace {
+            let caps = match RE.captures(karg) {
+                Some(caps) => caps,
+                None => bail!("Wrong input, format should be: KEY=OLD=NEW"),
+            };
+            let old = format!(" {}={} ", &caps[1], &caps[2]);
+            let new = format!(" {}={} ", &caps[1], &caps[3]);
+            new_kargs = new_kargs.replace(&old, &new);
+        }
+        Ok(new_kargs.trim().into())
     }
-    for karg in kargs_replace {
-        let caps = match RE.captures(karg) {
-            Some(caps) => caps,
-            None => bail!("Wrong input, format should be: KEY=OLD=NEW"),
-        };
-        let old = format!(" {}={} ", &caps[1], &caps[2]);
-        let new = format!(" {}={} ", &caps[1], &caps[3]);
-        new_kargs = new_kargs.replace(&old, &new);
-    }
-    Ok(new_kargs.trim().into())
 }
 
 #[cfg(test)]
@@ -200,37 +228,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_modify_kargs() {
+    fn test_apply_to() {
         let orig_kargs = "foo bar foobar";
 
         let delete_kargs = vec!["foo".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(new_kargs, "bar foobar");
 
         let delete_kargs = vec!["bar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(new_kargs, "foo foobar");
 
         let delete_kargs = vec!["foobar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(new_kargs, "foo bar");
 
         let delete_kargs = vec!["foo bar".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(new_kargs, "foobar");
 
         let delete_kargs = vec!["bar".into(), "foo".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(new_kargs, "foobar");
 
         let orig_kargs = "foo=val bar baz=val";
 
         let delete_kargs = vec!["   foo=val".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(new_kargs, "bar baz=val");
 
         let delete_kargs = vec!["baz=val  ".into()];
-        let new_kargs = modify_kargs(orig_kargs, &[], &[], &[], &delete_kargs).unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(new_kargs, "foo=val bar");
 
         let orig_kargs = "foo mitigations=auto,nosmt console=tty0 bar console=ttyS0,115200n8 baz";
@@ -243,14 +292,12 @@ mod tests {
         let append_kargs_if_missing =
                  // base       // append_kargs dupe             // missing
             vec!["bar".into(), "console=ttyS1,115200n8".into(), "boo".into()];
-        let new_kargs = modify_kargs(
-            orig_kargs,
-            &append_kargs,
-            &append_kargs_if_missing,
-            &[],
-            &delete_kargs,
-        )
-        .unwrap();
+        let new_kargs = KargsEditor::new()
+            .delete(&delete_kargs)
+            .append(&append_kargs)
+            .append_if_missing(&append_kargs_if_missing)
+            .apply_to(orig_kargs)
+            .unwrap();
         assert_eq!(
             new_kargs,
             "foo console=tty0 bar baz console=ttyS1,115200n8 boo"
@@ -261,14 +308,12 @@ mod tests {
         let append_kargs = vec!["console=ttyS1,115200n8".into()];
         let replace_kargs = vec!["mitigations=auto,nosmt=auto".into()];
         let delete_kargs = vec!["console=ttyS0,115200n8".into()];
-        let new_kargs = modify_kargs(
-            orig_kargs,
-            &append_kargs,
-            &[],
-            &replace_kargs,
-            &delete_kargs,
-        )
-        .unwrap();
+        let new_kargs = KargsEditor::new()
+            .append(&append_kargs)
+            .replace(&replace_kargs)
+            .delete(&delete_kargs)
+            .apply_to(&orig_kargs)
+            .unwrap();
         assert_eq!(
             new_kargs,
             "foo mitigations=auto console=tty0 bar baz console=ttyS1,115200n8"
