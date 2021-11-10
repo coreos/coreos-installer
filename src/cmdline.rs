@@ -100,6 +100,13 @@ pub enum IsoKargsCmd {
 pub enum IsoExtractCmd {
     /// Extract PXE files from an ISO image
     Pxe(IsoExtractPxeConfig),
+    /// Extract a minimal ISO from a CoreOS live ISO image
+    MinimalIso(IsoExtractMinimalIsoConfig),
+    // This doesn't really make sense under `extract`, but it's hidden and conceptually feels
+    // cleaner being alongside `coreos-installer iso extract minimal-iso`.
+    /// Pack a minimal ISO into a CoreOS live ISO image
+    #[structopt(setting(AppSettings::Hidden))]
+    PackMinimalIso(IsoExtractPackMinimalIsoConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -407,6 +414,35 @@ pub struct IsoExtractPxeConfig {
     /// Output directory
     #[structopt(short, long, value_name = "PATH", default_value = ".")]
     pub output_dir: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoExtractMinimalIsoConfig {
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+    /// Extract rootfs image as well
+    #[structopt(long, value_name = "PATH")]
+    pub output_rootfs: Option<String>,
+    /// Minimal ISO output file
+    #[structopt(value_name = "OUTPUT_ISO", default_value = "-")]
+    pub output: String,
+    /// Inject rootfs URL karg into minimal ISO
+    #[structopt(long, value_name = "URL")]
+    pub rootfs_url: Option<String>,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoExtractPackMinimalIsoConfig {
+    /// ISO image
+    #[structopt(value_name = "FULL_ISO")]
+    pub full: String,
+    /// Minimal ISO image
+    #[structopt(value_name = "MINIMAL_ISO")]
+    pub minimal: String,
+    /// Delete minimal ISO after packing
+    #[structopt(long)]
+    pub consume: bool,
 }
 
 #[derive(Debug, StructOpt)]

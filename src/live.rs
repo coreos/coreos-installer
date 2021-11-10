@@ -18,17 +18,19 @@ use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
 use openat_ext::FileExt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::{read, write, File, OpenOptions};
 use std::io::{self, copy, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::cmdline::*;
 use crate::install::*;
 use crate::io::*;
 use crate::iso9660::{self, IsoFs};
+use crate::miniso;
 
 const FILENAME: &str = "config.ign";
 const COREOS_IGNITION_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
@@ -39,6 +41,8 @@ const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
 const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
 const COREOS_KARG_EMBED_INFO_PATH: &str = "COREOS/KARGS.JSO";
 const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
+const COREOS_ISO_ROOTFS_IMG: &str = "IMAGES/PXEBOOT/ROOTFS.IMG";
+const COREOS_ISO_MINISO_FILE: &str = "COREOS/MINISO.DAT";
 
 pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -124,10 +128,8 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
 }
 
 pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
-    if config.output.is_none()
-        && isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")?
-    {
-        bail!("Refusing to write binary data to terminal");
+    if config.output.is_none() {
+        verify_stdout_not_tty()?;
     }
 
     let ignition = match config.ignition_file {
@@ -232,9 +234,7 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
             iso.write(input)?;
         }
         Some("-") => {
-            if isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
-                bail!("Refusing to write binary data to terminal");
-            }
+            verify_stdout_not_tty()?;
             iso.stream(input, &mut io::stdout().lock())?;
         }
         Some(output_path) => {
@@ -268,9 +268,13 @@ impl IsoConfig {
     pub fn for_file(file: &mut File) -> Result<Self> {
         let mut iso = IsoFs::from_file(file.try_clone().context("cloning file")?)
             .context("parsing ISO9660 image")?;
+        IsoConfig::for_iso(&mut iso)
+    }
+
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
         Ok(Self {
-            ignition: ignition_embed_area(&mut iso)?,
-            kargs: KargEmbedAreas::for_iso(&mut iso)?,
+            ignition: ignition_embed_area(iso)?,
+            kargs: KargEmbedAreas::for_iso(iso)?,
         })
     }
 
@@ -457,28 +461,26 @@ struct KargEmbedAreas {
     args: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct KargEmbedInfo {
     default: String,
     files: Vec<KargEmbedLocation>,
     size: usize,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct KargEmbedLocation {
     path: String,
     offset: u64,
 }
 
-impl KargEmbedAreas {
-    // Return Ok(None) if no kargs embed areas exist.
+impl KargEmbedInfo {
+    // Returns Ok(None) if `kargs.json` doesn't exist.
     pub fn for_iso(iso: &mut IsoFs) -> Result<Option<Self>> {
         let iso_file = match iso.get_path(COREOS_KARG_EMBED_INFO_PATH) {
             Ok(record) => record.try_into_file()?,
             // old ISO without info JSON
-            Err(e) if e.is::<iso9660::NotFound>() => {
-                return Self::for_file_via_system_area(iso.as_file()?)
-            }
+            Err(e) if e.is::<iso9660::NotFound>() => return Ok(None),
             Err(e) => return Err(e),
         };
         let info: KargEmbedInfo = serde_json::from_reader(
@@ -486,6 +488,40 @@ impl KargEmbedAreas {
                 .context("reading kargs embed area info")?,
         )
         .context("decoding kargs embed area info")?;
+        Ok(Some(info))
+    }
+
+    pub fn update_iso(&self, iso: &mut IsoFs) -> Result<()> {
+        let iso_file = iso.get_path(COREOS_KARG_EMBED_INFO_PATH)?.try_into_file()?;
+        let mut w = iso.overwrite_file(&iso_file)?;
+        let new_json = serde_json::to_string_pretty(&self).context("serializing object")?;
+        if new_json.len() > iso_file.length as usize {
+            // This really shouldn't happen. It's only used by the miniso stuff, and there we
+            // strictly *remove* kargs from the default set.
+            bail!(
+                "New version of {} does not fit in space ({} vs {})",
+                COREOS_KARG_EMBED_INFO_PATH,
+                new_json.len(),
+                iso_file.length,
+            );
+        }
+
+        let mut contents = vec![b' '; iso_file.length as usize];
+        contents[..new_json.len()].copy_from_slice(new_json.as_bytes());
+        w.write_all(&contents)
+            .with_context(|| format!("failed to update {}", COREOS_KARG_EMBED_INFO_PATH))?;
+        w.flush().context("flushing ISO")?;
+        Ok(())
+    }
+}
+
+impl KargEmbedAreas {
+    // Return Ok(None) if no kargs embed areas exist.
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Option<Self>> {
+        let info = match KargEmbedInfo::for_iso(iso)? {
+            Some(info) => info,
+            None => return Self::for_file_via_system_area(iso.as_file()?),
+        };
 
         // sanity-check size against a reasonable limit
         if info.size > COREOS_KARG_EMBED_AREA_MAX_SIZE {
@@ -768,7 +804,183 @@ fn copy_file_from_iso(iso: &mut IsoFs, file: &iso9660::File, output_path: &Path)
         .with_context(|| format!("opening {}", output_path.display()))?;
     let mut bufw = BufWriter::with_capacity(BUFFER_SIZE, &mut outf);
     copy(&mut iso.read_file(file)?, &mut bufw)?;
-    bufw.flush()?;
+    bufw.flush().context("flushing buffer")?;
+    Ok(())
+}
+
+pub fn iso_extract_minimal_iso(config: &IsoExtractMinimalIsoConfig) -> Result<()> {
+    // Note we don't support overwriting the input ISO. Unlike other commands, this operation is
+    // non-reversible, so let's make it harder for users to shoot themselves in the foot.
+    let mut full_iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
+
+    // For now, we require the full ISO to be completely vanilla. Otherwise, the hashes won't
+    // match.
+    let iso = IsoConfig::for_iso(&mut full_iso)?;
+    if iso.have_ignition() {
+        bail!("Cannot operate on ISO with embedded Ignition config. Reset it and try again.");
+    } else if iso.kargs()? != iso.kargs_default()? {
+        bail!("Cannot operate on ISO with non-default kargs. Reset it and try again.");
+    }
+
+    // do this early so we exit immediately if stdout is a TTY
+    let output_dir: PathBuf = if &config.output == "-" {
+        verify_stdout_not_tty()?;
+        std::env::temp_dir()
+    } else {
+        Path::new(&config.output)
+            .parent()
+            .with_context(|| format!("no parent directory of {}", &config.output))?
+            .into()
+    };
+
+    if let Some(ref path) = config.output_rootfs {
+        let rootfs = full_iso
+            .get_path(COREOS_ISO_ROOTFS_IMG)
+            .with_context(|| format!("looking up '{}'", COREOS_ISO_ROOTFS_IMG))?
+            .try_into_file()?;
+        copy_file_from_iso(&mut full_iso, &rootfs, Path::new(path))?;
+    }
+
+    let miniso_data_file = full_iso
+        .get_path(COREOS_ISO_MINISO_FILE)
+        .with_context(|| format!("looking up '{}'", COREOS_ISO_MINISO_FILE))?
+        .try_into_file()?;
+
+    let data = {
+        let mut f = full_iso.read_file(&miniso_data_file)?;
+        miniso::Data::deserialize(&mut f).context("reading miniso data file")?
+    };
+    let mut outf = tempfile::Builder::new()
+        .prefix(".coreos-installer-temp-")
+        .tempfile_in(&output_dir)
+        .context("creating temporary file")?;
+    data.unxzpack(full_iso.as_file()?, &mut outf)
+        .context("unpacking miniso")?;
+    outf.seek(SeekFrom::Start(0))
+        .context("seeking back to start of miniso tempfile")?;
+
+    modify_miniso_kargs(outf.as_file_mut(), config.rootfs_url.as_ref())
+        .context("modifying miniso kernel args")?;
+
+    if &config.output == "-" {
+        copy(&mut outf, &mut io::stdout().lock()).context("writing output")?;
+    } else {
+        outf.persist_noclobber(&config.output)
+            .map_err(|e| e.error)?;
+    }
+
+    Ok(())
+}
+
+pub fn iso_pack_minimal_iso(config: &IsoExtractPackMinimalIsoConfig) -> Result<()> {
+    let mut full_iso = IsoFs::from_file(open_live_iso(&config.full, Some(None))?)?;
+    let mut minimal_iso = IsoFs::from_file(open_live_iso(&config.minimal, None)?)?;
+
+    let full_files = collect_iso_files(&mut full_iso)
+        .with_context(|| format!("collecting files from {}", &config.full))?;
+    let minimal_files = collect_iso_files(&mut minimal_iso)
+        .with_context(|| format!("collecting files from {}", &config.minimal))?;
+    if full_files.is_empty() {
+        bail!("No files found in {}", &config.full);
+    } else if minimal_files.is_empty() {
+        bail!("No files found in {}", &config.minimal);
+    }
+
+    eprintln!("Packing minimal ISO");
+    let (data, matches, skipped, written, written_compressed) =
+        miniso::Data::xzpack(minimal_iso.as_file()?, &full_files, &minimal_files)
+            .context("packing miniso")?;
+    eprintln!("Matched {} files of {}", matches, minimal_files.len());
+
+    eprintln!("Total bytes skipped: {}", skipped);
+    eprintln!("Total bytes written: {}", written);
+    eprintln!("Total bytes written (compressed): {}", written_compressed);
+
+    eprintln!("Verifying that packed image matches digest");
+    data.unxzpack(full_iso.as_file()?, std::io::sink())
+        .context("unpacking miniso for verification")?;
+
+    let miniso_entry = full_iso
+        .get_path(COREOS_ISO_MINISO_FILE)
+        .with_context(|| format!("looking up '{}'", COREOS_ISO_MINISO_FILE))?
+        .try_into_file()?;
+    let mut w = full_iso.overwrite_file(&miniso_entry)?;
+    data.serialize(&mut w).context("writing miniso data file")?;
+    w.flush().context("flushing full ISO")?;
+
+    if config.consume {
+        std::fs::remove_file(&config.minimal)
+            .with_context(|| format!("consuming {}", &config.minimal))?;
+    }
+
+    eprintln!("Packing successful!");
+    Ok(())
+}
+
+fn collect_iso_files(iso: &mut IsoFs) -> Result<HashMap<String, iso9660::File>> {
+    iso.walk()?
+        .filter_map(|r| match r {
+            Err(e) => Some(Err(e)),
+            Ok((s, iso9660::DirectoryRecord::File(f))) => Some(Ok((s, f))),
+            Ok(_) => None,
+        })
+        .collect::<Result<HashMap<String, iso9660::File>>>()
+        .context("while walking ISO filesystem")
+}
+
+fn modify_miniso_kargs(f: &mut File, rootfs_url: Option<&String>) -> Result<()> {
+    let mut iso = IsoFs::from_file(f.try_clone().context("cloning a file")?)?;
+    let mut cfg = IsoConfig::for_file(f)?;
+
+    let kargs = cfg.kargs()?;
+
+    // same disclaimer as `modify_kargs()` here re. whitespace/quoting
+    let liveiso_karg = kargs
+        .split_ascii_whitespace()
+        .find(|&karg| karg.starts_with("coreos.liveiso="))
+        .ok_or_else(|| anyhow!("minimal ISO does not have coreos.liveiso= karg"))?
+        .to_string();
+
+    let new_default_kargs = modify_kargs(kargs, &[], &[], &[], &[liveiso_karg])?;
+    cfg.set_kargs(&new_default_kargs)?;
+
+    if let Some(url) = rootfs_url {
+        if url.split_ascii_whitespace().count() > 1 {
+            bail!("forbidden whitespace found in '{}'", url);
+        }
+        let final_kargs = modify_kargs(
+            &new_default_kargs,
+            vec![format!("coreos.live.rootfs_url={}", url)].as_slice(),
+            &[],
+            &[],
+            &[],
+        )?;
+
+        cfg.set_kargs(&final_kargs)?;
+    }
+
+    // update kargs
+    write_live_iso(&cfg, f, None)?;
+
+    // also modify the default kargs because we don't want `coreos-installer iso kargs reset` to
+    // re-add `coreos.liveiso`
+    let mut kargs_info = KargEmbedInfo::for_iso(&mut iso)?.ok_or_else(|| {
+        // should be impossible; we only support new-style CoreOS ISOs with kargs.json
+        anyhow!("minimal ISO does not have kargs.json; please report this as a bug")
+    })?;
+
+    // NB: We don't need to update the length for this; it's a fixed property of the kargs files.
+    // (Though its original value did depend on the original default kargs at build time.)
+    kargs_info.default = new_default_kargs;
+    kargs_info.update_iso(&mut iso)?;
+
+    Ok(())
+}
+
+fn verify_stdout_not_tty() -> Result<()> {
+    if isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
+        bail!("Refusing to write binary data to terminal");
+    }
     Ok(())
 }
 
