@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use libcoreinst::blockdev::*;
-use libcoreinst::install::*;
+use libcoreinst::io::*;
 use libcoreinst::util::*;
 
 use libcoreinst::runcmd_output;

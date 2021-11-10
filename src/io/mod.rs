@@ -16,11 +16,13 @@ use anyhow::{bail, Result};
 use bincode::Options;
 use std::io::{ErrorKind, Read, Write};
 
+mod bls;
 mod compress;
 mod hash;
 mod limit;
 mod verify;
 
+pub use self::bls::*;
 pub use self::compress::*;
 pub use self::hash::*;
 pub use self::limit::*;

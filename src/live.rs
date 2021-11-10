@@ -27,7 +27,6 @@ use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
 use crate::cmdline::*;
-use crate::install::*;
 use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 use crate::miniso;

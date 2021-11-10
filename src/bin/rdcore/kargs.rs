@@ -15,7 +15,7 @@
 use anyhow::{bail, Context, Result};
 use std::fs::read_to_string;
 
-use libcoreinst::install::*;
+use libcoreinst::io::*;
 #[cfg(target_arch = "s390x")]
 use libcoreinst::s390x;
 

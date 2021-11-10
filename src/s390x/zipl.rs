@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::install::{bls_entry_options_delete_and_append_kargs, visit_bls_entry_options};
+use crate::io::{bls_entry_options_delete_and_append_kargs, visit_bls_entry_options};
 use crate::runcmd;
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
