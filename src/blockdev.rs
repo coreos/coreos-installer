@@ -524,7 +524,6 @@ impl Drop for Mount {
         }
         if let Err(err) = remove_dir(&self.mountpoint) {
             eprintln!("removing {}: {}", self.mountpoint.display(), err);
-            return;
         }
     }
 }
