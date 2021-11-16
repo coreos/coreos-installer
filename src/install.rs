@@ -241,6 +241,33 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         bail!("install failed");
     }
 
+    // Because grub picks /boot by label and the OS picks /boot, we can end up racing/flapping
+    // between picking a /boot partition on startup. So check amount of filesystems labeled 'boot'
+    // and warn user if it's not only one
+    match get_filesystems_with_label("boot") {
+        Ok(pts) => {
+            if pts.len() > 1 {
+                let rootdev = std::fs::canonicalize(&config.device)
+                    .unwrap_or_else(|_| PathBuf::from(&config.device))
+                    .to_string_lossy()
+                    .to_string();
+                let pts = pts
+                    .iter()
+                    .filter(|pt| !pt.contains(&rootdev))
+                    .collect::<Vec<_>>();
+                eprintln!("Note: detected other devices with a filesystem labeled 'boot'.");
+                for pt in pts {
+                    eprintln!("- {}", pt);
+                }
+                eprintln!("The installed OS may not work correctly if there are multiple boot filesystems.
+Before rebooting, investigate whether these filesystems are needed and consider
+wiping them with `wipefs -a`."
+                );
+            }
+        }
+        Err(e) => eprintln!("checking filesystems labeled 'boot': {:?}", e),
+    }
+
     eprintln!("Install complete.");
     Ok(())
 }

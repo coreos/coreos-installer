@@ -1,4 +1,4 @@
-// Copyright 2020 CoreOS, Inc.
+// Copyright 2021 CoreOS, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod cmdline;
-mod kargs;
-mod rootmap;
-mod stream_hash;
-mod unique_fs;
-
-use anyhow::Result;
-use structopt::StructOpt;
-
 use crate::cmdline::*;
+use anyhow::{bail, Result};
 
-fn main() -> Result<()> {
-    match Cmd::from_args() {
-        Cmd::Kargs(c) => kargs::kargs(&c),
-        Cmd::Rootmap(c) => rootmap::rootmap(&c),
-        Cmd::StreamHash(c) => stream_hash::stream_hash(&c),
-        Cmd::VerifyUniqueFsLabel(c) => unique_fs::verify_unique_fs(&c),
+use libcoreinst::blockdev::*;
+
+pub fn verify_unique_fs(config: &VerifyUniqueFsLabelConfig) -> Result<()> {
+    let pts = get_filesystems_with_label(&config.label)?;
+    let count = pts.len();
+    if count != 1 {
+        bail!(
+            "System has {} devices with a filesystem labeled '{}': {:?}",
+            count,
+            config.label,
+            pts
+        );
     }
+    Ok(())
 }
