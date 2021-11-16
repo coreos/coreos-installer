@@ -27,6 +27,7 @@ fn main() -> Result<()> {
     match Cmd::from_args() {
         Cmd::Kargs(c) => kargs::kargs(&c),
         Cmd::Rootmap(c) => rootmap::rootmap(&c),
+        Cmd::BindBoot(c) => rootmap::bind_boot(&c),
         Cmd::StreamHash(c) => stream_hash::stream_hash(&c),
         Cmd::VerifyUniqueFsLabel(c) => unique_fs::verify_unique_fs(&c),
     }

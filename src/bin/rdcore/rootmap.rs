@@ -218,3 +218,73 @@ fn get_luks_uuid(device: &Path) -> Result<String> {
         .trim()
         .into())
 }
+
+pub fn bind_boot(config: &BindBootConfig) -> Result<()> {
+    let boot_mount = Mount::from_existing(&config.boot_mount)?;
+    let root_mount = Mount::from_existing(&config.root_mount)?;
+    let boot_uuid = boot_mount.get_filesystem_uuid()?;
+    let root_uuid = root_mount.get_filesystem_uuid()?;
+
+    let kargs = vec![format!("boot=UUID={}", boot_uuid)];
+    let changed = visit_bls_entry_options(boot_mount.mountpoint(), |orig_options: &str| {
+        if !orig_options.starts_with("boot=") && !orig_options.contains(" boot=") {
+            bls_entry_options_delete_and_append_kargs(orig_options, &[], &kargs, &[])
+        } else {
+            // boot= karg already exists; let's not add anything
+            Ok(None)
+        }
+    })
+    .context("appending boot kargs")?;
+
+    // put it in /run also for the first boot real root mount
+    // https://github.com/coreos/fedora-coreos-config/blob/8661649009/overlay.d/05core/usr/lib/systemd/system-generators/coreos-boot-mount-generator#L105-L108
+    if changed {
+        let boot_uuid_run = Path::new("/run/coreos/bootfs_uuid");
+        let parent = boot_uuid_run.parent().unwrap();
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+        std::fs::write(boot_uuid_run, format!("{}\n", &boot_uuid))
+            .with_context(|| format!("writing {}", boot_uuid_run.display()))?;
+    }
+
+    // bind rootfs to bootfs
+    let root_uuid_stamp = boot_mount.mountpoint().join(".root_uuid");
+    if root_uuid_stamp.exists() {
+        let bound_root_uuid = std::fs::read_to_string(&root_uuid_stamp)
+            .with_context(|| format!("reading {}", root_uuid_stamp.display()))?;
+        let bound_root_uuid = bound_root_uuid.trim();
+        // Let it slide if it already matches the rootfs... that shouldn't happen unless the user
+        // is trying to force a rerun of Ignition. In that case, we'll have nicer errors and
+        // warnings elsewhere.
+        if bound_root_uuid != root_uuid {
+            bail!(
+                "boot filesystem already bound to a root filesystem (UUID: {})",
+                bound_root_uuid
+            );
+        }
+    } else {
+        std::fs::write(&root_uuid_stamp, format!("{}\n", root_uuid))
+            .with_context(|| format!("writing {}", root_uuid_stamp.display()))?;
+    }
+
+    // now bind GRUB to bootfs
+    #[cfg(not(target_arch = "s390x"))]
+    {
+        let grub_bios_path = boot_mount.mountpoint().join("grub2/bootuuid.cfg");
+        write_boot_uuid_grub2_dropin(&boot_uuid, grub_bios_path)?;
+    }
+
+    for esp in find_esps()? {
+        let mount = Mount::try_mount(&esp, "vfat", mount::MsFlags::empty())?;
+        let vendor_dir = find_efi_vendor_dir(&mount)?;
+        let grub_efi_path = vendor_dir.join("bootuuid.cfg");
+        write_boot_uuid_grub2_dropin(&boot_uuid, grub_efi_path)?;
+    }
+    Ok(())
+}
+
+fn write_boot_uuid_grub2_dropin<P: AsRef<Path>>(uuid: &str, p: P) -> Result<()> {
+    let p = p.as_ref();
+    std::fs::write(p, format!("set BOOT_UUID=\"{}\"\n", uuid))
+        .with_context(|| format!("writing {}", p.display()))
+}

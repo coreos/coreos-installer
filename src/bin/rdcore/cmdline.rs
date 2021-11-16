@@ -30,6 +30,8 @@ use structopt::StructOpt;
 pub enum Cmd {
     /// Generate rootmap kargs and optionally inject into BLS configs
     Rootmap(RootmapConfig),
+    /// Generate bootmap kargs and binds bootfs to rootfs and GRUB
+    BindBoot(BindBootConfig),
     /// Modify kargs in BLS configs
     Kargs(KargsConfig),
     /// Copy data from stdin to stdout, checking piecewise hashes
@@ -54,6 +56,16 @@ pub struct RootmapConfig {
     /// Path to rootfs mount
     #[structopt(value_name = "ROOT_MOUNT")]
     pub root_mount: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct BindBootConfig {
+    /// Path to rootfs mount
+    #[structopt(value_name = "ROOT_MOUNT")]
+    pub root_mount: String,
+    /// Path to bootfs mount
+    #[structopt(value_name = "BOOT_MOUNT")]
+    pub boot_mount: String,
 }
 
 #[derive(Debug, StructOpt)]

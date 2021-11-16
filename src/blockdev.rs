@@ -877,6 +877,57 @@ pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>
     Ok(result)
 }
 
+pub fn find_esps() -> Result<Vec<String>> {
+    const ESP_TYPE_GUID: &str = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
+    let mut cmd = Command::new("lsblk");
+    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
+    cmd.arg("--pairs")
+        .arg("--paths")
+        .arg("--output")
+        .arg("NAME,PARTTYPE");
+    let output = cmd_output(&mut cmd)?;
+    output
+        .lines()
+        .filter_map(|line| {
+            let dev = split_lsblk_line(line);
+            if dev.get("PARTTYPE").map(|t| t.as_str()) == Some(ESP_TYPE_GUID) {
+                Some(
+                    dev.get("NAME")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("ESP device with missing NAME")),
+                )
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// This is basically a Rust version of:
+/// https://github.com/coreos/coreos-assembler/blob/d3c7ec094a02/src/cmd-buildextend-live#L492-L495
+pub fn find_efi_vendor_dir(efi_mount: &Mount) -> Result<PathBuf> {
+    let p = efi_mount.mountpoint().join("EFI");
+    let mut vendor_dir: Vec<PathBuf> = Vec::new();
+    for ent in p.read_dir()? {
+        let ent = ent.with_context(|| format!("reading directory entry in {}", p.display()))?;
+        if ent.file_name() == "BOOT" {
+            continue;
+        }
+        if !ent.file_type()?.is_dir() {
+            continue;
+        }
+        vendor_dir.push(ent.path());
+    }
+    if vendor_dir.len() != 1 {
+        bail!(
+            "Expected one vendor dir on {}, got {}",
+            efi_mount.device(),
+            vendor_dir.len()
+        );
+    }
+    Ok(vendor_dir.pop().unwrap())
+}
+
 /// Parse key-value pairs from lsblk --pairs.
 /// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
 fn split_lsblk_line(line: &str) -> HashMap<String, String> {
