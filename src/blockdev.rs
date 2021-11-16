@@ -17,7 +17,7 @@ use gptman::{GPTPartitionEntry, GPT};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount, sched};
 use regex::Regex;
-use std::collections::HashMap;
+use serde::Deserialize;
 use std::convert::TryInto;
 use std::env;
 use std::fs::{
@@ -41,6 +41,50 @@ use crate::cmdline::PartitionFilter;
 use crate::util::*;
 
 use crate::{runcmd, runcmd_output};
+
+#[derive(Debug, Deserialize)]
+struct DevicesOutput {
+    blockdevices: Vec<Device>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Device {
+    pub name: String,
+    pub label: Option<String>,
+    pub fstype: Option<String>,
+    #[serde(rename = "type")]
+    pub blktype: Option<String>,
+    pub mountpoint: Option<String>,
+    pub uuid: Option<String>,
+    pub children: Option<Vec<Device>>,
+}
+
+impl Device {
+    pub fn lsblk(dev: &Path, with_children: bool) -> Result<Device> {
+        let mut cmd = Command::new("lsblk");
+        cmd.args(&[
+            "-J",
+            "--paths",
+            "-o",
+            "NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID",
+        ])
+        .arg(dev);
+        if !with_children {
+            cmd.arg("--nodeps");
+        }
+        let output = cmd_output(&mut cmd)?;
+        let devs: DevicesOutput = serde_json::from_str(&output)?;
+        if devs.blockdevices.len() > 1 {
+            bail!("found more than one device for {:?}", dev);
+        }
+        let devinfo = devs
+            .blockdevices
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("failed to get device information"))?;
+        Ok(devinfo)
+    }
+}
 
 #[derive(Debug)]
 pub struct Disk {
@@ -100,29 +144,45 @@ impl Disk {
         }
     }
 
+    fn compute_partition(&self, devinfo: &Device) -> Result<Vec<Partition>> {
+        let mut result: Vec<Partition> = Vec::new();
+        // Only return partitions.  Skip the whole-disk device, as well
+        // as holders like LVM or RAID devices using one of the partitions.
+        if !(devinfo.blktype != Some("part".to_string())) {
+            let (mountpoint, swap) = match &devinfo.mountpoint {
+                Some(mp) if mp == "[SWAP]" => (None, true),
+                Some(mp) => (Some(mp.to_string()), false),
+                None => (None, false),
+            };
+            result.push(Partition {
+                path: devinfo.name.to_owned(),
+                label: devinfo.label.clone(),
+                fstype: devinfo.fstype.clone(),
+                parent: self.path.to_owned(),
+                mountpoint,
+                swap,
+            });
+        }
+
+        Ok(result)
+    }
+
     fn get_partitions(&self) -> Result<Vec<Partition>> {
         // walk each device in the output
         let mut result: Vec<Partition> = Vec::new();
-        for devinfo in lsblk(Path::new(&self.path), true)? {
-            if let Some(name) = devinfo.get("NAME") {
-                // Only return partitions.  Skip the whole-disk device, as well
-                // as holders like LVM or RAID devices using one of the partitions.
-                if devinfo.get("TYPE").map(|s| s.as_str()) != Some("part") {
-                    continue;
+        let deviceinfo = Device::lsblk(Path::new(&self.path), true)?;
+        let mut partition = self.compute_partition(&deviceinfo)?;
+        if !partition.is_empty() {
+            result.append(&mut partition);
+        }
+        if let Some(children) = deviceinfo.children.as_ref() {
+            if !children.is_empty() {
+                for child in children {
+                    let mut childpartition = self.compute_partition(child)?;
+                    if !childpartition.is_empty() {
+                        result.append(&mut childpartition);
+                    }
                 }
-                let (mountpoint, swap) = match devinfo.get("MOUNTPOINT") {
-                    Some(mp) if mp == "[SWAP]" => (None, true),
-                    Some(mp) => (Some(mp.to_string()), false),
-                    None => (None, false),
-                };
-                result.push(Partition {
-                    path: name.to_owned(),
-                    label: devinfo.get("LABEL").map(<_>::to_string),
-                    fstype: devinfo.get("FSTYPE").map(<_>::to_string),
-                    parent: self.path.to_owned(),
-                    mountpoint,
-                    swap,
-                });
             }
         }
         Ok(result)
@@ -493,11 +553,10 @@ impl Mount {
     }
 
     pub fn get_filesystem_uuid(&self) -> Result<String> {
-        let devinfo = lsblk_single(Path::new(&self.device))?;
-        devinfo
-            .get("UUID")
-            .map(String::from)
-            .with_context(|| format!("filesystem {} has no UUID", self.device))
+        let uuid = Device::lsblk(Path::new(&self.device), false)?
+            .uuid
+            .ok_or_else(|| anyhow!("failed to get uuid"))?;
+        Ok(uuid)
     }
 }
 
@@ -799,46 +858,6 @@ fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String>
     Ok(read_to_string(&path)?.trim_end().into())
 }
 
-pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
-    let mut devinfos = lsblk(Path::new(dev), false)?;
-    if devinfos.is_empty() {
-        // this should never happen because `lsblk` itself would've failed
-        bail!("no lsblk results for {}", dev.display());
-    }
-    Ok(devinfos.remove(0))
-}
-
-pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>> {
-    let mut cmd = Command::new("lsblk");
-    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
-    cmd.arg("--pairs")
-        .arg("--paths")
-        .arg("--output")
-        .arg("NAME,LABEL,FSTYPE,TYPE,MOUNTPOINT,UUID")
-        .arg(dev);
-    if !with_deps {
-        cmd.arg("--nodeps");
-    }
-    let output = cmd_output(&mut cmd)?;
-    let mut result: Vec<HashMap<String, String>> = Vec::new();
-    for line in output.lines() {
-        // parse key-value pairs
-        result.push(split_lsblk_line(line));
-    }
-    Ok(result)
-}
-
-/// Parse key-value pairs from lsblk --pairs.
-/// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
-fn split_lsblk_line(line: &str) -> HashMap<String, String> {
-    let re = Regex::new(r#"([A-Z-]+)="([^"]+)""#).unwrap();
-    let mut fields: HashMap<String, String> = HashMap::new();
-    for cap in re.captures_iter(line) {
-        fields.insert(cap[1].to_string(), cap[2].to_string());
-    }
-    fields
-}
-
 pub fn get_blkdev_deps(device: &Path) -> Result<Vec<PathBuf>> {
     let deps = {
         let mut p = PathBuf::from("/sys/block");
@@ -1027,45 +1046,9 @@ mod ioctl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use maplit::hashmap;
     use std::io::copy;
     use tempfile::tempfile;
     use xz2::read::XzDecoder;
-
-    #[test]
-    fn lsblk_split() {
-        assert_eq!(
-            split_lsblk_line(r#"NAME="sda" LABEL="" FSTYPE="""#),
-            hashmap! {
-                String::from("NAME") => String::from("sda"),
-            }
-        );
-        assert_eq!(
-            split_lsblk_line(r#"NAME="sda1" LABEL="" FSTYPE="vfat""#),
-            hashmap! {
-                String::from("NAME") => String::from("sda1"),
-                String::from("FSTYPE") => String::from("vfat")
-            }
-        );
-        assert_eq!(
-            split_lsblk_line(r#"NAME="sda2" LABEL="boot" FSTYPE="ext4""#),
-            hashmap! {
-                String::from("NAME") => String::from("sda2"),
-                String::from("LABEL") => String::from("boot"),
-                String::from("FSTYPE") => String::from("ext4"),
-            }
-        );
-        assert_eq!(
-            split_lsblk_line(r#"NAME="sda3" LABEL="foo=\x22bar\x22 baz" FSTYPE="ext4""#),
-            hashmap! {
-                String::from("NAME") => String::from("sda3"),
-                // for now, we don't care about resolving lsblk's hex escapes,
-                // so we just pass them through
-                String::from("LABEL") => String::from(r#"foo=\x22bar\x22 baz"#),
-                String::from("FSTYPE") => String::from("ext4"),
-            }
-        );
-    }
 
     #[test]
     fn disk_sector_size_reader() {
