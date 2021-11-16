@@ -58,12 +58,11 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
 }
 
 fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<String>> {
-    let new_options = bls_entry_options_delete_and_append_kargs(
-        orig_options,
-        config.delete.as_slice(),
-        config.append.as_slice(),
-        config.append_if_missing.as_slice(),
-    )?;
+    let new_options = KargsEditor::new()
+        .delete(config.delete.as_slice())
+        .append(config.append.as_slice())
+        .append_if_missing(config.append_if_missing.as_slice())
+        .maybe_apply_to(orig_options)?;
 
     // we always print the final kargs
     if let Some(ref options) = new_options {

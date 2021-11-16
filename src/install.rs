@@ -396,12 +396,10 @@ fn write_disk(
             eprintln!("Modifying kernel arguments");
 
             visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-                bls_entry_options_delete_and_append_kargs(
-                    orig_options,
-                    config.delete_karg.as_slice(),
-                    config.append_karg.as_slice(),
-                    &[],
-                )
+                KargsEditor::new()
+                    .append(config.append_karg.as_slice())
+                    .delete(config.delete_karg.as_slice())
+                    .maybe_apply_to(orig_options)
             })
             .context("deleting and appending kargs")?;
         }

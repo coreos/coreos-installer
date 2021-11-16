@@ -132,27 +132,7 @@ pub fn visit_bls_entry_options(
     })
 }
 
-/// To be used with `visit_bls_entry_options()`. Modifies the BLS config as instructed by
-/// `delete_args` and `append_args`.
-pub fn bls_entry_options_delete_and_append_kargs(
-    orig_options: &str,
-    delete_args: &[String],
-    append_args: &[String],
-    append_args_if_missing: &[String],
-) -> Result<Option<String>> {
-    if delete_args.is_empty() && append_args.is_empty() && append_args_if_missing.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(
-        KargsEditor::new()
-            .delete(delete_args)
-            .append(append_args)
-            .append_if_missing(append_args_if_missing)
-            .apply_to(orig_options)?,
-    ))
-}
-
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct KargsEditor {
     append: Vec<String>,
     append_if_missing: Vec<String>,
@@ -220,6 +200,17 @@ impl KargsEditor {
             new_kargs = new_kargs.replace(&old, &new);
         }
         Ok(new_kargs.trim().into())
+    }
+
+    /// Return None if we haven't been asked to do anything, otherwise
+    /// Some(modified args).
+    /// To be used with `visit_bls_entry_options()`.
+    pub fn maybe_apply_to(&self, current_kargs: &str) -> Result<Option<String>> {
+        if self == &Self::new() {
+            Ok(None)
+        } else {
+            Ok(Some(self.apply_to(current_kargs)?))
+        }
     }
 }
 
@@ -318,5 +309,30 @@ mod tests {
             new_kargs,
             "foo mitigations=auto console=tty0 bar baz console=ttyS1,115200n8"
         );
+    }
+
+    #[test]
+    fn test_maybe_apply_to() {
+        // no arguments
+        assert!(KargsEditor::new()
+            .maybe_apply_to("foo bar foobar")
+            .unwrap()
+            .is_none());
+
+        // empty arguments
+        assert!(KargsEditor::new()
+            .append(&[])
+            .delete(&[])
+            .maybe_apply_to("foo bar foobar")
+            .unwrap()
+            .is_none());
+
+        // arguments that aren't relevant
+        let new_kargs = KargsEditor::new()
+            .delete(&["baz".into()])
+            .maybe_apply_to("foo bar foobar")
+            .unwrap()
+            .unwrap();
+        assert_eq!(new_kargs, "foo bar foobar");
     }
 }
