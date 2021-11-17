@@ -27,7 +27,6 @@ use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
 use crate::cmdline::*;
-use crate::install::*;
 use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 use crate::miniso;
@@ -176,13 +175,11 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
-    let kargs = modify_kargs(
-        iso.kargs()?,
-        &config.append,
-        &[],
-        &config.replace,
-        &config.delete,
-    )?;
+    let kargs = KargsEditor::new()
+        .append(&config.append)
+        .replace(&config.replace)
+        .delete(&config.delete)
+        .apply_to(iso.kargs()?)?;
     iso.set_kargs(&kargs)?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
@@ -941,20 +938,16 @@ fn modify_miniso_kargs(f: &mut File, rootfs_url: Option<&String>) -> Result<()> 
         .ok_or_else(|| anyhow!("minimal ISO does not have coreos.liveiso= karg"))?
         .to_string();
 
-    let new_default_kargs = modify_kargs(kargs, &[], &[], &[], &[liveiso_karg])?;
+    let new_default_kargs = KargsEditor::new().delete(&[liveiso_karg]).apply_to(kargs)?;
     cfg.set_kargs(&new_default_kargs)?;
 
     if let Some(url) = rootfs_url {
         if url.split_ascii_whitespace().count() > 1 {
             bail!("forbidden whitespace found in '{}'", url);
         }
-        let final_kargs = modify_kargs(
-            &new_default_kargs,
-            vec![format!("coreos.live.rootfs_url={}", url)].as_slice(),
-            &[],
-            &[],
-            &[],
-        )?;
+        let final_kargs = KargsEditor::new()
+            .append(&[format!("coreos.live.rootfs_url={}", url)])
+            .apply_to(&new_default_kargs)?;
 
         cfg.set_kargs(&final_kargs)?;
     }

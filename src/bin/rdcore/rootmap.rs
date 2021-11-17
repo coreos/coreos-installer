@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use libcoreinst::blockdev::*;
-use libcoreinst::install::*;
+use libcoreinst::io::*;
 use libcoreinst::util::*;
 
 use libcoreinst::runcmd_output;
@@ -61,7 +61,9 @@ pub fn rootmap(config: &RootmapConfig) -> Result<()> {
     let boot_mount = get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?;
     if let Some(mount) = boot_mount {
         visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-            bls_entry_options_delete_and_append_kargs(orig_options, &[], &kargs, &[])
+            KargsEditor::new()
+                .append(&kargs)
+                .maybe_apply_to(orig_options)
         })
         .context("appending rootmap kargs")?;
         eprintln!("Injected kernel arguments into BLS: {}", kargs.join(" "));
@@ -228,7 +230,9 @@ pub fn bind_boot(config: &BindBootConfig) -> Result<()> {
     let kargs = vec![format!("boot=UUID={}", boot_uuid)];
     let changed = visit_bls_entry_options(boot_mount.mountpoint(), |orig_options: &str| {
         if !orig_options.starts_with("boot=") && !orig_options.contains(" boot=") {
-            bls_entry_options_delete_and_append_kargs(orig_options, &[], &kargs, &[])
+            KargsEditor::new()
+                .append(&kargs)
+                .maybe_apply_to(orig_options)
         } else {
             // boot= karg already exists; let's not add anything
             Ok(None)
