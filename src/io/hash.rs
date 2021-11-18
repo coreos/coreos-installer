@@ -16,7 +16,9 @@ use anyhow::{bail, ensure, Context, Error, Result};
 use openssl::hash::{Hasher, MessageDigest};
 use openssl::sha;
 use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::convert::{TryFrom, TryInto};
+use std::fmt;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};
 use std::os::unix::io::AsRawFd;
@@ -24,7 +26,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 /// Ignition-style message digests
-#[derive(Debug)]
+#[derive(Debug, DeserializeFromStr, SerializeDisplay)]
 pub enum IgnitionHash {
     /// SHA-256 digest.
     Sha256(Vec<u8>),
@@ -76,6 +78,16 @@ impl FromStr for IgnitionHash {
         };
 
         Ok(hash)
+    }
+}
+
+impl fmt::Display for IgnitionHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (kind, value) = match self {
+            Self::Sha256(v) => ("sha256", v),
+            Self::Sha512(v) => ("sha512", v),
+        };
+        write!(f, "{}-{}", kind, hex::encode(value))
     }
 }
 

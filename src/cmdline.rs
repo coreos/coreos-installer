@@ -14,6 +14,8 @@
 
 use anyhow::{anyhow, Error, Result};
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DeserializeFromStr, DisplayFromStr, SerializeDisplay};
 use std::default::Default;
 use std::fmt;
 use std::marker::PhantomData;
@@ -134,7 +136,24 @@ pub enum PxeIgnitionCmd {
     Unwrap(PxeIgnitionUnwrapConfig),
 }
 
-#[derive(Debug, StructOpt)]
+// As a special case, this struct supports Serialize and Deserialize for
+// config file parsing.  Here are the rules.  Build or test should fail if
+// you break anything too badly.
+// - Defaults cannot be specified using #[structopt(default_value = "x")]
+//   because serde won't see them otherwise.  Instead, use
+//   #[structopt(default_value)] and implement Default for the type.  For
+//   string-typed defaults, you can use DefaultedString<T> where T is a
+//   custom type implementing DefaultString.
+// - Custom types used in fields should implement Display and FromStr, then
+//   implement Serialize/Deserialize by deriving SerializeDisplay/
+//   DeserializeFromStr.
+// - reqwest::Url doesn't implement Serialize/Deserialize, but does implement
+//   Display and FromStr, so use #[serde_as(as = "Option<DisplayFromStr>")].
+// - Use #[serde(skip)] for any option that shouldn't be supported in config
+//   files.
+#[serde_as]
+#[derive(Debug, Default, StructOpt, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct InstallConfig {
     // ways to specify the image source
     /// Fedora CoreOS stream
@@ -142,6 +161,7 @@ pub struct InstallConfig {
     #[structopt(conflicts_with = "image-file", conflicts_with = "image-url")]
     pub stream: Option<String>,
     /// Manually specify the image URL
+    #[serde_as(as = "Option<DisplayFromStr>")]
     #[structopt(short = "u", long, value_name = "URL")]
     #[structopt(conflicts_with = "stream", conflicts_with = "image-file")]
     pub image_url: Option<Url>,
@@ -157,6 +177,7 @@ pub struct InstallConfig {
     #[structopt(conflicts_with = "ignition-url")]
     pub ignition_file: Option<String>,
     /// Embed an Ignition config from a URL
+    #[serde_as(as = "Option<DisplayFromStr>")]
     #[structopt(short = "I", long, value_name = "URL")]
     #[structopt(conflicts_with = "ignition-file")]
     pub ignition_url: Option<Url>,
@@ -173,6 +194,7 @@ pub struct InstallConfig {
     // This used to be for configuring networking from the cmdline, but it has
     // been obsoleted by the nicer `--copy-network` approach. We still need it
     // for now though. It's used at least by `coreos-installer.service`.
+    #[serde(skip)]
     #[structopt(long, hidden = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
@@ -215,6 +237,7 @@ pub struct InstallConfig {
     #[structopt(long)]
     pub insecure_ignition: bool,
     /// Base URL for Fedora CoreOS stream metadata
+    #[serde_as(as = "Option<DisplayFromStr>")]
     #[structopt(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
     /// Don't clear partition table on error
@@ -229,7 +252,7 @@ pub struct InstallConfig {
     pub device: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, DeserializeFromStr, SerializeDisplay, Clone, Copy)]
 pub enum FetchRetries {
     Infinite,
     Finite(NonZeroU32),
@@ -568,6 +591,29 @@ impl<S: DefaultString> Default for DefaultedString<S> {
             value: S::default(),
             default: PhantomData,
         }
+    }
+}
+
+// SerializeDisplay derive apparently doesn't work with parameterized types
+impl<S: DefaultString> Serialize for DefaultedString<S> {
+    fn serialize<R>(&self, serializer: R) -> Result<R::Ok, R::Error>
+    where
+        R: serde::ser::Serializer,
+    {
+        serializer.serialize_str(&self.value)
+    }
+}
+
+// DeserializeFromStr derive apparently doesn't work with parameterized types
+impl<'de, S: DefaultString> Deserialize<'de> for DefaultedString<S> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        Ok(Self {
+            value: String::deserialize(deserializer)?,
+            default: PhantomData,
+        })
     }
 }
 
