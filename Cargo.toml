@@ -11,8 +11,8 @@ version = "0.11.0"
 [package.metadata.release]
 sign-commit = true
 sign-tag = true
-disable-push = true
-disable-publish = true
+push = false
+publish = false
 pre-release-commit-message = "cargo: coreos-installer release {{version}}"
 post-release-commit-message = "cargo: development version bump"
 tag-message = "coreos-installer v{{version}}"
