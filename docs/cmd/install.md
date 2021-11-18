@@ -19,6 +19,7 @@ Install Fedora CoreOS or RHEL CoreOS
 
 ## Options
 
+| **--config-file**, **-c** *path* | YAML config file with install options |
 | **--stream**, **-s** *name* | Fedora CoreOS stream |
 | **--image-url**, **-u** *URL* | Manually specify the image URL |
 | **--image-file**, **-f** *path* | Manually specify a local image file |

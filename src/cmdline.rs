@@ -161,6 +161,11 @@ pub enum PxeIgnitionCmd {
 #[derive(Debug, Default, StructOpt, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct InstallConfig {
+    /// YAML config file with install options
+    #[serde(skip)]
+    #[structopt(short, long, value_name = "path", number_of_values = 1)]
+    pub config_file: Vec<String>,
+
     // ways to specify the image source
     /// Fedora CoreOS stream
     #[structopt(short, long, value_name = "name")]
@@ -267,7 +272,8 @@ pub struct InstallConfig {
 
     // positional args
     /// Destination device
-    pub device: String,
+    #[structopt(required_unless = "config-file")]
+    pub dest_device: Option<String>,
 }
 
 #[derive(Debug, DeserializeFromStr, SerializeDisplay, Clone, Copy, PartialEq, Eq)]
