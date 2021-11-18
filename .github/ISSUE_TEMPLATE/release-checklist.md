@@ -37,12 +37,12 @@ Push access to the upstream repository is required in order to publish the new t
 
 - create release commits on a dedicated branch and tag it (the commits and tag will be signed with the GPG signing key you configured):
   - [ ] `git checkout -b release-${RELEASE_VER}`
-  - [ ] `cargo release` (and confirm the version when prompted)
+  - [ ] `cargo release --execute ${RELEASE_VER}` (and confirm the version when prompted)
 
 - open and merge a PR for this release:
   - [ ] `git push ${UPSTREAM_REMOTE} release-${RELEASE_VER}`
   - [ ] open a web browser and create a PR for the branch above
-  - [ ] make sure the resulting PR contains exactly two commits
+  - [ ] make sure the resulting PR contains exactly one commit
   - [ ] in the PR body, write a short changelog with relevant changes since last release
   - [ ] get the PR reviewed, approved and merged
 

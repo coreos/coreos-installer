@@ -14,7 +14,6 @@ sign-tag = true
 push = false
 publish = false
 pre-release-commit-message = "cargo: coreos-installer release {{version}}"
-post-release-commit-message = "cargo: development version bump"
 tag-message = "coreos-installer v{{version}}"
 
 [features]
