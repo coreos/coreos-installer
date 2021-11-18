@@ -253,13 +253,13 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                     .iter()
                     .filter(|pt| !pt.contains(&rootdev))
                     .collect::<Vec<_>>();
-                eprintln!("Note: detected other devices with a filesystem labeled 'boot'.");
+                eprintln!("\nNote: detected other devices with a filesystem labeled `boot`:");
                 for pt in pts {
-                    eprintln!("- {}", pt);
+                    eprintln!("  - {}", pt);
                 }
                 eprintln!("The installed OS may not work correctly if there are multiple boot filesystems.
 Before rebooting, investigate whether these filesystems are needed and consider
-wiping them with `wipefs -a`."
+wiping them with `wipefs -a`.\n"
                 );
             }
         }
