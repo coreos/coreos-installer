@@ -15,9 +15,9 @@
 use anyhow::{anyhow, Error, Result};
 use reqwest::Url;
 use std::default::Default;
+use std::fmt;
 use std::num::NonZeroU32;
 use std::str::FromStr;
-use std::string::ToString;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
@@ -518,12 +518,12 @@ impl FromStr for FetchRetries {
     }
 }
 
-impl ToString for FetchRetries {
-    fn to_string(&self) -> String {
+impl fmt::Display for FetchRetries {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::None => "0".into(),
-            Self::Finite(n) => n.to_string(),
-            Self::Infinite => "infinite".into(),
+            Self::None => write!(f, "0"),
+            Self::Finite(n) => write!(f, "{}", n),
+            Self::Infinite => write!(f, "infinite"),
         }
     }
 }
@@ -551,9 +551,9 @@ impl FromStr for Architecture {
     }
 }
 
-impl ToString for Architecture {
-    fn to_string(&self) -> String {
-        self.0.clone()
+impl fmt::Display for Architecture {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
