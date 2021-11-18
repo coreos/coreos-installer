@@ -184,7 +184,7 @@ pub struct InstallConfig {
     #[structopt(short = "n", long)]
     pub copy_network: bool,
     /// For use with -n.
-    #[structopt(long, value_name = "path", empty_values = false)]
+    #[structopt(long, value_name = "path")]
     #[structopt(default_value = "/etc/NetworkManager/system-connections/")]
     // don't strip trailing .
     #[structopt(verbatim_doc_comment)]
