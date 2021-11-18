@@ -29,7 +29,7 @@ Push access to the upstream repository is required in order to publish the new t
 
 - make sure the project is clean and prepare the environment:
   - [ ] Make sure `cargo-release` is up to date: `cargo install cargo-release`
-  - [ ] `cargo test`
+  - [ ] `cargo test --all-features`
   - [ ] `cargo clean`
   - [ ] `git clean -fd`
   - [ ] `RELEASE_VER=x.y.z`
