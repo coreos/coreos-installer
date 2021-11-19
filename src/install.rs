@@ -111,10 +111,9 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         // For now, using --stream automatically will cause a download. In the future, we could
         // opportunistically use osmet if the version and stream match an osmet file/the live ISO.
 
-        let maybe_osmet = if config.stream.is_some() {
-            None
-        } else {
-            OsmetLocation::new(config.architecture.as_str(), sector_size)?
+        let maybe_osmet = match config.stream {
+            Some(_) => None,
+            None => OsmetLocation::new(config.architecture.as_str(), sector_size)?,
         };
 
         if let Some(osmet) = maybe_osmet {
