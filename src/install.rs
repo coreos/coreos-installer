@@ -32,14 +32,14 @@ use crate::source::*;
 
 pub fn install(config: &InstallConfig) -> Result<()> {
     // find Ignition config
-    let ignition = if let Some(ref file) = config.ignition_file {
+    let ignition = if let Some(file) = &config.ignition_file {
         Some(
             OpenOptions::new()
                 .read(true)
                 .open(file)
                 .with_context(|| format!("opening source Ignition config {}", file))?,
         )
-    } else if let Some(ref url) = config.ignition_url {
+    } else if let Some(url) = &config.ignition_url {
         if url.scheme() == "http" {
             if config.ignition_hash.is_none() && !config.insecure_ignition {
                 bail!("refusing to fetch Ignition config over HTTP without --ignition-hash or --insecure-ignition");
@@ -98,9 +98,9 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 
     // set up image source
     // create location
-    let location: Box<dyn ImageLocation> = if let Some(ref image_file) = config.image_file {
+    let location: Box<dyn ImageLocation> = if let Some(image_file) = &config.image_file {
         Box::new(FileLocation::new(image_file))
-    } else if let Some(ref image_url) = config.image_url {
+    } else if let Some(image_url) = &config.image_url {
         Box::new(UrlLocation::new(image_url, config.fetch_retries))
     } else if config.offline {
         match OsmetLocation::new(config.architecture.as_str(), sector_size)? {
@@ -430,7 +430,7 @@ fn write_ignition(
     eprintln!("Writing Ignition config");
 
     // Verify configuration digest, if any.
-    if let Some(ref digest) = digest_in {
+    if let Some(digest) = &digest_in {
         digest
             .validate(&mut config_in)
             .context("failed to validate Ignition configuration digest")?;

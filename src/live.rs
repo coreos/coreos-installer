@@ -70,8 +70,8 @@ pub fn iso_remove(config: &IsoRemoveConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
-    let ignition = match config.ignition_file {
-        Some(ref ignition_path) => {
+    let ignition = match &config.ignition_file {
+        Some(ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
         None => {
@@ -131,8 +131,8 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
         verify_stdout_not_tty()?;
     }
 
-    let ignition = match config.ignition_file {
-        Some(ref ignition_path) => {
+    let ignition = match &config.ignition_file {
+        Some(ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
         None => {
@@ -830,7 +830,7 @@ pub fn iso_extract_minimal_iso(config: &IsoExtractMinimalIsoConfig) -> Result<()
             .into()
     };
 
-    if let Some(ref path) = config.output_rootfs {
+    if let Some(path) = &config.output_rootfs {
         let rootfs = full_iso
             .get_path(COREOS_ISO_ROOTFS_IMG)
             .with_context(|| format!("looking up '{}'", COREOS_ISO_ROOTFS_IMG))?

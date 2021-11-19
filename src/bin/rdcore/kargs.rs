@@ -33,7 +33,7 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
         bail!("one of --boot-device, --boot-mount, or --current required");
     }
 
-    if let Some(ref orig_options) = config.override_options {
+    if let Some(orig_options) = &config.override_options {
         modify_and_print(config, orig_options.trim()).context("modifying options")?;
     } else if config.current {
         let orig_options =
@@ -65,10 +65,10 @@ fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<S
         .maybe_apply_to(orig_options)?;
 
     // we always print the final kargs
-    if let Some(ref options) = new_options {
+    if let Some(options) = &new_options {
         println!("{}", options);
         if options != orig_options {
-            if let Some(ref path) = config.create_if_changed {
+            if let Some(path) = &config.create_if_changed {
                 std::fs::OpenOptions::new()
                     .write(true)
                     .create(true)
