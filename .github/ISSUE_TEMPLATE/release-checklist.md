@@ -14,7 +14,7 @@ This guide requires:
  * [GPG setup][GPG setup] and personal key for signing
  * `cargo` (suggested: latest stable toolchain from [rustup][rustup])
  * `cargo-release` (suggested: `cargo install -f cargo-release`)
- * A verified account on crates.io
+ * A verified logged-in account on crates.io ([create](https://crates.io/me) a token to use with `cargo login`)
  * An account on quay.io
  * Write access to this GitHub project
  * Upload access to this project on GitHub and and quay.io
@@ -36,13 +36,13 @@ Push access to the upstream repository is required in order to publish the new t
 
 - create release commits on a dedicated branch and tag it (the commits and tag will be signed with the GPG signing key you configured):
   - [ ] `git checkout -b release-${RELEASE_VER}`
-  - [ ] `cargo release` (and confirm the version when prompted)
+  - [ ] `cargo release -- ${RELEASE_VER}` (and confirm the version when prompted)
 
 - open and merge a PR for this release:
   - [ ] `git push ${UPSTREAM_REMOTE} release-${RELEASE_VER}`
   - [ ] open a web browser and create a PR for the branch above
   - [ ] make sure the resulting PR contains exactly two commits
-  - [ ] in the PR body, write a short changelog with relevant changes since last release
+  - [ ] in the PR body, write a short changelog with relevant changes since last release (use previous releases as guiding templates)
   - [ ] get the PR reviewed, approved and merged
 
 - publish the artifacts (tag and crate):
@@ -59,7 +59,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] find the new tag in the [GitHub tag list](https://github.com/coreos/coreos-installer/tags), click the triple dots menu, and create a release for it
   - [ ] write a short changelog (i.e. re-use the PR content)
   - [ ] upload `target/coreos-installer-${RELEASE_VER}-vendor.tar.gz`
-  - [ ] record digests of local artifacts:
+  - [ ] record digests of local artifacts at bottom of changelog using the same format as previous releases:
     - `sha256sum target/package/coreos-installer-${RELEASE_VER}.crate`
     - `sha256sum target/coreos-installer-${RELEASE_VER}-vendor.tar.gz`
   - [ ] publish release
@@ -73,6 +73,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `git checkout main`
   - [ ] `git pull ${UPSTREAM_REMOTE} main`
   - [ ] `git push ${UPSTREAM_REMOTE} :release-${RELEASE_VER}`
+      - this may fail if the branch was already deleted when the PR was merged
   - [ ] `git branch -d release-${RELEASE_VER}`
 
 [cargo-release]: https://github.com/sunng87/cargo-release
