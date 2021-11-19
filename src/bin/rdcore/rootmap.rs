@@ -26,7 +26,7 @@ use libcoreinst::runcmd_output;
 
 use crate::cmdline::*;
 
-pub fn rootmap(config: &RootmapConfig) -> Result<()> {
+pub fn rootmap(config: RootmapConfig) -> Result<()> {
     // get the backing device for the root mount
     let mount = Mount::from_existing(&config.root_mount)?;
     let device = PathBuf::from(mount.device());
@@ -221,7 +221,7 @@ fn get_luks_uuid(device: &Path) -> Result<String> {
         .into())
 }
 
-pub fn bind_boot(config: &BindBootConfig) -> Result<()> {
+pub fn bind_boot(config: BindBootConfig) -> Result<()> {
     let boot_mount = Mount::from_existing(&config.boot_mount)?;
     let root_mount = Mount::from_existing(&config.root_mount)?;
     let boot_uuid = boot_mount.get_filesystem_uuid()?;

@@ -30,7 +30,7 @@ use crate::io::*;
 use crate::s390x;
 use crate::source::*;
 
-pub fn install(config: &InstallConfig) -> Result<()> {
+pub fn install(config: InstallConfig) -> Result<()> {
     // find Ignition config
     let ignition = if let Some(file) = &config.ignition_file {
         Some(
@@ -206,7 +206,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     dest.seek(SeekFrom::Start(0))
         .with_context(|| format!("seeking {}", config.device))?;
     if let Err(err) = write_disk(
-        config,
+        &config,
         &mut source,
         &mut dest,
         &mut *table,
@@ -231,7 +231,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                 stash_saved_partitions(&mut dest, &saved)?;
             }
         } else {
-            reset_partition_table(config, &mut dest, &mut *table, &saved)?;
+            reset_partition_table(&config, &mut dest, &mut *table, &saved)?;
         }
 
         // return a generic error so our exit status is right

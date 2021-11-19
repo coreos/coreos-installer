@@ -29,7 +29,7 @@ use crate::io::*;
 use crate::source::*;
 
 // Download all artifacts for an image and verify their signatures.
-pub fn download(config: &DownloadConfig) -> Result<()> {
+pub fn download(config: DownloadConfig) -> Result<()> {
     // Build image location.  Ideally the parser would use conflicts_with
     // (and an ArgGroup for streams), but that doesn't play well with
     // default arguments, so we manually prioritize modes.

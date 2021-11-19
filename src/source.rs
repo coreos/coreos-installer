@@ -374,7 +374,7 @@ impl ImageLocation for OsmetLocation {
 }
 
 /// Subcommand to list objects available in stream metadata.
-pub fn list_stream(config: &ListStreamConfig) -> Result<()> {
+pub fn list_stream(config: ListStreamConfig) -> Result<()> {
     #[derive(PartialEq, Eq, PartialOrd, Ord)]
     struct Row<'a> {
         architecture: &'a str,

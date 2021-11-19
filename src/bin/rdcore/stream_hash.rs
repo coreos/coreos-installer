@@ -38,7 +38,7 @@ const MAX_CHUNK_SIZE: usize = 64 * 1024 * 1024;
 /// stdout, and repeat.  We never write data to stdout until it's been
 /// verified, ensuring that the next program in the shell pipeline never
 /// sees untrusted data.
-pub fn stream_hash(config: &StreamHashConfig) -> Result<()> {
+pub fn stream_hash(config: StreamHashConfig) -> Result<()> {
     let mut hash_file = OpenOptions::new()
         .read(true)
         .open(&config.hash_file)
