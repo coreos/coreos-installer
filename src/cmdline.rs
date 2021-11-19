@@ -15,7 +15,9 @@
 use anyhow::{anyhow, Error, Result};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DeserializeFromStr, DisplayFromStr, SerializeDisplay};
+use serde_with::{
+    serde_as, skip_serializing_none, DeserializeFromStr, DisplayFromStr, SerializeDisplay,
+};
 use std::default::Default;
 use std::fmt;
 use std::marker::PhantomData;
@@ -141,9 +143,12 @@ pub enum PxeIgnitionCmd {
 // you break anything too badly.
 // - Defaults cannot be specified using #[structopt(default_value = "x")]
 //   because serde won't see them otherwise.  Instead, use
-//   #[structopt(default_value)] and implement Default for the type.  For
-//   string-typed defaults, you can use DefaultedString<T> where T is a
-//   custom type implementing DefaultString.
+//   #[structopt(default_value)], implement Default, and derive PartialEq
+//   for the type.  (For string-typed defaults, you can use
+//   DefaultedString<T> where T is a custom type implementing
+//   DefaultString.)
+// - Add #[serde(skip_serializing_if = "is_default")] for all fields that
+//   are not Option<T>.
 // - Custom types used in fields should implement Display and FromStr, then
 //   implement Serialize/Deserialize by deriving SerializeDisplay/
 //   DeserializeFromStr.
@@ -152,6 +157,7 @@ pub enum PxeIgnitionCmd {
 // - Use #[serde(skip)] for any option that shouldn't be supported in config
 //   files.
 #[serde_as]
+#[skip_serializing_none]
 #[derive(Debug, Default, StructOpt, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct InstallConfig {
@@ -185,6 +191,7 @@ pub struct InstallConfig {
     #[structopt(long, value_name = "digest")]
     pub ignition_hash: Option<IgnitionHash>,
     /// Target CPU architecture
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(short, long, default_value, value_name = "name")]
     pub architecture: DefaultedString<Architecture>,
     /// Override the Ignition platform ID
@@ -198,15 +205,19 @@ pub struct InstallConfig {
     #[structopt(long, hidden = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "arg", number_of_values = 1)]
     pub append_karg: Vec<String>,
     /// Delete default kernel arg
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "arg", number_of_values = 1)]
     pub delete_karg: Vec<String>,
     /// Copy network config from install environment
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(short = "n", long)]
     pub copy_network: bool,
     /// For use with -n
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "path", default_value)]
     // so we can stay under 80 chars
     #[structopt(next_line_help(true))]
@@ -215,9 +226,11 @@ pub struct InstallConfig {
     #[structopt(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
     // one argument.
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(number_of_values = 1, require_delimiter = true)]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "id")]
     // Allow argument multiple times, but one value each.  Allow "1-5,7" in
     // one argument.
@@ -228,12 +241,15 @@ pub struct InstallConfig {
 
     // obscure options without short names
     /// Force offline installation
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long)]
     pub offline: bool,
     /// Skip signature verification
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long)]
     pub insecure: bool,
     /// Allow Ignition URL without HTTPS or hash
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long)]
     pub insecure_ignition: bool,
     /// Base URL for Fedora CoreOS stream metadata
@@ -241,9 +257,11 @@ pub struct InstallConfig {
     #[structopt(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
     /// Don't clear partition table on error
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long)]
     pub preserve_on_error: bool,
     /// Fetch retries, or "infinite"
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "N", default_value)]
     pub fetch_retries: FetchRetries,
 
@@ -252,7 +270,7 @@ pub struct InstallConfig {
     pub device: String,
 }
 
-#[derive(Debug, DeserializeFromStr, SerializeDisplay, Clone, Copy)]
+#[derive(Debug, DeserializeFromStr, SerializeDisplay, Clone, Copy, PartialEq, Eq)]
 pub enum FetchRetries {
     Infinite,
     Finite(NonZeroU32),
@@ -557,7 +575,7 @@ impl Default for FetchRetries {
 
 /// A String wrapper that takes a parameterized type defining the default
 /// value of the String.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DefaultedString<S: DefaultString> {
     value: String,
     default: PhantomData<S>,
@@ -623,7 +641,7 @@ pub trait DefaultString {
 }
 
 /// A default string of `uname -m`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Architecture {}
 impl DefaultString for Architecture {
     fn default() -> String {
@@ -632,10 +650,14 @@ impl DefaultString for Architecture {
 }
 
 /// The default path to NetworkManager connection files.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct NetworkDir {}
 impl DefaultString for NetworkDir {
     fn default() -> String {
         "/etc/NetworkManager/system-connections/".into()
     }
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    value == &T::default()
 }
