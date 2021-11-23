@@ -31,6 +31,9 @@ use crate::s390x;
 use crate::source::*;
 
 pub fn install(config: InstallConfig) -> Result<()> {
+    // evaluate config files
+    let config = config.expand_config_files()?;
+
     // make sure we have a device path
     let device = config
         .dest_device

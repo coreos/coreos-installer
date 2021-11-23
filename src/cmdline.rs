@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_with::{
     serde_as, skip_serializing_none, DeserializeFromStr, DisplayFromStr, SerializeDisplay,
 };
 use std::default::Default;
+use std::ffi::OsStr;
 use std::fmt;
+use std::fs::OpenOptions;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::str::FromStr;
@@ -158,8 +160,9 @@ pub enum PxeIgnitionCmd {
 //   files.
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Debug, Default, StructOpt, Serialize, Deserialize)]
+#[derive(Debug, Default, StructOpt, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
+#[structopt(global_setting(AppSettings::AllArgsOverrideSelf))]
 pub struct InstallConfig {
     /// YAML config file with install options
     #[serde(skip)]
@@ -277,6 +280,54 @@ pub struct InstallConfig {
 }
 
 impl InstallConfig {
+    pub fn expand_config_files(self) -> Result<Self> {
+        if self.config_file.is_empty() {
+            return Ok(self);
+        }
+
+        let args = self
+            .config_file
+            .iter()
+            .map(|path| {
+                serde_yaml::from_reader::<_, InstallConfig>(
+                    OpenOptions::new()
+                        .read(true)
+                        .open(path)
+                        .with_context(|| format!("opening config file {}", path))?,
+                )
+                .with_context(|| format!("parsing config file {}", path))?
+                .to_args()
+                .with_context(|| format!("serializing config file {}", path))
+            })
+            .collect::<Result<Vec<Vec<_>>>>()?
+            .into_iter()
+            .flatten()
+            .chain(
+                self.to_args()
+                    .context("serializing command-line arguments")?,
+            )
+            .collect::<Vec<_>>();
+
+        println!("Running with arguments: {}", args.join(" "));
+        Self::from_args(&args)
+    }
+
+    fn from_args<T: AsRef<OsStr>>(args: &[T]) -> Result<Self> {
+        match Cmd::from_iter_safe(
+            vec![
+                std::env::args_os().next().expect("no program name"),
+                "install".into(),
+            ]
+            .into_iter()
+            .chain(args.iter().map(<_>::into)),
+        )
+        .context("reprocessing command-line arguments")?
+        {
+            Cmd::Install(c) => Ok(c),
+            _ => unreachable!(),
+        }
+    }
+
     fn to_args(&self) -> Result<Vec<String>> {
         serializer::to_args(self)
     }
@@ -978,6 +1029,8 @@ mod serializer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     /// Check that full InstallConfig serializes as expected
     #[test]
@@ -1063,11 +1116,149 @@ mod test {
         assert_eq!(config.to_args().unwrap(), expected);
     }
 
+    /// Test that full config file deserializes as expected
+    #[test]
+    fn parse_full_install_config_file() {
+        let mut f = NamedTempFile::new().unwrap();
+        f.as_file_mut()
+            .write_all(
+                r#"
+image-url: http://example.com/d
+ignition-url: http://example.com/g
+ignition-hash: sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+architecture: h
+platform: i
+append-karg: [k, l]
+delete-karg: [m, n]
+copy-network: true
+network-dir: o
+save-partlabel: [p, q]
+save-partindex: [r, s]
+offline: true
+insecure: true
+insecure-ignition: true
+stream-base-url: http://example.com/t
+preserve-on-error: true
+fetch-retries: 3
+dest-device: u
+"#
+                .as_bytes(),
+            )
+            .unwrap();
+        let expected = InstallConfig {
+            // skipped
+            config_file: Vec::new(),
+            // conflict
+            stream: None,
+            image_url: Some(Url::parse("http://example.com/d").unwrap()),
+            // conflict
+            image_file: None,
+            // conflict
+            ignition_file: None,
+            ignition_url: Some(Url::parse("http://example.com/g").unwrap()),
+            ignition_hash: Some(
+                IgnitionHash::from_str(
+                    "sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                )
+                .unwrap(),
+            ),
+            architecture: DefaultedString::<Architecture>::from_str("h").unwrap(),
+            platform: Some("i".into()),
+            // skipped
+            firstboot_args: None,
+            append_karg: vec!["k".into(), "l".into()],
+            delete_karg: vec!["m".into(), "n".into()],
+            copy_network: true,
+            network_dir: DefaultedString::<NetworkDir>::from_str("o").unwrap(),
+            save_partlabel: vec!["p".into(), "q".into()],
+            save_partindex: vec!["r".into(), "s".into()],
+            offline: true,
+            insecure: true,
+            insecure_ignition: true,
+            stream_base_url: Some(Url::parse("http://example.com/t").unwrap()),
+            preserve_on_error: true,
+            fetch_retries: FetchRetries::from_str("3").unwrap(),
+            dest_device: Some("u".into()),
+        };
+        let config = InstallConfig::from_args(&["--config-file", f.path().to_str().unwrap()])
+            .unwrap()
+            .expand_config_files()
+            .unwrap();
+        assert_eq!(expected, config);
+    }
+
     /// Check that default InstallConfig serializes to empty arg list
     #[test]
-    fn serialize_default_install_config() {
+    fn serialize_default_install_config_args() {
         let config = InstallConfig::default();
         let expected: Vec<String> = Vec::new();
         assert_eq!(config.to_args().unwrap(), expected);
+    }
+
+    /// Check that default InstallConfig serializes to empty YAML doc
+    #[test]
+    fn serialize_default_install_config_yaml() {
+        let config = InstallConfig::default();
+        assert_eq!(serde_yaml::to_string(&config).unwrap(), "---\n{}\n");
+    }
+
+    /// Check that minimal install config file serializes to minimal arg list
+    #[test]
+    fn serialize_empty_install_config_file() {
+        let config: InstallConfig = serde_yaml::from_str("dest-device: foo").unwrap();
+        assert_eq!(config.to_args().unwrap(), vec!["foo"]);
+    }
+
+    /// Check that empty command line serializes to empty arg list
+    #[test]
+    fn serialize_empty_command_line() {
+        let expected = ["/dev/missing"];
+        let config = InstallConfig::from_args(&expected).unwrap();
+        assert_eq!(config.to_args().unwrap(), expected);
+    }
+
+    /// Test multiple config files overlapping with command-line arguments
+    #[test]
+    fn install_config_file_overlapping_field() {
+        let mut f1 = NamedTempFile::new().unwrap();
+        f1.as_file_mut()
+            .write_all(b"append-karg: [a, b]\nfetch-retries: 1")
+            .unwrap();
+        let mut f2 = NamedTempFile::new().unwrap();
+        f2.as_file_mut()
+            .write_all(b"append-karg: [c, d]\nfetch-retries: 2\ndest-device: /dev/missing")
+            .unwrap();
+        let config = InstallConfig::from_args(&[
+            "--append-karg",
+            "e",
+            "--fetch-retries",
+            "0",
+            "--config-file",
+            f2.path().to_str().unwrap(),
+            "--config-file",
+            f1.path().to_str().unwrap(),
+            "--append-karg",
+            "f",
+            "--fetch-retries",
+            "3",
+        ])
+        .unwrap()
+        .expand_config_files()
+        .unwrap();
+        assert_eq!(config.append_karg, ["c", "d", "a", "b", "e", "f"]);
+        assert_eq!(
+            config.fetch_retries,
+            FetchRetries::Finite(NonZeroU32::new(3).unwrap())
+        );
+
+        // multiple target devices are not allowed
+        InstallConfig::from_args(&[
+            "--config-file",
+            f2.path().to_str().unwrap(),
+            "/dev/also-missing",
+        ])
+        .unwrap()
+        .expand_config_files()
+        .unwrap_err();
     }
 }
