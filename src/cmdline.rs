@@ -276,6 +276,12 @@ pub struct InstallConfig {
     pub dest_device: Option<String>,
 }
 
+impl InstallConfig {
+    fn to_args(&self) -> Result<Vec<String>> {
+        serializer::to_args(self)
+    }
+}
+
 #[derive(Debug, DeserializeFromStr, SerializeDisplay, Clone, Copy, PartialEq, Eq)]
 pub enum FetchRetries {
     Infinite,
@@ -666,4 +672,402 @@ impl DefaultString for NetworkDir {
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     value == &T::default()
+}
+
+mod serializer {
+    use anyhow::Context;
+    use serde::{ser, Serialize};
+    use structopt::StructOpt;
+
+    pub fn to_args<T>(value: &T) -> anyhow::Result<Vec<String>>
+    where
+        T: Serialize + StructOpt,
+    {
+        // We need to be able to find out whether a field is an --option
+        // or a positional argument.  structopt and clap don't provide an
+        // API for this, and we don't want to implement a proc macro because
+        // those have to go in a separate crate.  Get the subcommand help
+        // text and grep it.  :-(
+        let mut help = Vec::new();
+        T::clap()
+            .write_long_help(&mut help)
+            .context("reading subcommand help text")?;
+
+        let mut serializer = Serializer {
+            help_text: String::from_utf8(help).context("decoding subcommand help text")?,
+            output: Vec::new(),
+            field_stack: Vec::new(),
+        };
+        value.serialize(&mut serializer)?;
+        Ok(serializer.output)
+    }
+
+    struct Serializer {
+        help_text: String,
+        output: Vec<String>,
+        field_stack: Vec<Option<&'static str>>,
+    }
+
+    impl Serializer {
+        fn push_field(&mut self, name: &'static str) {
+            let field = if self.help_text.contains(&format!(" --{} ", name)) {
+                Some(name)
+            } else {
+                // don't serialize to --option
+                None
+            };
+            self.field_stack.push(field);
+        }
+
+        fn pop_field(&mut self) {
+            self.field_stack.pop();
+        }
+
+        fn output_option(&mut self) {
+            match &self.field_stack[self.field_stack.len() - 1] {
+                None => (),
+                Some(name) => {
+                    let option = format!("--{}", name);
+                    self.output_argument(option);
+                }
+            }
+        }
+
+        fn output_argument<T: ToString>(&mut self, arg: T) {
+            self.output.push(arg.to_string());
+        }
+    }
+
+    // Enormous pile of boilerplate covering every basic type.  We only need
+    // to handle a few:
+    // - The containing struct => walk each field, tracking option names
+    // - Sequences => add an option argument before each Vec entry
+    // - Options => serialize the wrapped value if Some
+    // - Bools => add option argument only if true
+    // - String/number primitives => add option argument, then value
+    // https://serde.rs/impl-serializer.html
+    // https://docs.serde.rs/serde/trait.Serializer.html
+    impl<'a> ser::Serializer for &'a mut Serializer {
+        type Ok = ();
+        type Error = SerializeError;
+        type SerializeSeq = Self;
+        type SerializeStruct = Self;
+        type SerializeMap = ser::Impossible<Self::Ok, Self::Error>;
+        type SerializeStructVariant = ser::Impossible<Self::Ok, Self::Error>;
+        type SerializeTuple = ser::Impossible<Self::Ok, Self::Error>;
+        type SerializeTupleStruct = ser::Impossible<Self::Ok, Self::Error>;
+        type SerializeTupleVariant = ser::Impossible<Self::Ok, Self::Error>;
+
+        fn serialize_bool(self, v: bool) -> Result<()> {
+            if v {
+                self.output_option();
+            }
+            Ok(())
+        }
+
+        fn serialize_i8(self, v: i8) -> Result<()> {
+            self.serialize_i64(i64::from(v))
+        }
+
+        fn serialize_i16(self, v: i16) -> Result<()> {
+            self.serialize_i64(i64::from(v))
+        }
+
+        fn serialize_i32(self, v: i32) -> Result<()> {
+            self.serialize_i64(i64::from(v))
+        }
+
+        fn serialize_i64(self, v: i64) -> Result<()> {
+            self.output_option();
+            self.output_argument(v);
+            Ok(())
+        }
+
+        fn serialize_u8(self, v: u8) -> Result<()> {
+            self.serialize_u64(u64::from(v))
+        }
+
+        fn serialize_u16(self, v: u16) -> Result<()> {
+            self.serialize_u64(u64::from(v))
+        }
+
+        fn serialize_u32(self, v: u32) -> Result<()> {
+            self.serialize_u64(u64::from(v))
+        }
+
+        fn serialize_u64(self, v: u64) -> Result<()> {
+            self.output_option();
+            self.output_argument(v);
+            Ok(())
+        }
+
+        fn serialize_f32(self, v: f32) -> Result<()> {
+            self.serialize_f64(f64::from(v))
+        }
+
+        fn serialize_f64(self, v: f64) -> Result<()> {
+            self.output_option();
+            self.output_argument(v);
+            Ok(())
+        }
+
+        fn serialize_char(self, v: char) -> Result<()> {
+            self.serialize_str(&v.to_string())
+        }
+
+        fn serialize_str(self, v: &str) -> Result<()> {
+            self.output_option();
+            self.output_argument(v);
+            Ok(())
+        }
+
+        fn serialize_bytes(self, _v: &[u8]) -> Result<()> {
+            unimplemented!()
+        }
+
+        fn serialize_none(self) -> Result<()> {
+            Ok(())
+        }
+
+        fn serialize_some<T>(self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(self)
+        }
+
+        // Anonymous value containing no data
+        fn serialize_unit(self) -> Result<()> {
+            Ok(())
+        }
+
+        // Named value containing no data
+        fn serialize_unit_struct(self, _name: &'static str) -> Result<()> {
+            Ok(())
+        }
+
+        // Unit enum variant
+        fn serialize_unit_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+        ) -> Result<()> {
+            unimplemented!()
+        }
+
+        fn serialize_newtype_struct<T>(self, _name: &'static str, _value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            unimplemented!()
+        }
+
+        fn serialize_newtype_variant<T>(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+            _value: &T,
+        ) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            unimplemented!()
+        }
+
+        fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+            // no setup to be done
+            Ok(self)
+        }
+
+        fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
+            unimplemented!();
+        }
+
+        fn serialize_tuple_struct(
+            self,
+            _name: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeTupleStruct> {
+            unimplemented!();
+        }
+
+        fn serialize_tuple_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeTupleVariant> {
+            unimplemented!();
+        }
+
+        fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+            unimplemented!();
+        }
+
+        fn serialize_struct(
+            self,
+            _name: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeStruct> {
+            // no setup to be done
+            Ok(self)
+        }
+
+        fn serialize_struct_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeStructVariant> {
+            unimplemented!();
+        }
+    }
+
+    impl<'a> ser::SerializeSeq for &'a mut Serializer {
+        type Ok = ();
+        type Error = SerializeError;
+
+        fn serialize_element<T>(&mut self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> ser::SerializeStruct for &'a mut Serializer {
+        type Ok = ();
+        type Error = SerializeError;
+
+        fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            self.push_field(key);
+            let ret = value.serialize(&mut **self);
+            self.pop_field();
+            ret
+        }
+
+        fn end(self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    pub type Result<T> = std::result::Result<T, SerializeError>;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0}")]
+    pub struct SerializeError(String);
+
+    impl ser::Error for SerializeError {
+        fn custom<T: ToString>(msg: T) -> Self {
+            SerializeError(msg.to_string())
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Check that full InstallConfig serializes as expected
+    #[test]
+    fn serialize_full_install_config() {
+        let config = InstallConfig {
+            // skipped
+            config_file: vec!["a".into(), "b".into()],
+            stream: Some("c".into()),
+            image_url: Some(Url::parse("http://example.com/d").unwrap()),
+            image_file: Some("e".into()),
+            ignition_file: Some("f".into()),
+            ignition_url: Some(Url::parse("http://example.com/g").unwrap()),
+            ignition_hash: Some(
+                IgnitionHash::from_str(
+                    "sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                )
+                .unwrap(),
+            ),
+            architecture: DefaultedString::<Architecture>::from_str("h").unwrap(),
+            platform: Some("i".into()),
+            // skipped
+            firstboot_args: Some("j".into()),
+            append_karg: vec!["k".into(), "l".into()],
+            delete_karg: vec!["m".into(), "n".into()],
+            copy_network: true,
+            network_dir: DefaultedString::<NetworkDir>::from_str("o").unwrap(),
+            save_partlabel: vec!["p".into(), "q".into()],
+            save_partindex: vec!["r".into(), "s".into()],
+            offline: true,
+            insecure: true,
+            insecure_ignition: true,
+            stream_base_url: Some(Url::parse("http://example.com/t").unwrap()),
+            preserve_on_error: true,
+            fetch_retries: FetchRetries::from_str("3").unwrap(),
+            dest_device: Some("u".into()),
+        };
+        let expected = vec![
+            "--stream",
+            "c",
+            "--image-url",
+            "http://example.com/d",
+            "--image-file",
+            "e",
+            "--ignition-file",
+            "f",
+            "--ignition-url",
+            "http://example.com/g",
+            "--ignition-hash",
+            "sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "--architecture",
+            "h",
+            "--platform",
+            "i",
+            "--append-karg",
+            "k",
+            "--append-karg",
+            "l",
+            "--delete-karg",
+            "m",
+            "--delete-karg",
+            "n",
+            "--copy-network",
+            "--network-dir",
+            "o",
+            "--save-partlabel",
+            "p",
+            "--save-partlabel",
+            "q",
+            "--save-partindex",
+            "r",
+            "--save-partindex",
+            "s",
+            "--offline",
+            "--insecure",
+            "--insecure-ignition",
+            "--stream-base-url",
+            "http://example.com/t",
+            "--preserve-on-error",
+            "--fetch-retries",
+            "3",
+            "u",
+        ];
+        assert_eq!(config.to_args().unwrap(), expected);
+    }
+
+    /// Check that default InstallConfig serializes to empty arg list
+    #[test]
+    fn serialize_default_install_config() {
+        let config = InstallConfig::default();
+        let expected: Vec<String> = Vec::new();
+        assert_eq!(config.to_args().unwrap(), expected);
+    }
 }
