@@ -16,6 +16,7 @@ use anyhow::{anyhow, Error, Result};
 use reqwest::Url;
 use std::default::Default;
 use std::fmt;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::str::FromStr;
 use structopt::clap::AppSettings;
@@ -164,7 +165,7 @@ pub struct InstallConfig {
     pub ignition_hash: Option<IgnitionHash>,
     /// Target CPU architecture
     #[structopt(short, long, default_value, value_name = "name")]
-    pub architecture: Architecture,
+    pub architecture: DefaultedString<Architecture>,
     /// Override the Ignition platform ID
     #[structopt(short, long, value_name = "name")]
     pub platform: Option<String>,
@@ -251,7 +252,7 @@ pub struct DownloadConfig {
     pub stream: String,
     /// Target CPU architecture
     #[structopt(short, long, value_name = "name", default_value)]
-    pub architecture: Architecture,
+    pub architecture: DefaultedString<Architecture>,
     /// Fedora CoreOS platform name
     #[structopt(short, long, value_name = "name", default_value = "metal")]
     pub platform: String,
@@ -534,31 +535,55 @@ impl Default for FetchRetries {
     }
 }
 
-// A String wrapper with a default of `uname -m`.
+/// A String wrapper that takes a parameterized type defining the default
+/// value of the String.
 #[derive(Debug)]
-pub struct Architecture(String);
+pub struct DefaultedString<S: DefaultString> {
+    value: String,
+    default: PhantomData<S>,
+}
 
-impl Architecture {
+impl<S: DefaultString> DefaultedString<S> {
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.value
     }
 }
 
-impl FromStr for Architecture {
+impl<S: DefaultString> FromStr for DefaultedString<S> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(s.to_string()))
+        Ok(Self {
+            value: s.to_string(),
+            default: PhantomData,
+        })
     }
 }
 
-impl fmt::Display for Architecture {
+impl<S: DefaultString> fmt::Display for DefaultedString<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.value)
     }
 }
 
-impl Default for Architecture {
+impl<S: DefaultString> Default for DefaultedString<S> {
     fn default() -> Self {
-        Architecture(nix::sys::utsname::uname().machine().to_string())
+        Self {
+            value: S::default(),
+            default: PhantomData,
+        }
+    }
+}
+
+/// A default value for a DefaultedString.
+pub trait DefaultString {
+    fn default() -> String;
+}
+
+/// A default string of `uname -m`.
+#[derive(Debug)]
+pub struct Architecture {}
+impl DefaultString for Architecture {
+    fn default() -> String {
+        nix::sys::utsname::uname().machine().to_string()
     }
 }
