@@ -184,10 +184,8 @@ pub struct InstallConfig {
     /// Copy network config from install environment
     #[structopt(short = "n", long)]
     pub copy_network: bool,
-    /// For use with -n.
+    /// For use with -n
     #[structopt(long, value_name = "path", default_value)]
-    // don't strip trailing .
-    #[structopt(verbatim_doc_comment)]
     // so we can stay under 80 chars
     #[structopt(next_line_help(true))]
     pub network_dir: DefaultedString<NetworkDir>,
