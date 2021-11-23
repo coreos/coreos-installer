@@ -332,6 +332,26 @@ pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
     Ok(())
 }
 
+pub fn iso_customize(config: IsoCustomizeConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+
+    if !config.force
+        && (iso.have_ignition() || iso.have_network() || iso.kargs()? != iso.kargs_default()?)
+    {
+        bail!("This ISO image is already customized; use -f to force.");
+    }
+
+    let ignition = Ignition::default();
+
+    *iso.initrd_mut() = Initrd::default();
+    iso.initrd_mut()
+        .add(INITRD_IGNITION_PATH, ignition.to_bytes()?);
+    iso.set_kargs(&iso.kargs_default()?.to_string())?;
+
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
+}
+
 pub fn iso_reset(config: IsoResetConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;

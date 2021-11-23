@@ -9,6 +9,23 @@ nav_order: 4
 1. TOC
 {:toc}
 
+# coreos-installer iso customize
+
+```
+Customize a CoreOS live ISO image
+
+USAGE:
+    coreos-installer iso customize [OPTIONS] <ISO>
+
+OPTIONS:
+    -f, --force            Overwrite existing customizations
+    -o, --output <path>    Write ISO to a new output file
+    -h, --help             Prints help information
+
+ARGS:
+    <ISO>    ISO image
+```
+
 # coreos-installer iso ignition embed
 
 ```

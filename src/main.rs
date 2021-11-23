@@ -25,6 +25,7 @@ fn main() -> Result<()> {
         Cmd::Install(c) => install::install(c),
         Cmd::ListStream(c) => source::list_stream(c),
         Cmd::Iso(c) => match c {
+            IsoCmd::Customize(c) => live::iso_customize(c),
             IsoCmd::Embed(c) => live::iso_embed(c),
             IsoCmd::Show(c) => live::iso_show(c),
             IsoCmd::Remove(c) => live::iso_remove(c),

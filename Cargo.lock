@@ -172,6 +172,7 @@ dependencies = [
  "glob",
  "gptman",
  "hex",
+ "ignition-config",
  "lazy_static",
  "libc",
  "maplit",
@@ -547,6 +548,20 @@ dependencies = [
  "matches",
  "unicode-bidi",
  "unicode-normalization",
+]
+
+[[package]]
+name = "ignition-config"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c48dd182467119b2b23528570ac6cbce7302090533b7fa8c66afd29b634de6e1"
+dependencies = [
+ "anyhow",
+ "semver",
+ "serde",
+ "serde_ignored",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1075,6 +1090,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "semver"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "568a8e6258aa33c13358f81fd834adb854c6f7c9468520910a9b1e8fac068012"
+
+[[package]]
 name = "serde"
 version = "1.0.131"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1092,6 +1113,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_ignored"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c2c7d39d14f2f2ea82239de71594782f186fd03501ac81f0ce08e674819ff2f"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

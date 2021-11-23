@@ -74,6 +74,8 @@ pub enum IsoCmd {
     // deprecated
     #[structopt(setting(AppSettings::Hidden))]
     Remove(IsoRemoveConfig),
+    /// Customize a CoreOS live ISO image
+    Customize(IsoCustomizeConfig),
     /// Embed an Ignition config in a CoreOS live ISO image
     Ignition(IsoIgnitionCmd),
     /// Embed network settings in a CoreOS live ISO image
@@ -462,6 +464,19 @@ pub struct ListStreamConfig {
     /// Base URL for Fedora CoreOS stream metadata
     #[structopt(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoCustomizeConfig {
+    /// Overwrite existing customizations
+    #[structopt(short, long)]
+    pub force: bool,
+    /// Write ISO to a new output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: Option<String>,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
 }
 
 #[derive(Debug, StructOpt)]
