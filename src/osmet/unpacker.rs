@@ -75,23 +75,18 @@ impl OsmetUnpacker {
 impl Read for OsmetUnpacker {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n = self.reader.read(buf)?;
-        if n == 0 {
-            match self
-                .thread_handle
-                .take()
-                .expect("pending thread")
-                .join()
-                .expect("joining thread")
-            {
-                Ok(_) => Ok(0),
-                Err(e) => Err(io::Error::new(
-                    ErrorKind::Other,
-                    format!("while unpacking: {}", e),
-                )),
+        if n == 0 && !buf.is_empty() {
+            if let Some(thread_handle) = self.thread_handle.take() {
+                return match thread_handle.join().expect("joining thread") {
+                    Ok(_) => Ok(0),
+                    Err(e) => Err(io::Error::new(
+                        ErrorKind::Other,
+                        format!("while unpacking: {}", e),
+                    )),
+                };
             }
-        } else {
-            Ok(n)
         }
+        Ok(n)
     }
 }
 
