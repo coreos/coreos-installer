@@ -185,13 +185,12 @@ pub struct InstallConfig {
     #[structopt(short = "n", long)]
     pub copy_network: bool,
     /// For use with -n.
-    #[structopt(long, value_name = "path")]
-    #[structopt(default_value = "/etc/NetworkManager/system-connections/")]
+    #[structopt(long, value_name = "path", default_value)]
     // don't strip trailing .
     #[structopt(verbatim_doc_comment)]
     // so we can stay under 80 chars
     #[structopt(next_line_help(true))]
-    pub network_dir: String,
+    pub network_dir: DefaultedString<NetworkDir>,
     /// Save partitions with this label glob
     #[structopt(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
@@ -585,5 +584,14 @@ pub struct Architecture {}
 impl DefaultString for Architecture {
     fn default() -> String {
         nix::sys::utsname::uname().machine().to_string()
+    }
+}
+
+/// The default path to NetworkManager connection files.
+#[derive(Debug)]
+pub struct NetworkDir {}
+impl DefaultString for NetworkDir {
+    fn default() -> String {
+        "/etc/NetworkManager/system-connections/".into()
     }
 }
