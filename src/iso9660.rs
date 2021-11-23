@@ -381,14 +381,14 @@ impl<'a> IsoFsWalkIterator<'a> {
                     // ideally, we'd return a ref and avoid cloning, but there's no way for an
                     // iterator to return a reference to data within itself
                     let mut path = self.dirpath.clone();
-                    match r {
-                        DirectoryRecord::Directory(ref d) => {
+                    match &r {
+                        DirectoryRecord::Directory(d) => {
                             self.parent_dirs.push(self.current_dir.take().unwrap());
                             self.dirpath.push(&d.name);
                             self.current_dir = Some(IsoFsIterator::new(self.iso, d)?);
                             path.push(&d.name);
                         }
-                        DirectoryRecord::File(ref f) => path.push(&f.name),
+                        DirectoryRecord::File(f) => path.push(&f.name),
                     };
                     // paths are all UTF-8
                     return Ok(Some((path.into_os_string().into_string().unwrap(), r)));

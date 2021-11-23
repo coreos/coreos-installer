@@ -30,16 +30,16 @@ use crate::io::*;
 use crate::s390x;
 use crate::source::*;
 
-pub fn install(config: &InstallConfig) -> Result<()> {
+pub fn install(config: InstallConfig) -> Result<()> {
     // find Ignition config
-    let ignition = if let Some(ref file) = config.ignition_file {
+    let ignition = if let Some(file) = &config.ignition_file {
         Some(
             OpenOptions::new()
                 .read(true)
                 .open(file)
                 .with_context(|| format!("opening source Ignition config {}", file))?,
         )
-    } else if let Some(ref url) = config.ignition_url {
+    } else if let Some(url) = &config.ignition_url {
         if url.scheme() == "http" {
             if config.ignition_hash.is_none() && !config.insecure_ignition {
                 bail!("refusing to fetch Ignition config over HTTP without --ignition-hash or --insecure-ignition");
@@ -98,9 +98,9 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 
     // set up image source
     // create location
-    let location: Box<dyn ImageLocation> = if let Some(ref image_file) = config.image_file {
+    let location: Box<dyn ImageLocation> = if let Some(image_file) = &config.image_file {
         Box::new(FileLocation::new(image_file))
-    } else if let Some(ref image_url) = config.image_url {
+    } else if let Some(image_url) = &config.image_url {
         Box::new(UrlLocation::new(image_url, config.fetch_retries))
     } else if config.offline {
         match OsmetLocation::new(config.architecture.as_str(), sector_size)? {
@@ -111,10 +111,9 @@ pub fn install(config: &InstallConfig) -> Result<()> {
         // For now, using --stream automatically will cause a download. In the future, we could
         // opportunistically use osmet if the version and stream match an osmet file/the live ISO.
 
-        let maybe_osmet = if config.stream.is_some() {
-            None
-        } else {
-            OsmetLocation::new(config.architecture.as_str(), sector_size)?
+        let maybe_osmet = match config.stream {
+            Some(_) => None,
+            None => OsmetLocation::new(config.architecture.as_str(), sector_size)?,
         };
 
         if let Some(osmet) = maybe_osmet {
@@ -207,7 +206,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     dest.seek(SeekFrom::Start(0))
         .with_context(|| format!("seeking {}", config.device))?;
     if let Err(err) = write_disk(
-        config,
+        &config,
         &mut source,
         &mut dest,
         &mut *table,
@@ -232,7 +231,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                 stash_saved_partitions(&mut dest, &saved)?;
             }
         } else {
-            reset_partition_table(config, &mut dest, &mut *table, &saved)?;
+            reset_partition_table(&config, &mut dest, &mut *table, &saved)?;
         }
 
         // return a generic error so our exit status is right
@@ -253,13 +252,13 @@ pub fn install(config: &InstallConfig) -> Result<()> {
                     .iter()
                     .filter(|pt| !pt.contains(&rootdev))
                     .collect::<Vec<_>>();
-                eprintln!("Note: detected other devices with a filesystem labeled 'boot'.");
+                eprintln!("\nNote: detected other devices with a filesystem labeled `boot`:");
                 for pt in pts {
-                    eprintln!("- {}", pt);
+                    eprintln!("  - {}", pt);
                 }
                 eprintln!("The installed OS may not work correctly if there are multiple boot filesystems.
 Before rebooting, investigate whether these filesystems are needed and consider
-wiping them with `wipefs -a`."
+wiping them with `wipefs -a`.\n"
                 );
             }
         }
@@ -431,7 +430,7 @@ fn write_ignition(
     eprintln!("Writing Ignition config");
 
     // Verify configuration digest, if any.
-    if let Some(ref digest) = digest_in {
+    if let Some(digest) = &digest_in {
         digest
             .validate(&mut config_in)
             .context("failed to validate Ignition configuration digest")?;

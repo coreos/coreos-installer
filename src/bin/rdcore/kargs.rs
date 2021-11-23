@@ -22,7 +22,7 @@ use libcoreinst::s390x;
 use crate::cmdline::*;
 use crate::rootmap::get_boot_mount_from_cmdline_args;
 
-pub fn kargs(config: &KargsConfig) -> Result<()> {
+pub fn kargs(config: KargsConfig) -> Result<()> {
     // we could enforce these via clap's ArgGroup, but I don't like how the --help text looks
     if !(config.boot_device.is_some()
         || config.boot_mount.is_some()
@@ -33,18 +33,18 @@ pub fn kargs(config: &KargsConfig) -> Result<()> {
         bail!("one of --boot-device, --boot-mount, or --current required");
     }
 
-    if let Some(ref orig_options) = config.override_options {
-        modify_and_print(config, orig_options.trim()).context("modifying options")?;
+    if let Some(orig_options) = &config.override_options {
+        modify_and_print(&config, orig_options.trim()).context("modifying options")?;
     } else if config.current {
         let orig_options =
             read_to_string("/proc/cmdline").context("reading kernel command line")?;
-        modify_and_print(config, orig_options.trim()).context("modifying options")?;
+        modify_and_print(&config, orig_options.trim()).context("modifying options")?;
     } else {
         // the unwrap() here is safe because we checked in cmdline that one of them must be provided
         let mount =
             get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?.unwrap();
         let _changed = visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-            modify_and_print(config, orig_options)
+            modify_and_print(&config, orig_options)
         })
         .context("visiting BLS options")?;
 
@@ -65,10 +65,10 @@ fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<S
         .maybe_apply_to(orig_options)?;
 
     // we always print the final kargs
-    if let Some(ref options) = new_options {
+    if let Some(options) = &new_options {
         println!("{}", options);
         if options != orig_options {
-            if let Some(ref path) = config.create_if_changed {
+            if let Some(path) = &config.create_if_changed {
                 std::fs::OpenOptions::new()
                     .write(true)
                     .create(true)

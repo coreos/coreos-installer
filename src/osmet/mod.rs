@@ -79,7 +79,7 @@ struct FiemapOutput {
     extents: Vec<Extent>,
 }
 
-pub fn osmet_fiemap(config: &OsmetFiemapConfig) -> Result<()> {
+pub fn osmet_fiemap(config: OsmetFiemapConfig) -> Result<()> {
     let output = FiemapOutput {
         extents: fiemap_path(config.file.as_str().as_ref())?,
     };
@@ -90,7 +90,7 @@ pub fn osmet_fiemap(config: &OsmetFiemapConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
+pub fn osmet_pack(config: OsmetPackConfig) -> Result<()> {
     // First, mount the two main partitions we want to suck out data from: / and /boot. Note
     // MS_RDONLY; this also ensures that the partition isn't already mounted rw elsewhere.
     let disk = Disk::new(&config.device)?;
@@ -154,7 +154,7 @@ pub fn osmet_pack(config: &OsmetPackConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn osmet_unpack(config: &OsmetUnpackConfig) -> Result<()> {
+pub fn osmet_unpack(config: OsmetUnpackConfig) -> Result<()> {
     // open output device for writing
     let mut dev = OpenOptions::new()
         .write(true)

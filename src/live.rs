@@ -43,35 +43,35 @@ const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 const COREOS_ISO_ROOTFS_IMG: &str = "IMAGES/PXEBOOT/ROOTFS.IMG";
 const COREOS_ISO_MINISO_FILE: &str = "COREOS/MINISO.DAT";
 
-pub fn iso_embed(config: &IsoEmbedConfig) -> Result<()> {
+pub fn iso_embed(config: IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
-    iso_ignition_embed(&IsoIgnitionEmbedConfig {
+    iso_ignition_embed(IsoIgnitionEmbedConfig {
         force: config.force,
-        ignition_file: config.config.clone(),
-        output: config.output.clone(),
-        input: config.input.clone(),
+        ignition_file: config.config,
+        output: config.output,
+        input: config.input,
     })
 }
 
-pub fn iso_show(config: &IsoShowConfig) -> Result<()> {
+pub fn iso_show(config: IsoShowConfig) -> Result<()> {
     eprintln!("`iso show` is deprecated; use `iso ignition show`.  Continuing.");
-    iso_ignition_show(&IsoIgnitionShowConfig {
-        input: config.input.clone(),
+    iso_ignition_show(IsoIgnitionShowConfig {
+        input: config.input,
         header: false,
     })
 }
 
-pub fn iso_remove(config: &IsoRemoveConfig) -> Result<()> {
+pub fn iso_remove(config: IsoRemoveConfig) -> Result<()> {
     eprintln!("`iso remove` is deprecated; use `iso ignition remove`.  Continuing.");
-    iso_ignition_remove(&IsoIgnitionRemoveConfig {
-        output: config.output.clone(),
-        input: config.input.clone(),
+    iso_ignition_remove(IsoIgnitionRemoveConfig {
+        output: config.output,
+        input: config.input,
     })
 }
 
-pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
-    let ignition = match config.ignition_file {
-        Some(ref ignition_path) => {
+pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
+    let ignition = match &config.ignition_file {
+        Some(ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
         None => {
@@ -97,7 +97,7 @@ pub fn iso_ignition_embed(config: &IsoIgnitionEmbedConfig) -> Result<()> {
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
-pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
+pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     let stdout = io::stdout();
@@ -117,7 +117,7 @@ pub fn iso_ignition_show(config: &IsoIgnitionShowConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
+pub fn iso_ignition_remove(config: IsoIgnitionRemoveConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
@@ -126,13 +126,13 @@ pub fn iso_ignition_remove(config: &IsoIgnitionRemoveConfig) -> Result<()> {
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
-pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
+pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
     if config.output.is_none() {
         verify_stdout_not_tty()?;
     }
 
-    let ignition = match config.ignition_file {
-        Some(ref ignition_path) => {
+    let ignition = match &config.ignition_file {
+        Some(ignition_path) => {
             read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
         }
         None => {
@@ -161,7 +161,7 @@ pub fn pxe_ignition_wrap(config: &PxeIgnitionWrapConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
+pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
     let buf = read(&config.input).with_context(|| format!("reading {}", config.input))?;
     let stdout = io::stdout();
     let mut out = stdout.lock();
@@ -171,7 +171,7 @@ pub fn pxe_ignition_unwrap(config: &PxeIgnitionUnwrapConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
+pub fn iso_kargs_modify(config: IsoKargsModifyConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
@@ -185,7 +185,7 @@ pub fn iso_kargs_modify(config: &IsoKargsModifyConfig) -> Result<()> {
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
-pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
+pub fn iso_kargs_reset(config: IsoKargsResetConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
@@ -194,7 +194,7 @@ pub fn iso_kargs_reset(config: &IsoKargsResetConfig) -> Result<()> {
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
-pub fn iso_kargs_show(config: &IsoKargsShowConfig) -> Result<()> {
+pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     if config.header {
@@ -743,7 +743,7 @@ struct IsoInspectOutput {
     records: Vec<String>,
 }
 
-pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
+pub fn iso_inspect(config: IsoInspectConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
     let records = iso
         .walk()?
@@ -763,7 +763,7 @@ pub fn iso_inspect(config: &IsoInspectConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn iso_extract_pxe(config: &IsoExtractPxeConfig) -> Result<()> {
+pub fn iso_extract_pxe(config: IsoExtractPxeConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
     let pxeboot = iso.get_path(COREOS_ISO_PXEBOOT_DIR)?.try_into_dir()?;
     std::fs::create_dir_all(&config.output_dir)?;
@@ -805,7 +805,7 @@ fn copy_file_from_iso(iso: &mut IsoFs, file: &iso9660::File, output_path: &Path)
     Ok(())
 }
 
-pub fn iso_extract_minimal_iso(config: &IsoExtractMinimalIsoConfig) -> Result<()> {
+pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()> {
     // Note we don't support overwriting the input ISO. Unlike other commands, this operation is
     // non-reversible, so let's make it harder for users to shoot themselves in the foot.
     let mut full_iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
@@ -830,7 +830,7 @@ pub fn iso_extract_minimal_iso(config: &IsoExtractMinimalIsoConfig) -> Result<()
             .into()
     };
 
-    if let Some(ref path) = config.output_rootfs {
+    if let Some(path) = &config.output_rootfs {
         let rootfs = full_iso
             .get_path(COREOS_ISO_ROOTFS_IMG)
             .with_context(|| format!("looking up '{}'", COREOS_ISO_ROOTFS_IMG))?
@@ -869,7 +869,7 @@ pub fn iso_extract_minimal_iso(config: &IsoExtractMinimalIsoConfig) -> Result<()
     Ok(())
 }
 
-pub fn iso_pack_minimal_iso(config: &IsoExtractPackMinimalIsoConfig) -> Result<()> {
+pub fn iso_pack_minimal_iso(config: IsoExtractPackMinimalIsoConfig) -> Result<()> {
     let mut full_iso = IsoFs::from_file(open_live_iso(&config.full, Some(None))?)?;
     let mut minimal_iso = IsoFs::from_file(open_live_iso(&config.minimal, None)?)?;
 

@@ -15,9 +15,10 @@
 use anyhow::{anyhow, Error, Result};
 use reqwest::Url;
 use std::default::Default;
+use std::fmt;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::str::FromStr;
-use std::string::ToString;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
@@ -164,7 +165,7 @@ pub struct InstallConfig {
     pub ignition_hash: Option<IgnitionHash>,
     /// Target CPU architecture
     #[structopt(short, long, default_value, value_name = "name")]
-    pub architecture: Architecture,
+    pub architecture: DefaultedString<Architecture>,
     /// Override the Ignition platform ID
     #[structopt(short, long, value_name = "name")]
     pub platform: Option<String>,
@@ -183,14 +184,11 @@ pub struct InstallConfig {
     /// Copy network config from install environment
     #[structopt(short = "n", long)]
     pub copy_network: bool,
-    /// For use with -n.
-    #[structopt(long, value_name = "path", empty_values = false)]
-    #[structopt(default_value = "/etc/NetworkManager/system-connections/")]
-    // don't strip trailing .
-    #[structopt(verbatim_doc_comment)]
+    /// For use with -n
+    #[structopt(long, value_name = "path", default_value)]
     // so we can stay under 80 chars
     #[structopt(next_line_help(true))]
-    pub network_dir: String,
+    pub network_dir: DefaultedString<NetworkDir>,
     /// Save partitions with this label glob
     #[structopt(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
@@ -251,7 +249,7 @@ pub struct DownloadConfig {
     pub stream: String,
     /// Target CPU architecture
     #[structopt(short, long, value_name = "name", default_value)]
-    pub architecture: Architecture,
+    pub architecture: DefaultedString<Architecture>,
     /// Fedora CoreOS platform name
     #[structopt(short, long, value_name = "name", default_value = "metal")]
     pub platform: String,
@@ -518,12 +516,12 @@ impl FromStr for FetchRetries {
     }
 }
 
-impl ToString for FetchRetries {
-    fn to_string(&self) -> String {
+impl fmt::Display for FetchRetries {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::None => "0".into(),
-            Self::Finite(n) => n.to_string(),
-            Self::Infinite => "infinite".into(),
+            Self::None => write!(f, "0"),
+            Self::Finite(n) => write!(f, "{}", n),
+            Self::Infinite => write!(f, "infinite"),
         }
     }
 }
@@ -534,31 +532,64 @@ impl Default for FetchRetries {
     }
 }
 
-// A String wrapper with a default of `uname -m`.
+/// A String wrapper that takes a parameterized type defining the default
+/// value of the String.
 #[derive(Debug)]
-pub struct Architecture(String);
+pub struct DefaultedString<S: DefaultString> {
+    value: String,
+    default: PhantomData<S>,
+}
 
-impl Architecture {
+impl<S: DefaultString> DefaultedString<S> {
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.value
     }
 }
 
-impl FromStr for Architecture {
+impl<S: DefaultString> FromStr for DefaultedString<S> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(s.to_string()))
+        Ok(Self {
+            value: s.to_string(),
+            default: PhantomData,
+        })
     }
 }
 
-impl ToString for Architecture {
-    fn to_string(&self) -> String {
-        self.0.clone()
+impl<S: DefaultString> fmt::Display for DefaultedString<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 
-impl Default for Architecture {
+impl<S: DefaultString> Default for DefaultedString<S> {
     fn default() -> Self {
-        Architecture(nix::sys::utsname::uname().machine().to_string())
+        Self {
+            value: S::default(),
+            default: PhantomData,
+        }
+    }
+}
+
+/// A default value for a DefaultedString.
+pub trait DefaultString {
+    fn default() -> String;
+}
+
+/// A default string of `uname -m`.
+#[derive(Debug)]
+pub struct Architecture {}
+impl DefaultString for Architecture {
+    fn default() -> String {
+        nix::sys::utsname::uname().machine().to_string()
+    }
+}
+
+/// The default path to NetworkManager connection files.
+#[derive(Debug)]
+pub struct NetworkDir {}
+impl DefaultString for NetworkDir {
+    fn default() -> String {
+        "/etc/NetworkManager/system-connections/".into()
     }
 }

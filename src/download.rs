@@ -29,11 +29,11 @@ use crate::io::*;
 use crate::source::*;
 
 // Download all artifacts for an image and verify their signatures.
-pub fn download(config: &DownloadConfig) -> Result<()> {
+pub fn download(config: DownloadConfig) -> Result<()> {
     // Build image location.  Ideally the parser would use conflicts_with
     // (and an ArgGroup for streams), but that doesn't play well with
     // default arguments, so we manually prioritize modes.
-    let location: Box<dyn ImageLocation> = if let Some(ref image_url) = config.image_url {
+    let location: Box<dyn ImageLocation> = if let Some(image_url) = &config.image_url {
         Box::new(UrlLocation::new(image_url, config.fetch_retries))
     } else {
         Box::new(StreamLocation::new(
