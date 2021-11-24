@@ -36,6 +36,6 @@ Install Fedora CoreOS or RHEL CoreOS
 | **--insecure** | Skip signature verification |
 | **--insecure-ignition** | Allow Ignition URL without HTTPS or hash |
 | **--stream-base-url** *URL* | Base URL for Fedora CoreOS stream metadata |
-| **--architecture** *name* | Target CPU architecture [default: x86_64] |
+| **--architecture**, **-a** *name* | Target CPU architecture [default: x86_64] |
 | **--preserve-on-error** | Don't clear partition table on error |
 | **--fetch-retries** *N* | Fetch retries, or string "infinite" |

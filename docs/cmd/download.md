@@ -16,7 +16,7 @@ Download a CoreOS image
 ## Options
 
 | **--stream**, **-s** *name* | Fedora CoreOS stream [default: stable] |
-| **--architecture** *name* | Target CPU architecture [default: x86_64] |
+| **--architecture**, **-a** *name* | Target CPU architecture [default: x86_64] |
 | **--platform**, **-p** *name* | Fedora CoreOS platform name [default: metal] |
 | **--format**, **-f** *name* | Image format [default: raw.xz] |
 | **--image-url**, **-u** *URL* | Manually specify the image URL |
