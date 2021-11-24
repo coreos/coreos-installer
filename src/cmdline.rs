@@ -469,7 +469,30 @@ pub struct ListStreamConfig {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct CommonCustomizeConfig {
+    /// Script to run before installation
+    ///
+    /// If installer is run at boot, run this script before installation.
+    /// If the script fails, the live environment will stop at an emergency
+    /// shell.
+    #[structopt(long, value_name = "path")]
+    pub pre_install: Vec<String>,
+    /// Script to run after installation
+    ///
+    /// If installer is run at boot, run this script after installation.
+    /// If the script fails, the live environment will stop at an emergency
+    /// shell.
+    #[structopt(long, value_name = "path")]
+    pub post_install: Vec<String>,
+}
+
+#[derive(Debug, StructOpt)]
 pub struct IsoCustomizeConfig {
+    // Customizations
+    #[structopt(flatten)]
+    pub common: CommonCustomizeConfig,
+
+    // I/O configuration
     /// Overwrite existing customizations
     #[structopt(short, long)]
     pub force: bool,
@@ -732,6 +755,11 @@ pub struct OsmetFiemapConfig {
 
 #[derive(Debug, StructOpt)]
 pub struct PxeCustomizeConfig {
+    // Customizations
+    #[structopt(flatten)]
+    pub common: CommonCustomizeConfig,
+
+    // I/O configuration
     /// Output file
     #[structopt(short, long, value_name = "path")]
     pub output: String,

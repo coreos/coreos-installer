@@ -18,12 +18,30 @@ USAGE:
     coreos-installer iso customize [OPTIONS] <ISO>
 
 OPTIONS:
-    -f, --force            Overwrite existing customizations
-    -o, --output <path>    Write ISO to a new output file
-    -h, --help             Prints help information
+        --pre-install <path>...
+            Script to run before installation
+
+            If installer is run at boot, run this script before installation. If the script
+            fails, the live environment will stop at an emergency shell.
+        --post-install <path>...
+            Script to run after installation
+
+            If installer is run at boot, run this script after installation. If the script
+            fails, the live environment will stop at an emergency shell.
+    -f, --force
+            Overwrite existing customizations
+
+    -o, --output <path>
+            Write ISO to a new output file
+
+    -h, --help
+            Prints help information
+
 
 ARGS:
-    <ISO>    ISO image
+    <ISO>
+            ISO image
+
 ```
 
 # coreos-installer iso ignition embed

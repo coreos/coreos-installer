@@ -18,11 +18,27 @@ USAGE:
     coreos-installer pxe customize <path> --output <path>
 
 OPTIONS:
-    -o, --output <path>    Output file
-    -h, --help             Prints help information
+        --pre-install <path>...
+            Script to run before installation
+
+            If installer is run at boot, run this script before installation. If the script
+            fails, the live environment will stop at an emergency shell.
+        --post-install <path>...
+            Script to run after installation
+
+            If installer is run at boot, run this script after installation. If the script
+            fails, the live environment will stop at an emergency shell.
+    -o, --output <path>
+            Output file
+
+    -h, --help
+            Prints help information
+
 
 ARGS:
-    <path>    CoreOS live initramfs image
+    <path>
+            CoreOS live initramfs image
+
 ```
 
 # coreos-installer pxe ignition wrap
