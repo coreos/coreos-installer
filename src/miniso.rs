@@ -47,7 +47,7 @@ impl Table {
     fn new(
         full_files: &HashMap<String, iso9660::File>,
         minimal_files: &HashMap<String, iso9660::File>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, usize)> {
         let mut entries: Vec<TableEntry> = Vec::new();
         for (path, minimal_entry) in minimal_files {
             let full_entry = full_files
@@ -67,9 +67,13 @@ impl Table {
         }
 
         entries.sort_by_key(|e| e.minimal.as_sector());
+        // drop duplicate entries (hardlinks), and calculate how many there were for reporting
+        let size = entries.len();
+        entries.dedup();
+        let hardlinks = size - entries.len();
         let table = Table { entries };
         table.validate().context("validating table")?;
-        Ok(table)
+        Ok((table, hardlinks))
     }
 
     fn validate(&self) -> Result<()> {
@@ -91,7 +95,7 @@ impl Table {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 struct TableEntry {
     minimal: iso9660::Address,
     full: iso9660::Address,
@@ -148,7 +152,7 @@ impl Data {
         full_files: &HashMap<String, iso9660::File>,
         minimal_files: &HashMap<String, iso9660::File>,
     ) -> Result<(Self, usize, u64, u64, u64)> {
-        let table = Table::new(full_files, minimal_files)?;
+        let (table, hardlinks) = Table::new(full_files, minimal_files)?;
 
         // A `ReadHasher` here would let us wrap the miniso so we calculate the digest as we read.
         let digest = Sha256Digest::from_file(miniso)?;
@@ -183,7 +187,7 @@ impl Data {
         copy(miniso, &mut xzw).context("copying remaining miniso bytes")?;
 
         xzw.try_finish().context("trying to finish xz stream")?;
-        let matches = table.entries.len();
+        let matches = table.entries.len() + hardlinks;
         let written = xzw.total_in();
         let written_compressed = xzw.total_out();
         Ok((

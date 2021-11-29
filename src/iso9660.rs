@@ -221,7 +221,7 @@ pub struct File {
     pub length: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub struct Address(u32);
 
 impl Address {
