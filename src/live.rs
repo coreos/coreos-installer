@@ -1007,6 +1007,9 @@ impl LiveInitrd {
         for path in &common.post_install {
             conf.post_install(path)?;
         }
+        for path in &common.live_ignition {
+            conf.live_config(path)?;
+        }
 
         Ok(conf)
     }
@@ -1070,6 +1073,19 @@ RequiredBy={install_target}",
             ),
             true,
         )
+    }
+
+    fn live_config(&mut self, path: &str) -> Result<()> {
+        let data = read(path).with_context(|| format!("reading {}", path))?;
+        // we don't validate but at least we parse
+        let (config, warnings) = ignition_config::Config::parse_slice(&data)
+            .with_context(|| format!("parsing Ignition config {}", path))?;
+        for warning in warnings {
+            eprintln!("Warning parsing {}: {}", path, warning);
+        }
+        self.live
+            .merge_config(&config)
+            .with_context(|| format!("merging Ignition config {}", path))
     }
 
     fn into_initrd(self) -> Result<Initrd> {

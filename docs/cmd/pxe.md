@@ -28,6 +28,10 @@ OPTIONS:
 
             If installer is run at boot, run this script after installation. If the script
             fails, the live environment will stop at an emergency shell.
+        --live-ignition <path>...
+            Ignition config fragment for live env
+
+            Merge the specified Ignition config into the config for the live environment.
     -o, --output <path>
             Output file
 

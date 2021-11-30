@@ -484,6 +484,12 @@ pub struct CommonCustomizeConfig {
     /// shell.
     #[structopt(long, value_name = "path")]
     pub post_install: Vec<String>,
+    /// Ignition config fragment for live env
+    ///
+    /// Merge the specified Ignition config into the config for the live
+    /// environment.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub live_ignition: Vec<String>,
 }
 
 #[derive(Debug, StructOpt)]

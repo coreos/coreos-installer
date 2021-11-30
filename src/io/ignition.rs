@@ -15,6 +15,7 @@
 use anyhow::{bail, Context, Result};
 use flate2::read::GzEncoder;
 use flate2::Compression;
+use ignition_config as ign_multi;
 use ignition_config::v3_3 as ign;
 use std::io::Read;
 
@@ -24,6 +25,18 @@ pub struct Ignition {
 }
 
 impl Ignition {
+    pub fn merge_config(&mut self, config: &ign_multi::Config) -> Result<()> {
+        let buf = serde_json::to_vec(config).context("serializing child Ignition config")?;
+        self.config
+            .ignition
+            .config
+            .get_or_insert_with(Default::default)
+            .merge
+            .get_or_insert_with(Default::default)
+            .push(make_resource(&buf)?);
+        Ok(())
+    }
+
     pub fn add_file(&mut self, path: String, data: &[u8], mode: i64) -> Result<()> {
         // Perform the same alias check that Ignition config validation does.
         // This doesn't catch aliases known only at runtime, such as
