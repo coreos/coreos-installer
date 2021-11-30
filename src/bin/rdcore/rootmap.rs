@@ -105,7 +105,7 @@ fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>>
         .get("TYPE")
         .with_context(|| format!("missing TYPE for {}", device.display()))?;
     // a `match {}` construct would be nice here, but for RAID it's a prefix match
-    if blktype.starts_with("raid") {
+    if blktype.starts_with("raid") || blktype == "linear" {
         Ok(Some(get_raid_kargs(&device)?))
     } else if blktype == "crypt" {
         Ok(Some(get_luks_kargs(root, &device)?))
