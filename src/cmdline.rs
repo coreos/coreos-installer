@@ -470,6 +470,13 @@ pub struct ListStreamConfig {
 
 #[derive(Debug, StructOpt)]
 pub struct CommonCustomizeConfig {
+    /// Install destination device
+    ///
+    /// Automatically run installer, installing to the specified destination
+    /// device.  The resulting boot media will overwrite the destination
+    /// device without confirmation.
+    #[structopt(long, value_name = "path")]
+    pub dest_device: Option<String>,
     /// Script to run before installation
     ///
     /// If installer is run at boot, run this script before installation.

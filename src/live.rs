@@ -1031,6 +1031,9 @@ struct LiveInitrd {
 
     /// The Ignition config for the live system
     live: Ignition,
+    /// The coreos-installer config for our own parameters, excluding custom
+    /// configs supplied by the user
+    installer: Option<InstallConfig>,
 
     /// Prefix for installer config filenames
     installer_serial: u32,
@@ -1043,6 +1046,9 @@ impl LiveInitrd {
             ..Default::default()
         };
 
+        if let Some(path) = &common.dest_device {
+            conf.dest_device(path)?;
+        }
         for path in &common.pre_install {
             conf.pre_install(path)?;
         }
@@ -1057,6 +1063,17 @@ impl LiveInitrd {
         }
 
         Ok(conf)
+    }
+
+    fn dest_device(&mut self, device: &str) -> Result<()> {
+        eprintln!(
+            "Warning: boot media will overwrite {} without confirmation.",
+            device
+        );
+        self.installer
+            .get_or_insert_with(Default::default)
+            .dest_device = Some(device.into());
+        Ok(())
     }
 
     fn pre_install(&mut self, path: &str) -> Result<()> {
@@ -1157,7 +1174,14 @@ RequiredBy={install_target}",
             .with_context(|| format!("merging Ignition config {}", path))
     }
 
-    fn into_initrd(self) -> Result<Initrd> {
+    fn into_initrd(mut self) -> Result<Initrd> {
+        if let Some(conf) = self.installer.take() {
+            self.installer_config_bytes(
+                "customize.yaml",
+                &serde_yaml::to_vec(&conf).context("serializing installer config")?,
+            )?;
+        }
+
         let mut initrd = Initrd::default();
         initrd.add(INITRD_IGNITION_PATH, self.live.to_bytes()?);
         Ok(initrd)

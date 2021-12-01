@@ -18,6 +18,11 @@ USAGE:
     coreos-installer iso customize [OPTIONS] <ISO>
 
 OPTIONS:
+        --dest-device <path>
+            Install destination device
+
+            Automatically run installer, installing to the specified destination device.  The
+            resulting boot media will overwrite the destination device without confirmation.
         --pre-install <path>...
             Script to run before installation
 

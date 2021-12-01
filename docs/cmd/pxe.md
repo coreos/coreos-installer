@@ -18,6 +18,11 @@ USAGE:
     coreos-installer pxe customize <path> --output <path>
 
 OPTIONS:
+        --dest-device <path>
+            Install destination device
+
+            Automatically run installer, installing to the specified destination device.  The
+            resulting boot media will overwrite the destination device without confirmation.
         --pre-install <path>...
             Script to run before installation
 
