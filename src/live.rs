@@ -1031,6 +1031,9 @@ struct LiveInitrd {
 
     /// The Ignition config for the live system
     live: Ignition,
+
+    /// Prefix for installer config filenames
+    installer_serial: u32,
 }
 
 impl LiveInitrd {
@@ -1045,6 +1048,9 @@ impl LiveInitrd {
         }
         for path in &common.post_install {
             conf.post_install(path)?;
+        }
+        for path in &common.installer_config {
+            conf.installer_config(path)?;
         }
         for path in &common.live_ignition {
             conf.live_config(path)?;
@@ -1112,6 +1118,30 @@ RequiredBy={install_target}",
             ),
             true,
         )
+    }
+
+    fn installer_config(&mut self, path: &str) -> Result<()> {
+        let data = read(path).with_context(|| format!("reading {}", path))?;
+        // we don't validate but at least we parse
+        serde_yaml::from_slice::<InstallConfig>(&data)
+            .with_context(|| format!("parsing installer config {}", path))?;
+        self.installer_config_bytes(&filename(path)?, &data)
+    }
+
+    fn installer_config_bytes(&mut self, filename: &str, data: &[u8]) -> Result<()> {
+        if !self.features.installer_config {
+            bail!("This OS image does not support customizing installer configuration.");
+        }
+        self.live.add_file(
+            format!(
+                "/etc/coreos/installer.d/{:04}-{}",
+                self.installer_serial, filename
+            ),
+            data,
+            0o600,
+        )?;
+        self.installer_serial += 1;
+        Ok(())
     }
 
     fn live_config(&mut self, path: &str) -> Result<()> {

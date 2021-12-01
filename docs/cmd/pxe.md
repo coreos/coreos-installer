@@ -28,6 +28,11 @@ OPTIONS:
 
             If installer is run at boot, run this script after installation. If the script
             fails, the live environment will stop at an emergency shell.
+        --installer-config <path>...
+            Installer config file
+
+            Automatically run coreos-installer and apply the specified installer config file.
+            Config files are applied in the order that they are specified.
         --live-ignition <path>...
             Ignition config fragment for live env
 

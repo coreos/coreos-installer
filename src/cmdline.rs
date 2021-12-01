@@ -484,6 +484,13 @@ pub struct CommonCustomizeConfig {
     /// shell.
     #[structopt(long, value_name = "path")]
     pub post_install: Vec<String>,
+    /// Installer config file
+    ///
+    /// Automatically run coreos-installer and apply the specified installer
+    /// config file.  Config files are applied in the order that they are
+    /// specified.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub installer_config: Vec<String>,
     /// Ignition config fragment for live env
     ///
     /// Merge the specified Ignition config into the config for the live
