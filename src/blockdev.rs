@@ -877,30 +877,71 @@ pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>
     Ok(result)
 }
 
-pub fn find_esps() -> Result<Vec<String>> {
-    const ESP_TYPE_GUID: &str = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
+/// This is a bit fuzzy, but... this function will return every block device in the parent
+/// hierarchy of `device` capable of containing other partitions. So e.g. parent devices of type
+/// "part" doesn't match, but "disk" and "mpath" does.
+pub fn find_parent_devices(device: &str) -> Result<Vec<String>> {
     let mut cmd = Command::new("lsblk");
-    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
     cmd.arg("--pairs")
         .arg("--paths")
+        .arg("--inverse")
         .arg("--output")
-        .arg("NAME,PARTTYPE");
+        .arg("NAME,TYPE")
+        .arg(device);
     let output = cmd_output(&mut cmd)?;
-    output
-        .lines()
-        .filter_map(|line| {
+    let mut parents = Vec::new();
+    // skip first line, which is the device itself
+    for line in output.lines().skip(1) {
+        let dev = split_lsblk_line(line);
+        let name = dev
+            .get("NAME")
+            .ok_or_else(|| anyhow!("device in hierarchy of {} missing NAME", device))?;
+        let kind = dev
+            .get("TYPE")
+            .ok_or_else(|| anyhow!("device in hierarchy of {} missing TYPE", device))?;
+        if kind == "disk" {
+            parents.push(name.clone());
+        } else if kind == "mpath" {
+            parents.push(name.clone());
+            // we don't need to know what disks back the multipath
+            break;
+        }
+    }
+    if parents.is_empty() {
+        bail!("no parent devices found for {}", device);
+    }
+    Ok(parents)
+}
+
+/// Find ESP partitions which sit at the same hierarchy level as `device`.
+pub fn find_colocated_esps(device: &str) -> Result<Vec<String>> {
+    const ESP_TYPE_GUID: &str = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
+
+    // first, get the parent device
+    let parent_devices = find_parent_devices(device)
+        .with_context(|| format!("while looking for colocated ESPs of '{}'", device))?;
+
+    // now, look for all ESPs on those devices
+    let mut esps = Vec::new();
+    for parent_device in parent_devices {
+        let mut cmd = Command::new("lsblk");
+        cmd.arg("--pairs")
+            .arg("--paths")
+            .arg("--output")
+            .arg("NAME,PARTTYPE")
+            .arg(parent_device);
+        for line in cmd_output(&mut cmd)?.lines() {
             let dev = split_lsblk_line(line);
             if dev.get("PARTTYPE").map(|t| t.as_str()) == Some(ESP_TYPE_GUID) {
-                Some(
+                esps.push(
                     dev.get("NAME")
                         .cloned()
-                        .ok_or_else(|| anyhow!("ESP device with missing NAME")),
+                        .ok_or_else(|| anyhow!("ESP device with missing NAME"))?,
                 )
-            } else {
-                None
             }
-        })
-        .collect()
+        }
+    }
+    Ok(esps)
 }
 
 /// This is basically a Rust version of:

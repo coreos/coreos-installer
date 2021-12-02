@@ -278,7 +278,7 @@ pub fn bind_boot(config: BindBootConfig) -> Result<()> {
         write_boot_uuid_grub2_dropin(&boot_uuid, grub_bios_path)?;
     }
 
-    for esp in find_esps()? {
+    for esp in find_colocated_esps(boot_mount.device())? {
         let mount = Mount::try_mount(&esp, "vfat", mount::MsFlags::empty())?;
         let vendor_dir = find_efi_vendor_dir(&mount)?;
         let grub_efi_path = vendor_dir.join("bootuuid.cfg");
