@@ -882,6 +882,7 @@ pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>
 /// "part" doesn't match, but "disk" and "mpath" does.
 pub fn find_parent_devices(device: &str) -> Result<Vec<String>> {
     let mut cmd = Command::new("lsblk");
+    // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
     cmd.arg("--pairs")
         .arg("--paths")
         .arg("--inverse")
@@ -925,6 +926,7 @@ pub fn find_colocated_esps(device: &str) -> Result<Vec<String>> {
     let mut esps = Vec::new();
     for parent_device in parent_devices {
         let mut cmd = Command::new("lsblk");
+        // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
         cmd.arg("--pairs")
             .arg("--paths")
             .arg("--output")
