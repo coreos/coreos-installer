@@ -18,6 +18,11 @@ USAGE:
     coreos-installer iso customize [OPTIONS] <ISO>
 
 OPTIONS:
+        --dest-ignition <path>...
+            Ignition config fragment for dest sys
+
+            Automatically run installer and merge the specified Ignition config into the config
+            for the destination system.
         --dest-device <path>
             Install destination device
 

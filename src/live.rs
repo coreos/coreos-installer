@@ -1031,6 +1031,11 @@ struct LiveInitrd {
 
     /// The Ignition config for the live system
     live: Ignition,
+    /// The Ignition config for the destination system
+    dest: Option<Ignition>,
+    /// User-supplied Ignition configs for the dest system, which might be
+    /// merged into the dest config or might become the dest config
+    user_dest: Vec<ignition_config::Config>,
     /// The coreos-installer config for our own parameters, excluding custom
     /// configs supplied by the user
     installer: Option<InstallConfig>,
@@ -1046,6 +1051,9 @@ impl LiveInitrd {
             ..Default::default()
         };
 
+        for path in &common.dest_ignition {
+            conf.dest_ignition(path)?;
+        }
         if let Some(path) = &common.dest_device {
             conf.dest_device(path)?;
         }
@@ -1063,6 +1071,17 @@ impl LiveInitrd {
         }
 
         Ok(conf)
+    }
+
+    fn dest_ignition(&mut self, path: &str) -> Result<()> {
+        let data = read(path).with_context(|| format!("reading {}", path))?;
+        let (config, warnings) = ignition_config::Config::parse_slice(&data)
+            .with_context(|| format!("parsing Ignition config {}", path))?;
+        for warning in warnings {
+            eprintln!("Warning parsing {}: {}", path, warning);
+        }
+        self.user_dest.push(config);
+        Ok(())
     }
 
     fn dest_device(&mut self, device: &str) -> Result<()> {
@@ -1175,13 +1194,40 @@ RequiredBy={install_target}",
     }
 
     fn into_initrd(mut self) -> Result<Initrd> {
+        if self.dest.is_some() || !self.user_dest.is_empty() {
+            // Embed dest config in live and installer configs
+            let data = if self.dest.is_none() && self.user_dest.len() == 1 {
+                // Special case: the user supplied exactly one dest config
+                // and we didn't add any dest config directives of our own.
+                // Avoid another level of wrapping by embedding the user's
+                // dest config directly.
+                let mut buf = serde_json::to_vec(&self.user_dest.pop().unwrap())
+                    .context("serializing dest Ignition config")?;
+                buf.push(b'\n');
+                buf
+            } else {
+                let dest = self.dest.get_or_insert_with(Default::default);
+                for user_dest in self.user_dest.drain(..) {
+                    dest.merge_config(&user_dest)?;
+                }
+                dest.to_bytes()?
+            };
+            let conf = self.installer.get_or_insert_with(Default::default);
+            assert!(conf.ignition_file.is_none());
+            let dest_path = "/etc/coreos/dest.ign";
+            self.live.add_file(dest_path.into(), &data, 0o600)?;
+            conf.ignition_file = Some(dest_path.into());
+        }
+
         if let Some(conf) = self.installer.take() {
+            // Embed installer config in live config
             self.installer_config_bytes(
                 "customize.yaml",
                 &serde_yaml::to_vec(&conf).context("serializing installer config")?,
             )?;
         }
 
+        // Embed live config in initrd
         let mut initrd = Initrd::default();
         initrd.add(INITRD_IGNITION_PATH, self.live.to_bytes()?);
         Ok(initrd)

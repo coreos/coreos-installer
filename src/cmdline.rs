@@ -470,6 +470,12 @@ pub struct ListStreamConfig {
 
 #[derive(Debug, StructOpt)]
 pub struct CommonCustomizeConfig {
+    /// Ignition config fragment for dest sys
+    ///
+    /// Automatically run installer and merge the specified Ignition config
+    /// into the config for the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub dest_ignition: Vec<String>,
     /// Install destination device
     ///
     /// Automatically run installer, installing to the specified destination
