@@ -1029,6 +1029,8 @@ struct LiveInitrd {
     /// OS features
     features: OsFeatures,
 
+    /// The initrd for the live system
+    initrd: Initrd,
     /// The Ignition config for the live system
     live: Ignition,
     /// The Ignition config for the destination system
@@ -1039,6 +1041,8 @@ struct LiveInitrd {
     /// The coreos-installer config for our own parameters, excluding custom
     /// configs supplied by the user
     installer: Option<InstallConfig>,
+    /// Have the installer copy network configs, if we are running it
+    installer_copy_network: bool,
 
     /// Prefix for installer config filenames
     installer_serial: u32,
@@ -1056,6 +1060,9 @@ impl LiveInitrd {
         }
         if let Some(path) = &common.dest_device {
             conf.dest_device(path)?;
+        }
+        for path in &common.network_keyfile {
+            conf.network_keyfile(path)?;
         }
         for path in &common.pre_install {
             conf.pre_install(path)?;
@@ -1092,6 +1099,21 @@ impl LiveInitrd {
         self.installer
             .get_or_insert_with(Default::default)
             .dest_device = Some(device.into());
+        Ok(())
+    }
+
+    fn network_keyfile(&mut self, path: &str) -> Result<()> {
+        if !self.features.live_initrd_network {
+            bail!("This OS image does not support customizing network settings.");
+        }
+        let data = read(path).with_context(|| format!("reading {}", path))?;
+        let name = filename(path)?;
+        let path = format!("{}/{}", INITRD_NETWORK_DIR, name);
+        if self.initrd.get(&path).is_some() {
+            bail!("config already specifies keyfile {}", name);
+        }
+        self.initrd.add(&path, data);
+        self.installer_copy_network = true;
         Ok(())
     }
 
@@ -1219,6 +1241,14 @@ RequiredBy={install_target}",
             conf.ignition_file = Some(dest_path.into());
         }
 
+        if self.installer_copy_network && (self.installer_serial > 0 || self.installer.is_some()) {
+            // The installer will run, so have it copy network settings
+            // to the destination
+            self.installer
+                .get_or_insert_with(Default::default)
+                .copy_network = true;
+        }
+
         if let Some(conf) = self.installer.take() {
             // Embed installer config in live config
             self.installer_config_bytes(
@@ -1228,9 +1258,8 @@ RequiredBy={install_target}",
         }
 
         // Embed live config in initrd
-        let mut initrd = Initrd::default();
-        initrd.add(INITRD_IGNITION_PATH, self.live.to_bytes()?);
-        Ok(initrd)
+        self.initrd.add(INITRD_IGNITION_PATH, self.live.to_bytes()?);
+        Ok(self.initrd)
     }
 }
 

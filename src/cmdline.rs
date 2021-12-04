@@ -483,6 +483,15 @@ pub struct CommonCustomizeConfig {
     /// device without confirmation.
     #[structopt(long, value_name = "path")]
     pub dest_device: Option<String>,
+    /// NetworkManager keyfile for live & dest
+    ///
+    /// Configure networking using the specified NetworkManager keyfile.
+    /// Network settings will be applied in the live environment, including
+    /// when Ignition is run.  If installer is enabled via additional options,
+    /// network settings will also be applied in the destination system,
+    /// including when Ignition is run.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub network_keyfile: Vec<String>,
     /// Script to run before installation
     ///
     /// If installer is run at boot, run this script before installation.

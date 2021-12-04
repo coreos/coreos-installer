@@ -28,6 +28,13 @@ OPTIONS:
 
             Automatically run installer, installing to the specified destination device.  The
             resulting boot media will overwrite the destination device without confirmation.
+        --network-keyfile <path>...
+            NetworkManager keyfile for live & dest
+
+            Configure networking using the specified NetworkManager keyfile. Network settings
+            will be applied in the live environment, including when Ignition is run.  If
+            installer is enabled via additional options, network settings will also be applied
+            in the destination system, including when Ignition is run.
         --pre-install <path>...
             Script to run before installation
 
