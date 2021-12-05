@@ -1061,6 +1061,12 @@ impl LiveInitrd {
         if let Some(path) = &common.dest_device {
             conf.dest_device(path)?;
         }
+        for arg in &common.dest_karg_append {
+            conf.dest_karg_append(arg);
+        }
+        for arg in &common.dest_karg_delete {
+            conf.dest_karg_delete(arg);
+        }
         for path in &common.network_keyfile {
             conf.network_keyfile(path)?;
         }
@@ -1100,6 +1106,20 @@ impl LiveInitrd {
             .get_or_insert_with(Default::default)
             .dest_device = Some(device.into());
         Ok(())
+    }
+
+    fn dest_karg_append(&mut self, arg: &str) {
+        self.installer
+            .get_or_insert_with(Default::default)
+            .append_karg
+            .push(arg.into());
+    }
+
+    fn dest_karg_delete(&mut self, arg: &str) {
+        self.installer
+            .get_or_insert_with(Default::default)
+            .delete_karg
+            .push(arg.into());
     }
 
     fn network_keyfile(&mut self, path: &str) -> Result<()> {

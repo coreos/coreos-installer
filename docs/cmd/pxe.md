@@ -28,6 +28,16 @@ OPTIONS:
 
             Automatically run installer, installing to the specified destination device.  The
             resulting boot media will overwrite the destination device without confirmation.
+        --dest-karg-append <arg>...
+            Destination kernel argument to append
+
+            Automatically run installer, adding the specified kernel argument for every boot of
+            the destination system.
+        --dest-karg-delete <arg>...
+            Destination kernel argument to delete
+
+            Automatically run installer, deleting the specified kernel argument for every boot
+            of the destination system.
         --network-keyfile <path>...
             NetworkManager keyfile for live & dest
 

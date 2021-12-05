@@ -483,6 +483,18 @@ pub struct CommonCustomizeConfig {
     /// device without confirmation.
     #[structopt(long, value_name = "path")]
     pub dest_device: Option<String>,
+    /// Destination kernel argument to append
+    ///
+    /// Automatically run installer, adding the specified kernel argument
+    /// for every boot of the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub dest_karg_append: Vec<String>,
+    /// Destination kernel argument to delete
+    ///
+    /// Automatically run installer, deleting the specified kernel argument
+    /// for every boot of the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub dest_karg_delete: Vec<String>,
     /// NetworkManager keyfile for live & dest
     ///
     /// Configure networking using the specified NetworkManager keyfile.
