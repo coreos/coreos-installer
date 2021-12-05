@@ -75,6 +75,19 @@ impl Ignition {
         Ok(())
     }
 
+    pub fn add_ca(&mut self, data: &[u8]) -> Result<()> {
+        self.config
+            .ignition
+            .security
+            .get_or_insert_with(Default::default)
+            .tls
+            .get_or_insert_with(Default::default)
+            .certificate_authorities
+            .get_or_insert_with(Default::default)
+            .push(make_resource(data)?);
+        Ok(())
+    }
+
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let mut json = serde_json::to_vec(&self.config).context("serializing Ignition config")?;
         json.push(b'\n');

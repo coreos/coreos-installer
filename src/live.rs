@@ -1049,6 +1049,8 @@ struct LiveInitrd {
     installer: Option<InstallConfig>,
     /// Have the installer copy network configs, if we are running it
     installer_copy_network: bool,
+    /// Ignition CAs for the dest system, if it has an Ignition config
+    dest_ca: Vec<Vec<u8>>,
 
     /// Prefix for installer config filenames
     installer_serial: u32,
@@ -1075,6 +1077,9 @@ impl LiveInitrd {
         }
         for path in &common.network_keyfile {
             conf.network_keyfile(path)?;
+        }
+        for path in &common.ignition_ca {
+            conf.ignition_ca(path)?;
         }
         for path in &common.pre_install {
             conf.pre_install(path)?;
@@ -1140,6 +1145,13 @@ impl LiveInitrd {
         }
         self.initrd.add(&path, data);
         self.installer_copy_network = true;
+        Ok(())
+    }
+
+    fn ignition_ca(&mut self, path: &str) -> Result<()> {
+        let data = read(path).with_context(|| format!("reading {}", path))?;
+        self.live.add_ca(&data)?;
+        self.dest_ca.push(data);
         Ok(())
     }
 
@@ -1244,6 +1256,12 @@ RequiredBy={install_target}",
     fn into_initrd(mut self) -> Result<Initrd> {
         if self.dest.is_some() || !self.user_dest.is_empty() {
             // Embed dest config in live and installer configs
+
+            // We now know we'll have a dest config, so add CAs to it
+            for ca in self.dest_ca.drain(..) {
+                self.dest.get_or_insert_with(Default::default).add_ca(&ca)?;
+            }
+
             let data = if self.dest.is_none() && self.user_dest.len() == 1 {
                 // Special case: the user supplied exactly one dest config
                 // and we didn't add any dest config directives of our own.

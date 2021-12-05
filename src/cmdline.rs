@@ -504,6 +504,14 @@ pub struct CommonCustomizeConfig {
     /// including when Ignition is run.
     #[structopt(long, number_of_values = 1, value_name = "path")]
     pub network_keyfile: Vec<String>,
+    /// Ignition PEM CA bundle for live & dest
+    ///
+    /// Specify additional TLS certificate authorities to be trusted by
+    /// Ignition, in PEM format.  Authorities will be trusted by Ignition
+    /// in the live environment and, if installer is enabled via additional
+    /// options, in the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub ignition_ca: Vec<String>,
     /// Script to run before installation
     ///
     /// If installer is run at boot, run this script before installation.

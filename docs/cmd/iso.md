@@ -45,6 +45,12 @@ OPTIONS:
             will be applied in the live environment, including when Ignition is run.  If
             installer is enabled via additional options, network settings will also be applied
             in the destination system, including when Ignition is run.
+        --ignition-ca <path>...
+            Ignition PEM CA bundle for live & dest
+
+            Specify additional TLS certificate authorities to be trusted by Ignition, in PEM
+            format.  Authorities will be trusted by Ignition in the live environment and, if
+            installer is enabled via additional options, in the destination system.
         --pre-install <path>...
             Script to run before installation
 
