@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// We don't care about the size of enum variants and don't want to box them
+#![allow(clippy::large_enum_variant)]
+
 use anyhow::{anyhow, Context, Error, Result};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
