@@ -361,7 +361,13 @@ pub fn iso_customize(config: IsoCustomizeConfig) -> Result<()> {
 
     let live = LiveInitrd::from_common(&config.common, features)?;
     *iso.initrd_mut() = live.into_initrd()?;
-    iso.set_kargs(&iso.kargs_default()?.to_string())?;
+
+    let kargs = KargsEditor::new()
+        .append(&config.live_karg_append)
+        .replace(&config.live_karg_replace)
+        .delete(&config.live_karg_delete)
+        .apply_to(iso.kargs_default()?)?;
+    iso.set_kargs(&kargs)?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }

@@ -538,6 +538,23 @@ pub struct IsoCustomizeConfig {
     // Customizations
     #[structopt(flatten)]
     pub common: CommonCustomizeConfig,
+    /// Live kernel argument to append
+    ///
+    /// Kernel argument to append to boots of the live environment.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub live_karg_append: Vec<String>,
+    /// Live kernel argument to delete
+    ///
+    /// Kernel argument to delete from boots of the live environment.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub live_karg_delete: Vec<String>,
+    /// Live kernel argument to replace
+    ///
+    /// Kernel argument to replace for boots of the live environment, in the
+    /// form key=old=new.  For a default argument "a=b", specifying
+    /// "--live-karg-replace a=b=c" will produce the argument "a=c".
+    #[structopt(long, number_of_values = 1, value_name = "k=o=n")]
+    pub live_karg_replace: Vec<String>,
 
     // I/O configuration
     /// Overwrite existing customizations

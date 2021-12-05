@@ -64,6 +64,20 @@ OPTIONS:
             Ignition config fragment for live env
 
             Merge the specified Ignition config into the config for the live environment.
+        --live-karg-append <arg>...
+            Live kernel argument to append
+
+            Kernel argument to append to boots of the live environment.
+        --live-karg-delete <arg>...
+            Live kernel argument to delete
+
+            Kernel argument to delete from boots of the live environment.
+        --live-karg-replace <k=o=n>...
+            Live kernel argument to replace
+
+            Kernel argument to replace for boots of the live environment, in the form
+            key=old=new.  For a default argument "a=b", specifying "--live-karg-replace a=b=c"
+            will produce the argument "a=c".
     -f, --force
             Overwrite existing customizations
 
