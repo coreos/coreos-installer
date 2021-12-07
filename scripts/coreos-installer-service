@@ -66,6 +66,8 @@ device="$(karg coreos.inst.install_dev)"
 if [ -n "${device}" ]; then
     if [ "${device##*/}" = "${device}" ]; then
         # karg contains no slashes.  Prepend "/dev/" for compatibility.
+        echo "The \"coreos.inst.install_dev=$device\" syntax is deprecated."
+        echo "Use \"coreos.inst.install_dev=/dev/$device\" instead."
         device="/dev/${device}"
     fi
     args+=("${device}")
