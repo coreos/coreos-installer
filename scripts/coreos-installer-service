@@ -47,6 +47,11 @@ copy_arg() {
     fi
 }
 
+# Warn on deprecated kargs
+if [ "$(karg coreos.inst)" = yes ]; then
+    echo '"coreos.inst=yes" is deprecated and no longer has any effect.'
+fi
+
 # Config files
 have_config_file=
 for file in ${INSTALLER_CONFIG_DIR}/*; do
@@ -61,6 +66,8 @@ device="$(karg coreos.inst.install_dev)"
 if [ -n "${device}" ]; then
     if [ "${device##*/}" = "${device}" ]; then
         # karg contains no slashes.  Prepend "/dev/" for compatibility.
+        echo "The \"coreos.inst.install_dev=$device\" syntax is deprecated."
+        echo "Use \"coreos.inst.install_dev=/dev/$device\" instead."
         device="/dev/${device}"
     fi
     args+=("${device}")
