@@ -7,7 +7,8 @@ Wants=network-online.target
 # systemd-resolved comes up if enabled.
 # https://github.com/coreos/coreos-installer/issues/283
 After=systemd-resolved.service
-ConditionKernelCommandLine=coreos.inst.install_dev
+ConditionDirectoryNotEmpty=|/etc/coreos/installer.d
+ConditionKernelCommandLine=|coreos.inst.install_dev
 OnFailure=emergency.target
 OnFailureJobMode=replace-irreversibly
 

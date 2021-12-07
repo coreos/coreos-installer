@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use nix::mount;
 use std::fs::{
     copy as fscopy, create_dir_all, read_dir, set_permissions, File, OpenOptions, Permissions,
@@ -31,6 +31,15 @@ use crate::s390x;
 use crate::source::*;
 
 pub fn install(config: InstallConfig) -> Result<()> {
+    // evaluate config files
+    let config = config.expand_config_files()?;
+
+    // make sure we have a device path
+    let device = config
+        .dest_device
+        .as_deref()
+        .ok_or_else(|| anyhow!("destination device must be specified"))?;
+
     // find Ignition config
     let ignition = if let Some(file) = &config.ignition_file {
         Some(
@@ -84,16 +93,16 @@ pub fn install(config: InstallConfig) -> Result<()> {
     // it changes to the recommended 4096
     // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
     #[allow(clippy::match_bool, clippy::match_single_binding)]
-    let sector_size = match is_dasd(&config.device, None)
-        .with_context(|| format!("checking whether {} is an IBM DASD disk", &config.device))?
+    let sector_size = match is_dasd(device, None)
+        .with_context(|| format!("checking whether {} is an IBM DASD disk", device))?
     {
         #[cfg(target_arch = "s390x")]
-        true => s390x::dasd_try_get_sector_size(&config.device).transpose(),
+        true => s390x::dasd_try_get_sector_size(device).transpose(),
         _ => None,
     };
     let sector_size = sector_size
-        .unwrap_or_else(|| get_sector_size_for_path(Path::new(&config.device)))
-        .with_context(|| format!("getting sector size of {}", &config.device))?
+        .unwrap_or_else(|| get_sector_size_for_path(Path::new(device)))
+        .with_context(|| format!("getting sector size of {}", device))?
         .get();
 
     // set up image source
@@ -127,7 +136,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
                     // 512b image
                     eprintln!(
                         "Found non-standard sector size {} for {}, assuming 512b-compatible",
-                        n, &config.device
+                        n, device
                     );
                     "raw.xz"
                 }
@@ -161,14 +170,14 @@ pub fn install(config: InstallConfig) -> Result<()> {
     // set up DASD
     #[cfg(target_arch = "s390x")]
     {
-        if is_dasd(&config.device, None)? {
+        if is_dasd(device, None)? {
             if !save_partitions.is_empty() {
                 // The user requested partition saving, but SavedPartitions
                 // doesn't understand DASD VTOCs and won't find any partitions
                 // to save.
                 bail!("saving DASD partitions is not supported");
             }
-            s390x::prepare_dasd(&config.device)?;
+            s390x::prepare_dasd(device)?;
         }
     }
 
@@ -176,35 +185,35 @@ pub fn install(config: InstallConfig) -> Result<()> {
     let mut dest = OpenOptions::new()
         .read(true)
         .write(true)
-        .open(&config.device)
-        .with_context(|| format!("opening {}", &config.device))?;
+        .open(device)
+        .with_context(|| format!("opening {}", device))?;
     if !dest
         .metadata()
-        .with_context(|| format!("getting metadata for {}", &config.device))?
+        .with_context(|| format!("getting metadata for {}", device))?
         .file_type()
         .is_block_device()
     {
-        bail!("{} is not a block device", &config.device);
+        bail!("{} is not a block device", device);
     }
-    ensure_exclusive_access(&config.device)
-        .with_context(|| format!("checking for exclusive access to {}", &config.device))?;
+    ensure_exclusive_access(device)
+        .with_context(|| format!("checking for exclusive access to {}", device))?;
 
     // save partitions that we plan to keep
     let saved = SavedPartitions::new_from_disk(&mut dest, &save_partitions)
-        .with_context(|| format!("saving partitions from {}", config.device))?;
+        .with_context(|| format!("saving partitions from {}", device))?;
 
     // get reference to partition table
     // For kpartx partitioning, this will conditionally call kpartx -d
     // when dropped
-    let mut table = Disk::new(&config.device)?
+    let mut table = Disk::new(device)?
         .get_partition_table()
-        .with_context(|| format!("getting partition table for {}", &config.device))?;
+        .with_context(|| format!("getting partition table for {}", device))?;
 
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
     dest.seek(SeekFrom::Start(0))
-        .with_context(|| format!("seeking {}", config.device))?;
+        .with_context(|| format!("seeking {}", device))?;
     if let Err(err) = write_disk(
         &config,
         &mut source,
@@ -244,8 +253,8 @@ pub fn install(config: InstallConfig) -> Result<()> {
     match get_filesystems_with_label("boot") {
         Ok(pts) => {
             if pts.len() > 1 {
-                let rootdev = std::fs::canonicalize(&config.device)
-                    .unwrap_or_else(|_| PathBuf::from(&config.device))
+                let rootdev = std::fs::canonicalize(device)
+                    .unwrap_or_else(|_| PathBuf::from(device))
                     .to_string_lossy()
                     .to_string();
                 let pts = pts
@@ -350,12 +359,14 @@ fn write_disk(
     ignition: Option<File>,
     network_config: Option<&str>,
 ) -> Result<()> {
+    let device = config.dest_device.as_deref().expect("device missing");
+
     // Get sector size of destination, for comparing with image
     let sector_size = get_sector_size(dest)?;
 
     // copy the image
     #[allow(clippy::match_bool, clippy::match_single_binding)]
-    let image_copy = match is_dasd(&config.device, Some(dest))? {
+    let image_copy = match is_dasd(device, Some(dest))? {
         #[cfg(target_arch = "s390x")]
         true => s390x::image_copy_s390x,
         _ => image_copy_default,
@@ -363,7 +374,7 @@ fn write_disk(
     write_image(
         source,
         dest,
-        Path::new(&config.device),
+        Path::new(device),
         image_copy,
         true,
         Some(saved),
@@ -381,8 +392,7 @@ fn write_disk(
         || network_config.is_some()
         || cfg!(target_arch = "s390x")
     {
-        let mount =
-            Disk::new(&config.device)?.mount_partition_by_label("boot", mount::MsFlags::empty())?;
+        let mount = Disk::new(device)?.mount_partition_by_label("boot", mount::MsFlags::empty())?;
         if let Some(ignition) = ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .context("writing Ignition configuration")?;
@@ -411,7 +421,7 @@ fn write_disk(
         #[cfg(target_arch = "s390x")]
         {
             s390x::zipl(mount.mountpoint())?;
-            s390x::chreipl(&config.device)?;
+            s390x::chreipl(device)?;
         }
     }
 
@@ -574,8 +584,9 @@ fn reset_partition_table(
     saved: &SavedPartitions,
 ) -> Result<()> {
     eprintln!("Resetting partition table");
+    let device = config.dest_device.as_deref().expect("device missing");
 
-    if is_dasd(&config.device, Some(dest))? {
+    if is_dasd(device, Some(dest))? {
         // Don't write out a GPT, since the backup GPT may overwrite
         // something we're not allowed to touch.  Just clear the first MiB
         // of disk.

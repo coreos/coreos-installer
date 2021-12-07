@@ -29,7 +29,8 @@ karg_bool() {
     esac
 }
 
-if [ -n "$(karg coreos.inst.install_dev)" ]; then
+if [ -n "$(karg coreos.inst.install_dev)" -o \
+     -n "$(ls -A /etc/coreos/installer.d 2>/dev/null)" ]; then
     ln -sf "/usr/lib/systemd/system/coreos-installer-post.target" \
         "${UNIT_DIR}/default.target"
 
