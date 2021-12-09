@@ -164,10 +164,17 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
 }
 
 pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
-    let mut f = OpenOptions::new()
-        .read(true)
-        .open(&config.input)
-        .with_context(|| format!("opening {}", &config.input))?;
+    let stdin = io::stdin();
+    let mut f: Box<dyn Read> = if let Some(path) = &config.input {
+        Box::new(
+            OpenOptions::new()
+                .read(true)
+                .open(path)
+                .with_context(|| format!("opening {}", path))?,
+        )
+    } else {
+        Box::new(stdin.lock())
+    };
     let stdout = io::stdout();
     let mut out = stdout.lock();
     out.write_all(

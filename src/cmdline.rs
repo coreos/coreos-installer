@@ -602,9 +602,9 @@ pub struct PxeIgnitionWrapConfig {
 
 #[derive(Debug, StructOpt)]
 pub struct PxeIgnitionUnwrapConfig {
-    /// initrd image
+    /// initrd image [default: stdin]
     #[structopt(value_name = "initrd")]
-    pub input: String,
+    pub input: Option<String>,
 }
 
 impl FromStr for FetchRetries {
