@@ -14,14 +14,13 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Buf;
-use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
 use openat_ext::FileExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::{read, write, File, OpenOptions};
-use std::io::{self, copy, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -700,50 +699,6 @@ fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
         .context("reading Ignition embed area")
 }
 
-/// Make an xz-compressed initrd containing the specified members.
-fn make_initrd(members: &[(&str, &[u8])]) -> Result<Vec<u8>> {
-    use xz2::stream::{Check, Stream};
-    use xz2::write::XzEncoder;
-
-    // kernel requires CRC32: https://www.kernel.org/doc/Documentation/xz.txt
-    let mut encoder = XzEncoder::new_stream(
-        Vec::new(),
-        Stream::new_easy_encoder(9, Check::Crc32).context("creating XZ encoder")?,
-    );
-    write_cpio(
-        members.iter().map(|(path, contents)|
-        // S_IFREG | 0644
-        (NewcBuilder::new(path).mode(0o100_644),
-        Cursor::new(*contents))),
-        &mut encoder,
-    )
-    .context("writing CPIO archive")?;
-    encoder.finish().context("closing XZ compressor")
-}
-
-/// Extract a compressed or uncompressed CPIO archive and return the
-/// contents of the specified path.
-fn extract_initrd(buf: &[u8], path: &str) -> Result<Option<Vec<u8>>> {
-    // older versions of this program, and its predecessor, compressed
-    // with gzip
-    let mut decompressor = DecompressReader::new(BufReader::new(buf))?;
-    loop {
-        let mut reader = NewcReader::new(decompressor).context("reading CPIO entry")?;
-        let entry = reader.entry();
-        if entry.is_trailer() {
-            return Ok(None);
-        }
-        if entry.name() == path {
-            let mut result = Vec::with_capacity(entry.file_size() as usize);
-            reader
-                .read_to_end(&mut result)
-                .context("reading CPIO entry contents")?;
-            return Ok(Some(result));
-        }
-        decompressor = reader.finish().context("finishing reading CPIO entry")?;
-    }
-}
-
 #[derive(Serialize)]
 struct IsoInspectOutput {
     header: IsoFs,
@@ -1049,13 +1004,5 @@ mod tests {
         assert_eq!(areas.regions[0].length, 1139);
         assert_eq!(areas.regions[1].offset, 371658);
         assert_eq!(areas.regions[1].length, 1139);
-    }
-
-    #[test]
-    fn test_cpio_roundtrip() {
-        let input = r#"{}"#;
-        let cpio = make_initrd(&[("z", input.as_bytes())]).unwrap();
-        let output = extract_initrd(&cpio, "z").unwrap().unwrap();
-        assert_eq!(input.as_bytes(), output.as_slice());
     }
 }
