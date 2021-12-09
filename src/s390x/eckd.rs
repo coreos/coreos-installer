@@ -217,8 +217,7 @@ fn get_sectors_per_track(file: &File) -> Result<NonZeroU32> {
     let fd = file.as_raw_fd();
     let mut geo: ioctl::hd_geometry = Default::default();
     match unsafe { ioctl::hdio_getgeo(fd, &mut geo) } {
-        Ok(_) => NonZeroU32::new(geo.sectors.into())
-            .ok_or_else(|| anyhow!("found sectors/track of zero")),
+        Ok(_) => NonZeroU32::new(geo.sectors.into()).context("found sectors/track of zero"),
         Err(e) => Err(e).context("getting disk geometry"),
     }
 }

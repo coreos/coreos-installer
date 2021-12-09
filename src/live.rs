@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use bytes::Buf;
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
@@ -316,13 +316,13 @@ impl IsoConfig {
     fn unwrap_kargs(&self) -> Result<&KargEmbedAreas> {
         self.kargs
             .as_ref()
-            .ok_or_else(|| anyhow!("No karg embed areas found; old or corrupted CoreOS ISO image."))
+            .context("No karg embed areas found; old or corrupted CoreOS ISO image.")
     }
 
     fn unwrap_kargs_mut(&mut self) -> Result<&mut KargEmbedAreas> {
         self.kargs
             .as_mut()
-            .ok_or_else(|| anyhow!("No karg embed areas found; old or corrupted CoreOS ISO image."))
+            .context("No karg embed areas found; old or corrupted CoreOS ISO image.")
     }
 
     pub fn write(&self, file: &mut File) -> Result<()> {
@@ -935,7 +935,7 @@ fn modify_miniso_kargs(f: &mut File, rootfs_url: Option<&String>) -> Result<()> 
     let liveiso_karg = kargs
         .split_ascii_whitespace()
         .find(|&karg| karg.starts_with("coreos.liveiso="))
-        .ok_or_else(|| anyhow!("minimal ISO does not have coreos.liveiso= karg"))?
+        .context("minimal ISO does not have coreos.liveiso= karg")?
         .to_string();
 
     let new_default_kargs = KargsEditor::new().delete(&[liveiso_karg]).apply_to(kargs)?;
@@ -957,10 +957,10 @@ fn modify_miniso_kargs(f: &mut File, rootfs_url: Option<&String>) -> Result<()> 
 
     // also modify the default kargs because we don't want `coreos-installer iso kargs reset` to
     // re-add `coreos.liveiso`
-    let mut kargs_info = KargEmbedInfo::for_iso(&mut iso)?.ok_or_else(|| {
+    let mut kargs_info = KargEmbedInfo::for_iso(&mut iso)?.context(
         // should be impossible; we only support new-style CoreOS ISOs with kargs.json
-        anyhow!("minimal ISO does not have kargs.json; please report this as a bug")
-    })?;
+        "minimal ISO does not have kargs.json; please report this as a bug",
+    )?;
 
     // NB: We don't need to update the length for this; it's a fixed property of the kargs files.
     // (Though its original value did depend on the original default kargs at build time.)

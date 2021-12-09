@@ -17,7 +17,7 @@ use std::convert::TryInto;
 use std::fs::File;
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use bincode::Options;
 use serde::{Deserialize, Serialize};
 use structopt::clap::crate_version;
@@ -52,7 +52,7 @@ impl Table {
         for (path, minimal_entry) in minimal_files {
             let full_entry = full_files
                 .get(path)
-                .ok_or_else(|| anyhow!("missing minimal file {} in full ISO", path))?;
+                .with_context(|| format!("missing minimal file {} in full ISO", path))?;
             if full_entry.length != minimal_entry.length {
                 bail!(
                     "File {} has different lengths in full and minimal ISOs",

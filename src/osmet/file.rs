@@ -16,7 +16,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read};
 use std::path::Path;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use bincode::Options;
 use serde::{Deserialize, Serialize};
 use structopt::clap::crate_version;
@@ -169,7 +169,7 @@ fn validate_osmet(osmet: &Osmet) -> Result<()> {
                 verify_canonical(&partition.mappings)
                     .with_context(|| format!("partition {}", i))?,
             )
-            .ok_or_else(|| anyhow!("overflow after partition {}", i))?;
+            .with_context(|| format!("overflow after partition {}", i))?;
         if cursor > partition.end_offset {
             bail!(
                 "cursor past partition end: {} vs {}",
@@ -197,7 +197,7 @@ fn verify_canonical(mappings: &[Mapping]) -> Result<u64> {
             .extent
             .physical
             .checked_add(mapping.extent.length)
-            .ok_or_else(|| anyhow!("overflow after mapping {}", i))?;
+            .with_context(|| format!("overflow after mapping {}", i))?;
     }
 
     Ok(cursor)

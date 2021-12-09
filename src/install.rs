@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use nix::mount;
 use std::fs::{
     copy as fscopy, create_dir_all, read_dir, set_permissions, File, OpenOptions, Permissions,
@@ -38,7 +38,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     let device = config
         .dest_device
         .as_deref()
-        .ok_or_else(|| anyhow!("destination device must be specified"))?;
+        .context("destination device must be specified")?;
 
     // find Ignition config
     let ignition = if let Some(file) = &config.ignition_file {

@@ -339,11 +339,11 @@ impl ImageLocation for OsmetLocation {
         let unpacker = OsmetUnpacker::new_from_sysroot(Path::new(&self.osmet_path))?;
 
         let filename = {
-            let stem = self.osmet_path.file_stem().ok_or_else(|| {
+            let stem = self.osmet_path.file_stem().with_context(|| {
                 // This really should never happen since for us to get here, we must've found a
                 // valid osmet file... But let's still just error out instead of assert in case
                 // somehow this doesn't hold true in the future and a user hits this.
-                anyhow!(
+                format!(
                     "can't create new .raw filename from osmet path {:?}",
                     &self.osmet_path
                 )
@@ -351,7 +351,7 @@ impl ImageLocation for OsmetLocation {
             // really we don't need to care about UTF-8 here, but ImageSource right now does
             let mut filename: String = stem
                 .to_str()
-                .ok_or_else(|| anyhow!("non-UTF-8 osmet file stem: {:?}", stem))?
+                .with_context(|| format!("non-UTF-8 osmet file stem: {:?}", stem))?
                 .into();
             filename.push_str(".raw");
             filename
