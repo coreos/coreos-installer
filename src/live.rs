@@ -164,11 +164,14 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
 }
 
 pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
-    let buf = read(&config.input).with_context(|| format!("reading {}", config.input))?;
+    let mut f = OpenOptions::new()
+        .read(true)
+        .open(&config.input)
+        .with_context(|| format!("opening {}", &config.input))?;
     let stdout = io::stdout();
     let mut out = stdout.lock();
     out.write_all(
-        &extract_initrd(&buf, INITRD_IGNITION_PATH)?
+        &extract_initrd(&mut f, INITRD_IGNITION_PATH)?
             .context("couldn't find Ignition config in archive")?,
     )
     .context("writing output")?;

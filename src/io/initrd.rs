@@ -40,10 +40,10 @@ pub fn make_initrd(members: &[(&str, &[u8])]) -> Result<Vec<u8>> {
 
 /// Extract a compressed or uncompressed CPIO archive and return the
 /// contents of the specified path.
-pub fn extract_initrd(buf: &[u8], path: &str) -> Result<Option<Vec<u8>>> {
+pub fn extract_initrd<R: Read>(source: R, path: &str) -> Result<Option<Vec<u8>>> {
     // older versions of this program, and its predecessor, compressed
     // with gzip
-    let mut decompressor = DecompressReader::new(BufReader::new(buf))?;
+    let mut decompressor = DecompressReader::new(BufReader::new(source))?;
     loop {
         let mut reader = NewcReader::new(decompressor).context("reading CPIO entry")?;
         let entry = reader.entry();
@@ -69,7 +69,7 @@ mod tests {
     fn test_cpio_roundtrip() {
         let input = r#"{}"#;
         let cpio = make_initrd(&[("z", input.as_bytes())]).unwrap();
-        let output = extract_initrd(&cpio, "z").unwrap().unwrap();
+        let output = extract_initrd(&*cpio, "z").unwrap().unwrap();
         assert_eq!(input.as_bytes(), output.as_slice());
     }
 }
