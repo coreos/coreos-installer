@@ -31,7 +31,7 @@ use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 use crate::miniso;
 
-const FILENAME: &str = "config.ign";
+const INITRD_IGNITION_PATH: &str = "config.ign";
 const COREOS_IGNITION_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
@@ -91,7 +91,7 @@ pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
         bail!("This ISO image already has an embedded Ignition config; use -f to force.");
     }
 
-    let cpio = make_cpio(&ignition)?;
+    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
     iso.set_ignition(&cpio)?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
@@ -110,8 +110,11 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
         if !iso.have_ignition() {
             bail!("No embedded Ignition config.");
         }
-        out.write_all(&extract_cpio(iso.ignition())?)
-            .context("writing output")?;
+        out.write_all(
+            &extract_initrd(iso.ignition(), INITRD_IGNITION_PATH)?
+                .context("couldn't find Ignition config in archive")?,
+        )
+        .context("writing output")?;
         out.flush().context("flushing output")?;
     }
     Ok(())
@@ -145,7 +148,7 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
         }
     };
 
-    let cpio = make_cpio(&ignition)?;
+    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
 
     match &config.output {
         Some(output_path) => {
@@ -165,8 +168,11 @@ pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
     let buf = read(&config.input).with_context(|| format!("reading {}", config.input))?;
     let stdout = io::stdout();
     let mut out = stdout.lock();
-    out.write_all(&extract_cpio(&buf)?)
-        .context("writing output")?;
+    out.write_all(
+        &extract_initrd(&buf, INITRD_IGNITION_PATH)?
+            .context("couldn't find Ignition config in archive")?,
+    )
+    .context("writing output")?;
     out.flush().context("flushing output")?;
     Ok(())
 }
@@ -694,8 +700,8 @@ fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
         .context("reading Ignition embed area")
 }
 
-/// Make a gzipped CPIO archive containing the specified Ignition config.
-fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
+/// Make an xz-compressed initrd containing the specified members.
+fn make_initrd(members: &[(&str, &[u8])]) -> Result<Vec<u8>> {
     use xz2::stream::{Check, Stream};
     use xz2::write::XzEncoder;
 
@@ -704,18 +710,20 @@ fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
         Vec::new(),
         Stream::new_easy_encoder(9, Check::Crc32).context("creating XZ encoder")?,
     );
-    let mut input_files = vec![(
+    write_cpio(
+        members.iter().map(|(path, contents)|
         // S_IFREG | 0644
-        NewcBuilder::new(FILENAME).mode(0o100_644),
-        Cursor::new(ignition),
-    )];
-    write_cpio(input_files.drain(..), &mut encoder).context("writing CPIO archive")?;
+        (NewcBuilder::new(path).mode(0o100_644),
+        Cursor::new(*contents))),
+        &mut encoder,
+    )
+    .context("writing CPIO archive")?;
     encoder.finish().context("closing XZ compressor")
 }
 
-/// Extract a gzipped CPIO archive and return the contents of the Ignition
-/// config.
-fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
+/// Extract a compressed or uncompressed CPIO archive and return the
+/// contents of the specified path.
+fn extract_initrd(buf: &[u8], path: &str) -> Result<Option<Vec<u8>>> {
     // older versions of this program, and its predecessor, compressed
     // with gzip
     let mut decompressor = DecompressReader::new(BufReader::new(buf))?;
@@ -723,14 +731,14 @@ fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
         let mut reader = NewcReader::new(decompressor).context("reading CPIO entry")?;
         let entry = reader.entry();
         if entry.is_trailer() {
-            bail!("couldn't find Ignition config in archive");
+            return Ok(None);
         }
-        if entry.name() == FILENAME {
+        if entry.name() == path {
             let mut result = Vec::with_capacity(entry.file_size() as usize);
             reader
                 .read_to_end(&mut result)
                 .context("reading CPIO entry contents")?;
-            return Ok(result);
+            return Ok(Some(result));
         }
         decompressor = reader.finish().context("finishing reading CPIO entry")?;
     }
@@ -1046,8 +1054,8 @@ mod tests {
     #[test]
     fn test_cpio_roundtrip() {
         let input = r#"{}"#;
-        let cpio = make_cpio(input.as_bytes()).unwrap();
-        let output = extract_cpio(&cpio).unwrap();
+        let cpio = make_initrd(&[("z", input.as_bytes())]).unwrap();
+        let output = extract_initrd(&cpio, "z").unwrap().unwrap();
         assert_eq!(input.as_bytes(), output.as_slice());
     }
 }
