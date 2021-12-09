@@ -341,13 +341,10 @@ impl Partition {
         // easier.
         let start_offset: u64 = start
             .checked_mul(512)
-            .ok_or_else(|| anyhow!("start offset mult overflow"))?;
+            .context("start offset mult overflow")?;
         let end_offset: u64 = start_offset
-            .checked_add(
-                size.checked_mul(512)
-                    .ok_or_else(|| anyhow!("end offset mult overflow"))?,
-            )
-            .ok_or_else(|| anyhow!("end offset add overflow"))?;
+            .checked_add(size.checked_mul(512).context("end offset mult overflow")?)
+            .context("end offset add overflow")?;
         Ok((start_offset, end_offset))
     }
 
@@ -896,10 +893,10 @@ pub fn find_parent_devices(device: &str) -> Result<Vec<String>> {
         let dev = split_lsblk_line(line);
         let name = dev
             .get("NAME")
-            .ok_or_else(|| anyhow!("device in hierarchy of {} missing NAME", device))?;
+            .with_context(|| format!("device in hierarchy of {} missing NAME", device))?;
         let kind = dev
             .get("TYPE")
-            .ok_or_else(|| anyhow!("device in hierarchy of {} missing TYPE", device))?;
+            .with_context(|| format!("device in hierarchy of {} missing TYPE", device))?;
         if kind == "disk" {
             parents.push(name.clone());
         } else if kind == "mpath" {
@@ -938,7 +935,7 @@ pub fn find_colocated_esps(device: &str) -> Result<Vec<String>> {
                 esps.push(
                     dev.get("NAME")
                         .cloned()
-                        .ok_or_else(|| anyhow!("ESP device with missing NAME"))?,
+                        .context("ESP device with missing NAME")?,
                 )
             }
         }
@@ -1067,7 +1064,7 @@ pub fn get_sector_size(file: &File) -> Result<NonZeroU32> {
             let size_u32: u32 = size
                 .try_into()
                 .with_context(|| format!("sector size {} doesn't fit in u32", size))?;
-            NonZeroU32::new(size_u32).ok_or_else(|| anyhow!("found sector size of zero"))
+            NonZeroU32::new(size_u32).context("found sector size of zero")
         }
         Err(e) => Err(anyhow!(e).context("getting sector size")),
     }
@@ -1079,7 +1076,7 @@ pub fn get_block_device_size(file: &File) -> Result<NonZeroU64> {
     let mut size: libc::size_t = 0;
     match unsafe { ioctl::blkgetsize64(fd, &mut size) } {
         // just cast using `as`: there is no platform we care about today where size_t > 64bits
-        Ok(_) => NonZeroU64::new(size as u64).ok_or_else(|| anyhow!("found block size of zero")),
+        Ok(_) => NonZeroU64::new(size as u64).context("found block size of zero"),
         Err(e) => Err(anyhow!(e).context("getting block size")),
     }
 }
