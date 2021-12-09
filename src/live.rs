@@ -699,10 +699,9 @@ fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
     use xz2::stream::{Check, Stream};
     use xz2::write::XzEncoder;
 
-    let mut result = Cursor::new(Vec::new());
     // kernel requires CRC32: https://www.kernel.org/doc/Documentation/xz.txt
-    let encoder = XzEncoder::new_stream(
-        &mut result,
+    let mut encoder = XzEncoder::new_stream(
+        Vec::new(),
         Stream::new_easy_encoder(9, Check::Crc32).context("creating XZ encoder")?,
     );
     let mut input_files = vec![(
@@ -710,8 +709,8 @@ fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
         NewcBuilder::new(FILENAME).mode(0o100_644),
         Cursor::new(ignition),
     )];
-    write_cpio(input_files.drain(..), encoder).context("writing CPIO archive")?;
-    Ok(result.into_inner())
+    write_cpio(input_files.drain(..), &mut encoder).context("writing CPIO archive")?;
+    encoder.finish().context("closing XZ compressor")
 }
 
 /// Extract a gzipped CPIO archive and return the contents of the Ignition
