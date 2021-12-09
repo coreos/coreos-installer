@@ -42,6 +42,7 @@ pub fn make_initrd(members: &[(&str, &[u8])]) -> Result<Vec<u8>> {
 /// contents of the specified path.
 pub fn extract_initrd<R: Read>(source: R, path: &str) -> Result<Option<Vec<u8>>> {
     let mut source = BufReader::with_capacity(BUFFER_SIZE, source);
+    let mut result: Option<Vec<u8>> = None;
     // loop until EOF
     while !source
         .fill_buf()
@@ -58,11 +59,11 @@ pub fn extract_initrd<R: Read>(source: R, path: &str) -> Result<Option<Vec<u8>>>
                 break;
             }
             if entry.name() == path {
-                let mut result = Vec::with_capacity(entry.file_size() as usize);
+                let mut buf = Vec::with_capacity(entry.file_size() as usize);
                 reader
-                    .read_to_end(&mut result)
+                    .read_to_end(&mut buf)
                     .context("reading CPIO entry contents")?;
-                return Ok(Some(result));
+                result = Some(buf);
             }
             decompressor = reader.finish().context("finishing reading CPIO entry")?;
         }
@@ -101,7 +102,7 @@ pub fn extract_initrd<R: Read>(source: R, path: &str) -> Result<Option<Vec<u8>>>
             }
         }
     }
-    Ok(None)
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -138,5 +139,19 @@ mod tests {
             );
         }
         assert!(extract_initrd(&*archive, "z").unwrap().is_none());
+    }
+
+    /// Check that the last copy of a file in an archive wins, which is
+    /// how the kernel behaves.
+    #[test]
+    fn test_cpio_redundancy() {
+        let mut archive: Vec<u8> = Vec::new();
+        XzDecoder::new(&include_bytes!("../../fixtures/initrd/redundant.img.xz")[..])
+            .read_to_end(&mut archive)
+            .unwrap();
+        assert_eq!(
+            extract_initrd(&*archive, "data/file").unwrap().unwrap(),
+            b"third\n"
+        );
     }
 }
