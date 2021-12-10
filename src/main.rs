@@ -23,6 +23,7 @@ fn main() -> Result<()> {
     match Cmd::from_args() {
         Cmd::Download(c) => download::download(c),
         Cmd::Install(c) => install::install(c),
+        Cmd::Reinstall(c) => install::reinstall(c),
         Cmd::ListStream(c) => source::list_stream(c),
         Cmd::Iso(c) => match c {
             IsoCmd::Customize(c) => live::iso_customize(c),
