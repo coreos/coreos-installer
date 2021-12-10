@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use cpio::{write_cpio, NewcBuilder, NewcReader};
+use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Cursor, Read};
 use xz2::stream::{Check, Stream};
 use xz2::write::XzEncoder;
 
 use crate::io::*;
+
+lazy_static! {
+    static ref ALL_GLOB: GlobMatcher = GlobMatcher::new(&["*"]).unwrap();
+}
 
 #[derive(Default, Debug)]
 pub struct Initrd {
@@ -47,6 +52,12 @@ impl Initrd {
 
     /// Read an initrd containing compressed and/or uncompressed archives.
     pub fn from_reader<R: Read>(source: R) -> Result<Self> {
+        Self::from_reader_filtered(source, &ALL_GLOB)
+    }
+
+    /// Read an initrd containing compressed and/or uncompressed archives,
+    /// ignoring paths not matching the specified glob patterns.
+    pub fn from_reader_filtered<R: Read>(source: R, filter: &GlobMatcher) -> Result<Self> {
         let mut source = BufReader::with_capacity(BUFFER_SIZE, source);
         let mut result = Self::default();
         // loop until EOF
@@ -65,8 +76,8 @@ impl Initrd {
                     break;
                 }
                 let name = entry.name().to_string();
-                if entry.mode() & 0o170_000 == 0o100_000 {
-                    // regular file
+                if entry.mode() & 0o170_000 == 0o100_000 && filter.matches(&name) {
+                    // matching regular file
                     let mut buf = Vec::with_capacity(entry.file_size() as usize);
                     reader
                         .read_to_end(&mut buf)
@@ -117,6 +128,14 @@ impl Initrd {
         self.members.get(path).map(|v| v.as_slice())
     }
 
+    pub fn find(&self, filter: &GlobMatcher) -> BTreeMap<&str, &[u8]> {
+        self.members
+            .iter()
+            .filter(|(p, _)| filter.matches(p))
+            .map(|(p, c)| (p.as_str(), c.as_slice()))
+            .collect()
+    }
+
     pub fn add(&mut self, path: &str, contents: Vec<u8>) {
         self.members.insert(path.into(), contents);
     }
@@ -127,6 +146,25 @@ impl Initrd {
 
     pub fn is_empty(&self) -> bool {
         self.members.is_empty()
+    }
+}
+
+pub struct GlobMatcher {
+    patterns: Vec<glob::Pattern>,
+}
+
+impl GlobMatcher {
+    pub fn new(globs: &[&str]) -> Result<Self> {
+        Ok(Self {
+            patterns: globs
+                .iter()
+                .map(|p| glob::Pattern::new(*p).map_err(|e| anyhow!(e)))
+                .collect::<Result<_>>()?,
+        })
+    }
+
+    fn matches(&self, path: &str) -> bool {
+        self.patterns.iter().any(|p| p.matches(path))
     }
 }
 
@@ -187,5 +225,31 @@ mod tests {
                 .unwrap(),
             b"third\n"
         );
+    }
+
+    #[test]
+    fn matching() {
+        let mut archive: Vec<u8> = Vec::new();
+        XzDecoder::new(&include_bytes!("../../fixtures/initrd/compressed.img.xz")[..])
+            .read_to_end(&mut archive)
+            .unwrap();
+
+        let matcher = |glob| GlobMatcher::new(&[glob]).unwrap();
+
+        // unfiltered initrd
+        let initrd = Initrd::from_reader(&*archive).unwrap();
+        assert_eq!(initrd.find(&matcher("gzip/hello")).len(), 1);
+        assert_eq!(initrd.find(&matcher("gzip/*")).len(), 2);
+        assert_eq!(initrd.find(&matcher("*/hello")).len(), 4);
+        assert_eq!(initrd.find(&matcher("*")).len(), 8);
+        assert_eq!(initrd.find(&matcher("z")).len(), 0);
+
+        // filtered initrd
+        let initrd = Initrd::from_reader_filtered(&*archive, &matcher("z")).unwrap();
+        assert_eq!(initrd.find(&matcher("*")).len(), 0);
+        let initrd = Initrd::from_reader_filtered(&*archive, &matcher("gzip/*")).unwrap();
+        assert_eq!(initrd.find(&matcher("*")).len(), 2);
+        let initrd = Initrd::from_reader_filtered(&*archive, &matcher("uncompressed-*")).unwrap();
+        assert_eq!(initrd.find(&matcher("*")).len(), 4);
     }
 }

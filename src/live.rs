@@ -14,6 +14,7 @@
 
 use anyhow::{bail, Context, Result};
 use bytes::Buf;
+use lazy_static::lazy_static;
 use nix::unistd::isatty;
 use openat_ext::FileExt;
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,11 @@ const COREOS_KARG_EMBED_INFO_PATH: &str = "COREOS/KARGS.JSO";
 const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 const COREOS_ISO_ROOTFS_IMG: &str = "IMAGES/PXEBOOT/ROOTFS.IMG";
 const COREOS_ISO_MINISO_FILE: &str = "COREOS/MINISO.DAT";
+
+lazy_static! {
+    static ref INITRD_IGNITION_GLOB: GlobMatcher =
+        GlobMatcher::new(&[INITRD_IGNITION_PATH]).unwrap();
+}
 
 pub fn iso_embed(config: IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -182,7 +188,7 @@ pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     out.write_all(
-        Initrd::from_reader(&mut f)?
+        Initrd::from_reader_filtered(&mut f, &INITRD_IGNITION_GLOB)?
             .get(INITRD_IGNITION_PATH)
             .context("couldn't find Ignition config in archive")?,
     )
