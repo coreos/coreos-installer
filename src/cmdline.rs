@@ -43,6 +43,8 @@ use crate::io::IgnitionHash;
 pub enum Cmd {
     /// Install Fedora CoreOS or RHEL CoreOS
     Install(InstallConfig),
+    /// Re-Install Fedora CoreOS or RHEL CoreOS
+    Reinstall(ReinstallConfig),
     /// Download a CoreOS image
     Download(DownloadConfig),
     /// List available images in a Fedora CoreOS stream
@@ -344,6 +346,101 @@ pub enum FetchRetries {
 pub enum PartitionFilter {
     Label(glob::Pattern),
     Index(Option<NonZeroU32>, Option<NonZeroU32>),
+}
+
+#[derive(Debug, StructOpt)]
+pub struct ReinstallConfig {
+    // These are all the options we can drive purely from kargs.
+    // XXX: should dedupe with `InstallConfig` and reuse the config-file mechanism.
+
+    // ways to specify the image source
+    /// Fedora CoreOS stream
+    #[structopt(short, long, value_name = "name")]
+    #[structopt(conflicts_with = "image-url")]
+    pub stream: Option<String>,
+    /// Manually specify the image URL
+    #[structopt(short = "u", long, value_name = "URL")]
+    #[structopt(conflicts_with = "stream")]
+    pub image_url: Option<Url>,
+
+    // postprocessing options
+    /// Embed an Ignition config from a URL
+    #[structopt(short = "I", long, value_name = "URL")]
+    #[structopt(conflicts_with = "ignition-file")]
+    pub ignition_url: Option<Url>,
+    /// Override the Ignition platform ID
+    #[structopt(short, long, value_name = "name")]
+    pub platform: Option<String>,
+    /// Save partitions with this label glob
+    #[structopt(long, value_name = "lx")]
+    // Allow argument multiple times, but one value each.  Allow "a,b" in
+    // one argument.
+    #[structopt(number_of_values = 1, require_delimiter = true)]
+    pub save_partlabel: Vec<String>,
+    /// Save partitions with this number or range
+    #[structopt(long, value_name = "id")]
+    // Allow argument multiple times, but one value each.  Allow "1-5,7" in
+    // one argument.
+    #[structopt(number_of_values = 1, require_delimiter = true)]
+    // Allow ranges like "-2".
+    #[structopt(allow_hyphen_values = true)]
+    pub save_partindex: Vec<String>,
+
+    // obscure options without short names
+    /// Skip signature verification
+    // XXX: should have independent switch for immediate vs delayed (e.g. image-url) fetches
+    #[structopt(long)]
+    pub insecure: bool,
+    /// Fetch retries, or "infinite"
+    #[structopt(long, value_name = "N", default_value)]
+    pub fetch_retries: FetchRetries,
+
+    // positional args
+    /// Destination device
+    pub dest_device: String,
+
+    // specific to `reinstall`
+    /// Skip rebooting after reinstall
+    #[structopt(long)]
+    pub skip_reboot: bool,
+    /// URL to initramfs
+    #[structopt(
+        long,
+        value_name = "URL",
+        conflicts_with = "initramfs-file",
+        requires = "rootfs-url"
+    )]
+    pub initramfs_url: Option<Url>,
+    /// Local path to initramfs
+    #[structopt(
+        long,
+        value_name = "PATH",
+        conflicts_with = "initramfs-url",
+        requires = "rootfs-file"
+    )]
+    pub initramfs_file: Option<String>,
+    /// URL to rootfs
+    #[structopt(
+        long,
+        value_name = "URL",
+        conflicts_with = "rootfs-file",
+        requires = "initramfs-url"
+    )]
+    pub rootfs_url: Option<Url>,
+    /// Local path to rootfs
+    #[structopt(
+        long,
+        value_name = "PATH",
+        conflicts_with = "rootfs-url",
+        requires = "initramfs-file"
+    )]
+    pub rootfs_file: Option<String>,
+    /// Use `coreos.live.rootfs_url` instead of appending.
+    #[structopt(long, conflicts_with = "rootfs-file")]
+    pub defer_rootfs: bool,
+    /// Serial console to use
+    #[structopt(long, value_name = "KARG", default_value = "ttyS0")]
+    pub console: String,
 }
 
 #[derive(Debug, StructOpt)]
