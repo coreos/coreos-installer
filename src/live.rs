@@ -90,8 +90,9 @@ pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
         bail!("This ISO image already has an embedded Ignition config; use -f to force.");
     }
 
-    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
-    iso.set_ignition(&cpio)?;
+    let mut initrd = Initrd::default();
+    initrd.add(INITRD_IGNITION_PATH, ignition);
+    iso.set_ignition(&initrd.to_bytes()?)?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -110,7 +111,8 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
             bail!("No embedded Ignition config.");
         }
         out.write_all(
-            &extract_initrd(iso.ignition(), INITRD_IGNITION_PATH)?
+            Initrd::from_reader(iso.ignition())?
+                .get(INITRD_IGNITION_PATH)
                 .context("couldn't find Ignition config in archive")?,
         )
         .context("writing output")?;
@@ -147,16 +149,18 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
         }
     };
 
-    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
+    let mut initrd = Initrd::default();
+    initrd.add(INITRD_IGNITION_PATH, ignition);
+    let initrd = initrd.to_bytes()?;
 
     match &config.output {
         Some(output_path) => {
-            write(output_path, cpio).with_context(|| format!("writing {}", output_path))?
+            write(output_path, &initrd).with_context(|| format!("writing {}", output_path))?
         }
         None => {
             let stdout = io::stdout();
             let mut out = stdout.lock();
-            out.write_all(&cpio).context("writing output")?;
+            out.write_all(&initrd).context("writing output")?;
             out.flush().context("flushing output")?;
         }
     }
@@ -178,7 +182,8 @@ pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     out.write_all(
-        &extract_initrd(&mut f, INITRD_IGNITION_PATH)?
+        Initrd::from_reader(&mut f)?
+            .get(INITRD_IGNITION_PATH)
             .context("couldn't find Ignition config in archive")?,
     )
     .context("writing output")?;
