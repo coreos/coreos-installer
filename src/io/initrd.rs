@@ -34,19 +34,47 @@ pub struct Initrd {
 impl Initrd {
     /// Generate an xz-compressed initrd.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut members = Vec::new();
+        // The CPIO archive needs to include parent directories for each
+        // file, or else the kernel won't unpack the file.  self.members is
+        // sorted by path, so as we add files to the CPIO, we can just
+        // create any new subdirectories we encounter.  Implement this with
+        // a virtual current working directory: only create files in the
+        // current directory, and notionally "mkdir" and "chdir" our way
+        // around the filesystem.
+        let mut cwd: Vec<&str> = Vec::new();
+        for (path, contents) in &self.members {
+            // chdir to common ancestor of cwd and file
+            let mut parent: Vec<&str> = path.split('/').collect();
+            parent.pop();
+            cwd = cwd
+                .iter()
+                .zip(&parent)
+                .take_while(|(a, b)| a == b)
+                .map(|(a, _)| *a)
+                .collect();
+            // create directories that are cwd's child and file's parent, and
+            // chdir into them
+            for component in parent.iter().skip(cwd.len()) {
+                cwd.push(component);
+                // S_IFDIR | 0755
+                members.push((
+                    NewcBuilder::new(&cwd.join("/")).mode(0o40_755),
+                    Cursor::new(&[][..]),
+                ));
+            }
+            // create file, S_IFREG | 0644
+            members.push((
+                NewcBuilder::new(path).mode(0o100_644),
+                Cursor::new(contents),
+            ));
+        }
         // kernel requires CRC32: https://www.kernel.org/doc/Documentation/xz.txt
         let mut encoder = XzEncoder::new_stream(
             Vec::new(),
             Stream::new_easy_encoder(9, Check::Crc32).context("creating XZ encoder")?,
         );
-        write_cpio(
-            self.members.iter().map(|(path, contents)|
-            // S_IFREG | 0644
-            (NewcBuilder::new(path).mode(0o100_644),
-            Cursor::new(contents))),
-            &mut encoder,
-        )
-        .context("writing CPIO archive")?;
+        write_cpio(members.drain(..), &mut encoder).context("writing CPIO archive")?;
         encoder.finish().context("closing XZ compressor")
     }
 
@@ -251,5 +279,59 @@ mod tests {
         assert_eq!(initrd.find(&matcher("*")).len(), 2);
         let initrd = Initrd::from_reader_filtered(&*archive, &matcher("uncompressed-*")).unwrap();
         assert_eq!(initrd.find(&matcher("*")).len(), 4);
+    }
+
+    #[test]
+    fn directories() {
+        let mut initrd = Initrd::default();
+        initrd.add("c/f", vec![]);
+        initrd.add("c/a/b/d/f", vec![]);
+        initrd.add("d", vec![]);
+        initrd.add("c/g", vec![]);
+        initrd.add("c/a/c/f", vec![]);
+        initrd.add("a/b/c/d/e/f", vec![]);
+
+        let mut cpio = Vec::new();
+        XzDecoder::new(&*initrd.to_bytes().unwrap())
+            .read_to_end(&mut cpio)
+            .unwrap();
+
+        let mut source = &*cpio;
+        let mut paths = Vec::new();
+        loop {
+            let reader = NewcReader::new(source).unwrap();
+            let entry = reader.entry();
+            if entry.is_trailer() {
+                break;
+            }
+            let is_dir = entry.mode() & 0o170_000 == 0o40_000;
+            paths.push((is_dir, entry.name().to_string()));
+            source = reader.finish().unwrap();
+        }
+
+        assert_eq!(
+            paths
+                .iter()
+                .map(|(d, p)| (*d, p.as_str()))
+                .collect::<Vec<(bool, &str)>>(),
+            vec![
+                (true, "a"),
+                (true, "a/b"),
+                (true, "a/b/c"),
+                (true, "a/b/c/d"),
+                (true, "a/b/c/d/e"),
+                (false, "a/b/c/d/e/f"),
+                (true, "c"),
+                (true, "c/a"),
+                (true, "c/a/b"),
+                (true, "c/a/b/d"),
+                (false, "c/a/b/d/f"),
+                (true, "c/a/c"),
+                (false, "c/a/c/f"),
+                (false, "c/f"),
+                (false, "c/g"),
+                (false, "d"),
+            ]
+        );
     }
 }
