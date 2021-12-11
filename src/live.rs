@@ -96,9 +96,7 @@ pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
         bail!("This ISO image already has an embedded Ignition config; use -f to force.");
     }
 
-    let mut initrd = Initrd::default();
-    initrd.add(INITRD_IGNITION_PATH, ignition);
-    iso.set_ignition(&initrd.to_bytes()?)?;
+    iso.initrd_mut().add(INITRD_IGNITION_PATH, ignition);
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -109,7 +107,7 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     if config.header {
-        serde_json::to_writer_pretty(&mut out, &iso.ignition)
+        serde_json::to_writer_pretty(&mut out, &iso.initrd)
             .context("failed to serialize header")?;
         out.write_all(b"\n").context("failed to write newline")?;
     } else {
@@ -117,7 +115,7 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
             bail!("No embedded Ignition config.");
         }
         out.write_all(
-            Initrd::from_reader(iso.ignition())?
+            iso.initrd()
                 .get(INITRD_IGNITION_PATH)
                 .context("couldn't find Ignition config in archive")?,
         )
@@ -131,7 +129,7 @@ pub fn iso_ignition_remove(config: IsoIgnitionRemoveConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
-    iso.set_ignition(&[])?;
+    iso.initrd_mut().remove(INITRD_IGNITION_PATH);
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -283,7 +281,7 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
 }
 
 struct IsoConfig {
-    ignition: Region,
+    initrd: InitrdEmbedArea,
     kargs: Option<KargEmbedAreas>,
 }
 
@@ -296,35 +294,21 @@ impl IsoConfig {
 
     pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
         Ok(Self {
-            ignition: ignition_embed_area(iso)?,
+            initrd: InitrdEmbedArea::for_iso(iso)?,
             kargs: KargEmbedAreas::for_iso(iso)?,
         })
     }
 
     pub fn have_ignition(&self) -> bool {
-        self.ignition().iter().any(|v| *v != 0)
+        self.initrd().get(INITRD_IGNITION_PATH).is_some()
     }
 
-    pub fn ignition(&self) -> &[u8] {
-        &self.ignition.contents[..]
+    pub fn initrd(&self) -> &Initrd {
+        self.initrd.initrd()
     }
 
-    pub fn set_ignition(&mut self, data: &[u8]) -> Result<()> {
-        let capacity = self.ignition.length;
-        if data.len() > capacity {
-            bail!(
-                "Compressed Ignition config is too large: {} > {}",
-                data.len(),
-                capacity
-            )
-        }
-        self.ignition.contents.clear();
-        self.ignition.contents.extend_from_slice(data);
-        self.ignition
-            .contents
-            .extend(repeat(0).take(capacity - data.len()));
-        self.ignition.modified = true;
-        Ok(())
+    pub fn initrd_mut(&mut self) -> &mut Initrd {
+        self.initrd.initrd_mut()
     }
 
     pub fn kargs(&self) -> Result<&str> {
@@ -352,7 +336,7 @@ impl IsoConfig {
     }
 
     pub fn write(&self, file: &mut File) -> Result<()> {
-        self.ignition.write(file)?;
+        self.initrd.write(file)?;
         if let Some(kargs) = &self.kargs {
             kargs.write(file)?;
         }
@@ -360,7 +344,8 @@ impl IsoConfig {
     }
 
     pub fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        let mut regions = vec![&self.ignition];
+        let initrd_region = self.initrd.region()?;
+        let mut regions = vec![&initrd_region];
         if let Some(kargs) = &self.kargs {
             regions.extend(kargs.regions.iter())
         }
@@ -368,7 +353,7 @@ impl IsoConfig {
     }
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 struct Region {
     // sort order is derived from field order
     pub offset: u64,
@@ -710,14 +695,69 @@ impl KargEmbedAreas {
     }
 }
 
-fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
-    let f = iso
-        .get_path(COREOS_INITRD_EMBED_PATH)
-        .context("finding Ignition embed area")?
-        .try_into_file()?;
-    // read (checks offset/length as a side effect)
-    Region::read(iso.as_file()?, f.address.as_offset(), f.length as usize)
-        .context("reading Ignition embed area")
+#[derive(Debug, Serialize)]
+struct InitrdEmbedArea {
+    // region.contents is kept zero-length; region is cloned upon writing
+    #[serde(flatten)]
+    region: Region,
+    #[serde(skip)]
+    initrd: Initrd,
+}
+
+impl InitrdEmbedArea {
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
+        let f = iso
+            .get_path(COREOS_INITRD_EMBED_PATH)
+            .context("finding initrd embed area")?
+            .try_into_file()?;
+        // read (checks offset/length as a side effect)
+        let mut region = Region::read(iso.as_file()?, f.address.as_offset(), f.length as usize)
+            .context("reading initrd embed area")?;
+        let initrd = if region.contents.iter().any(|v| *v != 0) {
+            Initrd::from_reader(&*region.contents).context("decoding initrd embed area")?
+        } else {
+            Initrd::default()
+        };
+        // free up the memory; we won't need it
+        region.contents = Vec::new();
+        Ok(Self { region, initrd })
+    }
+
+    pub fn initrd(&self) -> &Initrd {
+        &self.initrd
+    }
+
+    pub fn initrd_mut(&mut self) -> &mut Initrd {
+        self.region.modified = true;
+        &mut self.initrd
+    }
+
+    pub fn write(&self, file: &mut File) -> Result<()> {
+        self.region()?.write(file)
+    }
+
+    pub fn region(&self) -> Result<Region> {
+        // taking &mut self for the deferred update to self.region would
+        // require too many other methods to do the same, so clone the
+        // region and return that
+        let mut region = self.region.clone();
+        let capacity = region.length;
+        let mut data = if !self.initrd().is_empty() {
+            self.initrd().to_bytes()?
+        } else {
+            Vec::new()
+        };
+        if data.len() > capacity {
+            bail!(
+                "Compressed initramfs is too large: {} > {}",
+                data.len(),
+                capacity
+            )
+        }
+        data.extend(repeat(0).take(capacity - data.len()));
+        region.contents = data;
+        Ok(region)
+    }
 }
 
 #[derive(Serialize)]
@@ -978,18 +1018,18 @@ mod tests {
     }
 
     #[test]
-    fn test_ignition_embed_area() {
+    fn test_initrd_embed_area() {
         let mut iso_file = open_iso_file();
         // normal read
         let mut iso = IsoFs::from_file(iso_file.try_clone().unwrap()).unwrap();
-        let region = ignition_embed_area(&mut iso).unwrap();
-        assert_eq!(region.offset, 102400);
-        assert_eq!(region.length, 262144);
+        let area = InitrdEmbedArea::for_iso(&mut iso).unwrap();
+        assert_eq!(area.region.offset, 102400);
+        assert_eq!(area.region.length, 262144);
         // missing embed area
         iso_file.seek(SeekFrom::Start(65903)).unwrap();
         iso_file.write_all(b"Z").unwrap();
         let mut iso = IsoFs::from_file(iso_file).unwrap();
-        ignition_embed_area(&mut iso).unwrap_err();
+        InitrdEmbedArea::for_iso(&mut iso).unwrap_err();
     }
 
     #[test]
