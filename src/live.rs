@@ -32,8 +32,8 @@ use crate::iso9660::{self, IsoFs};
 use crate::miniso;
 
 const INITRD_IGNITION_PATH: &str = "config.ign";
-const COREOS_IGNITION_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
-const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
+const COREOS_INITRD_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
+const COREOS_INITRD_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
@@ -594,7 +594,7 @@ impl KargEmbedAreas {
         // 8 bytes little-endian x 6: offsets to karg embed areas
         let region = Region::read(
             file,
-            32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
+            32768 - COREOS_INITRD_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
             COREOS_KARG_EMBED_AREA_HEADER_SIZE as usize,
         )
         .context("reading karg embed header")?;
@@ -712,7 +712,7 @@ impl KargEmbedAreas {
 
 fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
     let f = iso
-        .get_path(COREOS_IGNITION_EMBED_PATH)
+        .get_path(COREOS_INITRD_EMBED_PATH)
         .context("finding Ignition embed area")?
         .try_into_file()?;
     // read (checks offset/length as a side effect)
