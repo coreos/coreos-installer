@@ -41,32 +41,48 @@ impl<R: BufRead> DecompressReader<R> {
         };
         Ok(Self { decoder })
     }
+
+    pub fn get_mut(&mut self) -> &mut R {
+        use CompressDecoder::*;
+        match &mut self.decoder {
+            Uncompressed(d) => d,
+            Gzip(d) => d.get_mut(),
+            Xz(d) => d.get_mut(),
+        }
+    }
+
+    pub fn compressed(&self) -> bool {
+        use CompressDecoder::*;
+        match &self.decoder {
+            Uncompressed(_) => false,
+            Gzip(_) => true,
+            Xz(_) => true,
+        }
+    }
 }
 
 impl<R: BufRead> Read for DecompressReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         use CompressDecoder::*;
-        match &mut self.decoder {
-            Uncompressed(d) => d.read(buf),
-            Gzip(d) => {
-                let count = d.read(buf)?;
-                if count == 0 && !buf.is_empty() {
-                    // GzDecoder stops reading as soon as it encounters the
-                    // gzip trailer, so it doesn't notice trailing data,
-                    // which indicates something wrong with the input.  Try
-                    // reading one more byte, and fail if there is one.
-                    let mut buf = [0; 1];
-                    if d.get_mut().read(&mut buf)? > 0 {
-                        return Err(io::Error::new(
-                            ErrorKind::InvalidData,
-                            "found trailing data after compressed gzip stream",
-                        ));
-                    }
-                }
-                Ok(count)
+        let count = match &mut self.decoder {
+            Uncompressed(d) => d.read(buf)?,
+            Gzip(d) => d.read(buf)?,
+            Xz(d) => d.read(buf)?,
+        };
+        if count == 0 && !buf.is_empty() && self.compressed() {
+            // Decompressors stop reading as soon as they encounter the
+            // compression trailer, so they don't notice trailing data,
+            // which indicates something wrong with the input.  Try reading
+            // one more byte, and fail if there is one.
+            let mut buf = [0; 1];
+            if self.get_mut().read(&mut buf)? > 0 {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "found trailing data after compressed stream",
+                ));
             }
-            Xz(d) => d.read(buf),
         }
+        Ok(count)
     }
 }
 
