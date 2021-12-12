@@ -22,6 +22,7 @@ mod hash;
 mod initrd;
 mod limit;
 mod verify;
+mod xz;
 
 pub use self::bls::*;
 pub use self::compress::*;
@@ -29,6 +30,7 @@ pub use self::hash::*;
 pub use self::initrd::*;
 pub use self::limit::*;
 pub use self::verify::*;
+pub use self::xz::*;
 
 // The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
 // enough to fully amortize system call overhead.

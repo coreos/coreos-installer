@@ -15,12 +15,13 @@
 use anyhow::{Context, Result};
 use flate2::bufread::GzDecoder;
 use std::io::{self, BufRead, ErrorKind, Read};
-use xz2::bufread::XzDecoder;
+
+use crate::io::XzStreamDecoder;
 
 enum CompressDecoder<R: BufRead> {
     Uncompressed(R),
     Gzip(GzDecoder<R>),
-    Xz(XzDecoder<R>),
+    Xz(XzStreamDecoder<R>),
 }
 
 pub struct DecompressReader<R: BufRead> {
@@ -35,7 +36,7 @@ impl<R: BufRead> DecompressReader<R> {
         let decoder = if sniff.len() > 2 && &sniff[0..2] == b"\x1f\x8b" {
             Gzip(GzDecoder::new(source))
         } else if sniff.len() > 6 && &sniff[0..6] == b"\xfd7zXZ\x00" {
-            Xz(XzDecoder::new(source))
+            Xz(XzStreamDecoder::new(source))
         } else {
             Uncompressed(source)
         };
