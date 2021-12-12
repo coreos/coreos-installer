@@ -63,9 +63,9 @@ impl Initrd {
                     Cursor::new(&[][..]),
                 ));
             }
-            // create file, S_IFREG | 0644
+            // create file, S_IFREG | 0600
             members.push((
-                NewcBuilder::new(path).mode(0o100_644),
+                NewcBuilder::new(path).mode(0o100_600),
                 Cursor::new(contents),
             ));
         }
