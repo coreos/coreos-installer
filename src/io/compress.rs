@@ -50,7 +50,7 @@ impl<R: BufRead> Read for DecompressReader<R> {
             Uncompressed(d) => d.read(buf),
             Gzip(d) => {
                 let count = d.read(buf)?;
-                if count == 0 {
+                if count == 0 && !buf.is_empty() {
                     // GzDecoder stops reading as soon as it encounters the
                     // gzip trailer, so it doesn't notice trailing data,
                     // which indicates something wrong with the input.  Try
