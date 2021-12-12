@@ -20,7 +20,7 @@ use openat_ext::FileExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{read, write, File, OpenOptions};
+use std::fs::{create_dir_all, read, write, File, OpenOptions};
 use std::io::{self, copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
@@ -32,6 +32,7 @@ use crate::iso9660::{self, IsoFs};
 use crate::miniso;
 
 const INITRD_IGNITION_PATH: &str = "config.ign";
+const INITRD_NETWORK_DIR: &str = "etc/coreos-firstboot-network";
 const COREOS_INITRD_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_INITRD_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
@@ -46,6 +47,8 @@ const COREOS_ISO_MINISO_FILE: &str = "COREOS/MINISO.DAT";
 lazy_static! {
     static ref INITRD_IGNITION_GLOB: GlobMatcher =
         GlobMatcher::new(&[INITRD_IGNITION_PATH]).unwrap();
+    static ref INITRD_NETWORK_GLOB: GlobMatcher =
+        GlobMatcher::new(&[&format!("{}/*", INITRD_NETWORK_DIR)]).unwrap();
 }
 
 pub fn iso_embed(config: IsoEmbedConfig) -> Result<()> {
@@ -134,6 +137,35 @@ pub fn iso_ignition_remove(config: IsoIgnitionRemoveConfig) -> Result<()> {
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
 
+pub fn iso_network_embed(config: IsoNetworkEmbedConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+
+    if !config.force && iso.have_network() {
+        bail!("This ISO image already has embedded network settings; use -f to force.");
+    }
+
+    iso.remove_network();
+    initrd_network_embed(iso.initrd_mut(), &config.keyfile)?;
+
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
+}
+
+pub fn iso_network_extract(config: IsoNetworkExtractConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, None)?;
+    let iso = IsoConfig::for_file(&mut iso_file)?;
+    initrd_network_extract(iso.initrd(), config.directory.as_ref())
+}
+
+pub fn iso_network_remove(config: IsoNetworkRemoveConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+
+    iso.remove_network();
+
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
+}
+
 pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
     if config.output.is_none() {
         verify_stdout_not_tty()?;
@@ -180,6 +212,81 @@ pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
     )
     .context("writing output")?;
     out.flush().context("flushing output")?;
+    Ok(())
+}
+
+pub fn pxe_network_wrap(config: PxeNetworkWrapConfig) -> Result<()> {
+    if config.output.is_none() {
+        verify_stdout_not_tty()?;
+    }
+
+    let mut initrd = Initrd::default();
+    initrd_network_embed(&mut initrd, &config.keyfile)?;
+
+    write_live_pxe(&initrd, config.output.as_ref())
+}
+
+fn initrd_network_embed(initrd: &mut Initrd, keyfiles: &[String]) -> Result<()> {
+    for path in keyfiles {
+        let data = read(path).with_context(|| format!("reading {}", path))?;
+        let name = filename(path)?;
+        let path = format!("{}/{}", INITRD_NETWORK_DIR, name);
+        if initrd.get(&path).is_some() {
+            bail!("multiple input files named '{}'", name);
+        }
+        initrd.add(&path, data);
+    }
+    Ok(())
+}
+
+pub fn pxe_network_unwrap(config: PxeNetworkUnwrapConfig) -> Result<()> {
+    let stdin = io::stdin();
+    let f: Box<dyn Read> = if let Some(path) = &config.input {
+        Box::new(
+            OpenOptions::new()
+                .read(true)
+                .open(path)
+                .with_context(|| format!("opening {}", path))?,
+        )
+    } else {
+        Box::new(stdin.lock())
+    };
+    initrd_network_extract(
+        &Initrd::from_reader_filtered(f, &INITRD_NETWORK_GLOB)?,
+        config.directory.as_ref(),
+    )
+}
+
+fn initrd_network_extract(initrd: &Initrd, directory: Option<&String>) -> Result<()> {
+    let files = initrd.find(&INITRD_NETWORK_GLOB);
+    if files.is_empty() {
+        bail!("No embedded network settings.");
+    }
+    if let Some(dir) = directory {
+        create_dir_all(&dir)?;
+        for (path, contents) in files {
+            let path = Path::new(dir).join(filename(path)?);
+            OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+                .with_context(|| format!("opening {}", path.display()))?
+                .write_all(contents)
+                .with_context(|| format!("writing {}", path.display()))?;
+            println!("{}", path.display());
+        }
+    } else {
+        for (i, (path, contents)) in files.iter().enumerate() {
+            if i > 0 {
+                println!();
+            }
+            println!("########## {} ##########", filename(path)?);
+            io::stdout()
+                .lock()
+                .write_all(contents)
+                .context("writing network settings to stdout")?;
+        }
+    }
     Ok(())
 }
 
@@ -304,6 +411,22 @@ impl IsoConfig {
 
     pub fn have_ignition(&self) -> bool {
         self.initrd().get(INITRD_IGNITION_PATH).is_some()
+    }
+
+    pub fn have_network(&self) -> bool {
+        !self.initrd().find(&INITRD_NETWORK_GLOB).is_empty()
+    }
+
+    pub fn remove_network(&mut self) {
+        let initrd = self.initrd_mut();
+        let paths: Vec<String> = initrd
+            .find(&INITRD_NETWORK_GLOB)
+            .keys()
+            .map(|p| p.to_string())
+            .collect();
+        for path in paths {
+            initrd.remove(&path);
+        }
     }
 
     pub fn initrd(&self) -> &Initrd {
@@ -792,7 +915,7 @@ pub fn iso_inspect(config: IsoInspectConfig) -> Result<()> {
 pub fn iso_extract_pxe(config: IsoExtractPxeConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
     let pxeboot = iso.get_path(COREOS_ISO_PXEBOOT_DIR)?.try_into_dir()?;
-    std::fs::create_dir_all(&config.output_dir)?;
+    create_dir_all(&config.output_dir)?;
 
     let base = {
         // this can't be None since we successfully opened the live ISO at the location
@@ -1001,6 +1124,15 @@ fn verify_stdout_not_tty() -> Result<()> {
         bail!("Refusing to write binary data to terminal");
     }
     Ok(())
+}
+
+fn filename(path: &str) -> Result<String> {
+    Ok(Path::new(path)
+        .file_name()
+        .with_context(|| format!("missing filename in {}", path))?
+        // path was originally a string
+        .to_string_lossy()
+        .into_owned())
 }
 
 #[cfg(test)]

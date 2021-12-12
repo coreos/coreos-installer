@@ -58,6 +58,56 @@ ARGS:
     <ISO>    ISO image
 ```
 
+# coreos-installer iso network embed
+
+```
+Embed network settings in an ISO image
+
+USAGE:
+    coreos-installer iso network embed [OPTIONS] <ISO> --keyfile <path>...
+
+OPTIONS:
+    -k, --keyfile <path>...    NetworkManager keyfile to embed
+    -f, --force                Overwrite existing network settings
+    -o, --output <path>        Write ISO to a new output file
+    -h, --help                 Prints help information
+
+ARGS:
+    <ISO>    ISO image
+```
+
+# coreos-installer iso network extract
+
+```
+Extract embedded network settings from an ISO image
+
+USAGE:
+    coreos-installer iso network extract <ISO>
+
+OPTIONS:
+    -C, --directory <path>    Extract to directory instead of stdout
+    -h, --help                Prints help information
+
+ARGS:
+    <ISO>    ISO image
+```
+
+# coreos-installer iso network remove
+
+```
+Remove existing network settings from an ISO image
+
+USAGE:
+    coreos-installer iso network remove <ISO>
+
+OPTIONS:
+    -o, --output <path>    Write ISO to a new output file
+    -h, --help             Prints help information
+
+ARGS:
+    <ISO>    ISO image
+```
+
 # coreos-installer iso kargs modify
 
 ```
