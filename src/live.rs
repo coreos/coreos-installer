@@ -155,20 +155,8 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
 
     let mut initrd = Initrd::default();
     initrd.add(INITRD_IGNITION_PATH, ignition);
-    let initrd = initrd.to_bytes()?;
 
-    match &config.output {
-        Some(output_path) => {
-            write(output_path, &initrd).with_context(|| format!("writing {}", output_path))?
-        }
-        None => {
-            let stdout = io::stdout();
-            let mut out = stdout.lock();
-            out.write_all(&initrd).context("writing output")?;
-            out.flush().context("flushing output")?;
-        }
-    }
-    Ok(())
+    write_live_pxe(&initrd, config.output.as_ref())
 }
 
 pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
@@ -278,6 +266,21 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
         }
     }
     Ok(())
+}
+
+/// If output_path is None, we write to stdout.  The caller is expected to
+/// have called verify_stdout_not_tty() in this case.
+fn write_live_pxe(initrd: &Initrd, output_path: Option<&String>) -> Result<()> {
+    let initrd = initrd.to_bytes()?;
+    match output_path {
+        Some(path) => write(path, &initrd).with_context(|| format!("writing {}", path)),
+        None => {
+            let stdout = io::stdout();
+            let mut out = stdout.lock();
+            out.write_all(&initrd).context("writing output")?;
+            out.flush().context("flushing output")
+        }
+    }
 }
 
 struct IsoConfig {
