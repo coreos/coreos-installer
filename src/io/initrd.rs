@@ -14,7 +14,7 @@
 
 use anyhow::{Context, Result};
 use cpio::{write_cpio, NewcBuilder, NewcReader};
-use std::io::{BufReader, Cursor, Read};
+use std::io::{BufRead, BufReader, Cursor, Read};
 use xz2::stream::{Check, Stream};
 use xz2::write::XzEncoder;
 
@@ -41,29 +41,73 @@ pub fn make_initrd(members: &[(&str, &[u8])]) -> Result<Vec<u8>> {
 /// Extract a compressed or uncompressed CPIO archive and return the
 /// contents of the specified path.
 pub fn extract_initrd<R: Read>(source: R, path: &str) -> Result<Option<Vec<u8>>> {
-    // older versions of this program, and its predecessor, compressed
-    // with gzip
-    let mut decompressor = DecompressReader::new(BufReader::new(source))?;
-    loop {
-        let mut reader = NewcReader::new(decompressor).context("reading CPIO entry")?;
-        let entry = reader.entry();
-        if entry.is_trailer() {
-            return Ok(None);
+    let mut source = BufReader::with_capacity(BUFFER_SIZE, source);
+    // loop until EOF
+    while !source
+        .fill_buf()
+        .context("checking for data in initrd")?
+        .is_empty()
+    {
+        // read one archive
+        let mut decompressor = DecompressReader::for_concatenated(source)?;
+        loop {
+            let mut reader = NewcReader::new(decompressor).context("reading CPIO entry")?;
+            let entry = reader.entry();
+            if entry.is_trailer() {
+                decompressor = reader.finish().context("finishing reading CPIO trailer")?;
+                break;
+            }
+            if entry.name() == path {
+                let mut result = Vec::with_capacity(entry.file_size() as usize);
+                reader
+                    .read_to_end(&mut result)
+                    .context("reading CPIO entry contents")?;
+                return Ok(Some(result));
+            }
+            decompressor = reader.finish().context("finishing reading CPIO entry")?;
         }
-        if entry.name() == path {
-            let mut result = Vec::with_capacity(entry.file_size() as usize);
-            reader
-                .read_to_end(&mut result)
-                .context("reading CPIO entry contents")?;
-            return Ok(Some(result));
+
+        // finish decompression, if any, and recover source
+        if decompressor.compressed() {
+            let mut trailing = Vec::new();
+            decompressor
+                .read_to_end(&mut trailing)
+                .context("finishing reading compressed archive")?;
+            // padding is okay; data is not
+            if trailing.iter().any(|v| *v != 0) {
+                bail!("found trailing garbage inside compressed archive");
+            }
         }
-        decompressor = reader.finish().context("finishing reading CPIO entry")?;
+        source = decompressor.into_inner();
+
+        // skip any zero padding between archives
+        loop {
+            let buf = source
+                .fill_buf()
+                .context("checking for padding in initrd")?;
+            if buf.is_empty() {
+                // EOF
+                break;
+            }
+            match buf.iter().position(|v| *v != 0) {
+                Some(pos) => {
+                    source.consume(pos);
+                    break;
+                }
+                None => {
+                    let len = buf.len();
+                    source.consume(len);
+                }
+            }
+        }
     }
+    Ok(None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xz2::read::XzDecoder;
 
     #[test]
     fn test_cpio_roundtrip() {
@@ -71,5 +115,28 @@ mod tests {
         let cpio = make_initrd(&[("z", input.as_bytes())]).unwrap();
         let output = extract_initrd(&*cpio, "z").unwrap().unwrap();
         assert_eq!(input.as_bytes(), output.as_slice());
+    }
+
+    #[test]
+    fn test_cpio_compression() {
+        let mut archive: Vec<u8> = Vec::new();
+        XzDecoder::new(&include_bytes!("../../fixtures/initrd/compressed.img.xz")[..])
+            .read_to_end(&mut archive)
+            .unwrap();
+        for dir in &["uncompressed-1", "gzip", "xz", "uncompressed-2"] {
+            assert_eq!(
+                extract_initrd(&*archive, &format!("{}/hello", dir))
+                    .unwrap()
+                    .unwrap(),
+                b"HELLO\n"
+            );
+            assert_eq!(
+                extract_initrd(&*archive, &format!("{}/world", dir))
+                    .unwrap()
+                    .unwrap(),
+                b"WORLD\n"
+            );
+        }
+        assert!(extract_initrd(&*archive, "z").unwrap().is_none());
     }
 }

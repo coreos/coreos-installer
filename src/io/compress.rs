@@ -26,11 +26,20 @@ enum CompressDecoder<R: BufRead> {
 
 pub struct DecompressReader<R: BufRead> {
     decoder: CompressDecoder<R>,
+    allow_trailing: bool,
 }
 
 /// Format-sniffing decompressor
 impl<R: BufRead> DecompressReader<R> {
-    pub fn new(mut source: R) -> Result<Self> {
+    pub fn new(source: R) -> Result<Self> {
+        Self::new_full(source, false)
+    }
+
+    pub fn for_concatenated(source: R) -> Result<Self> {
+        Self::new_full(source, true)
+    }
+
+    fn new_full(mut source: R, allow_trailing: bool) -> Result<Self> {
         use CompressDecoder::*;
         let sniff = source.fill_buf().context("sniffing input")?;
         let decoder = if sniff.len() > 2 && &sniff[0..2] == b"\x1f\x8b" {
@@ -40,7 +49,19 @@ impl<R: BufRead> DecompressReader<R> {
         } else {
             Uncompressed(source)
         };
-        Ok(Self { decoder })
+        Ok(Self {
+            decoder,
+            allow_trailing,
+        })
+    }
+
+    pub fn into_inner(self) -> R {
+        use CompressDecoder::*;
+        match self.decoder {
+            Uncompressed(d) => d,
+            Gzip(d) => d.into_inner(),
+            Xz(d) => d.into_inner(),
+        }
     }
 
     pub fn get_mut(&mut self) -> &mut R {
@@ -70,7 +91,7 @@ impl<R: BufRead> Read for DecompressReader<R> {
             Gzip(d) => d.read(buf)?,
             Xz(d) => d.read(buf)?,
         };
-        if count == 0 && !buf.is_empty() && self.compressed() {
+        if count == 0 && !buf.is_empty() && self.compressed() && !self.allow_trailing {
             // Decompressors stop reading as soon as they encounter the
             // compression trailer, so they don't notice trailing data,
             // which indicates something wrong with the input.  Try reading
@@ -120,5 +141,15 @@ mod tests {
             .unwrap()
             .read_to_end(&mut output)
             .unwrap_err();
+
+        // use concatenated mode, make sure we ignore trailing garbage
+        let mut reader = BufReader::new(&*input);
+        DecompressReader::for_concatenated(&mut reader)
+            .unwrap()
+            .read_to_end(&mut output)
+            .unwrap();
+        let mut remainder = Vec::new();
+        reader.read_to_end(&mut remainder).unwrap();
+        assert_eq!(&remainder, &[0]);
     }
 }
