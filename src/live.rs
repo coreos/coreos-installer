@@ -14,14 +14,13 @@
 
 use anyhow::{bail, Context, Result};
 use bytes::Buf;
-use cpio::{write_cpio, NewcBuilder, NewcReader};
 use nix::unistd::isatty;
 use openat_ext::FileExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::{read, write, File, OpenOptions};
-use std::io::{self, copy, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -31,7 +30,7 @@ use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 use crate::miniso;
 
-const FILENAME: &str = "config.ign";
+const INITRD_IGNITION_PATH: &str = "config.ign";
 const COREOS_IGNITION_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
@@ -91,7 +90,7 @@ pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
         bail!("This ISO image already has an embedded Ignition config; use -f to force.");
     }
 
-    let cpio = make_cpio(&ignition)?;
+    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
     iso.set_ignition(&cpio)?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
@@ -110,8 +109,11 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
         if !iso.have_ignition() {
             bail!("No embedded Ignition config.");
         }
-        out.write_all(&extract_cpio(iso.ignition())?)
-            .context("writing output")?;
+        out.write_all(
+            &extract_initrd(iso.ignition(), INITRD_IGNITION_PATH)?
+                .context("couldn't find Ignition config in archive")?,
+        )
+        .context("writing output")?;
         out.flush().context("flushing output")?;
     }
     Ok(())
@@ -145,7 +147,7 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
         }
     };
 
-    let cpio = make_cpio(&ignition)?;
+    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
 
     match &config.output {
         Some(output_path) => {
@@ -162,11 +164,24 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
 }
 
 pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
-    let buf = read(&config.input).with_context(|| format!("reading {}", config.input))?;
+    let stdin = io::stdin();
+    let mut f: Box<dyn Read> = if let Some(path) = &config.input {
+        Box::new(
+            OpenOptions::new()
+                .read(true)
+                .open(path)
+                .with_context(|| format!("opening {}", path))?,
+        )
+    } else {
+        Box::new(stdin.lock())
+    };
     let stdout = io::stdout();
     let mut out = stdout.lock();
-    out.write_all(&extract_cpio(&buf)?)
-        .context("writing output")?;
+    out.write_all(
+        &extract_initrd(&mut f, INITRD_IGNITION_PATH)?
+            .context("couldn't find Ignition config in archive")?,
+    )
+    .context("writing output")?;
     out.flush().context("flushing output")?;
     Ok(())
 }
@@ -694,49 +709,6 @@ fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
         .context("reading Ignition embed area")
 }
 
-/// Make a gzipped CPIO archive containing the specified Ignition config.
-fn make_cpio(ignition: &[u8]) -> Result<Vec<u8>> {
-    use xz2::stream::{Check, Stream};
-    use xz2::write::XzEncoder;
-
-    let mut result = Cursor::new(Vec::new());
-    // kernel requires CRC32: https://www.kernel.org/doc/Documentation/xz.txt
-    let encoder = XzEncoder::new_stream(
-        &mut result,
-        Stream::new_easy_encoder(9, Check::Crc32).context("creating XZ encoder")?,
-    );
-    let mut input_files = vec![(
-        // S_IFREG | 0644
-        NewcBuilder::new(FILENAME).mode(0o100_644),
-        Cursor::new(ignition),
-    )];
-    write_cpio(input_files.drain(..), encoder).context("writing CPIO archive")?;
-    Ok(result.into_inner())
-}
-
-/// Extract a gzipped CPIO archive and return the contents of the Ignition
-/// config.
-fn extract_cpio(buf: &[u8]) -> Result<Vec<u8>> {
-    // older versions of this program, and its predecessor, compressed
-    // with gzip
-    let mut decompressor = DecompressReader::new(BufReader::new(buf))?;
-    loop {
-        let mut reader = NewcReader::new(decompressor).context("reading CPIO entry")?;
-        let entry = reader.entry();
-        if entry.is_trailer() {
-            bail!("couldn't find Ignition config in archive");
-        }
-        if entry.name() == FILENAME {
-            let mut result = Vec::with_capacity(entry.file_size() as usize);
-            reader
-                .read_to_end(&mut result)
-                .context("reading CPIO entry contents")?;
-            return Ok(result);
-        }
-        decompressor = reader.finish().context("finishing reading CPIO entry")?;
-    }
-}
-
 #[derive(Serialize)]
 struct IsoInspectOutput {
     header: IsoFs,
@@ -1042,13 +1014,5 @@ mod tests {
         assert_eq!(areas.regions[0].length, 1139);
         assert_eq!(areas.regions[1].offset, 371658);
         assert_eq!(areas.regions[1].length, 1139);
-    }
-
-    #[test]
-    fn test_cpio_roundtrip() {
-        let input = r#"{}"#;
-        let cpio = make_cpio(input.as_bytes()).unwrap();
-        let output = extract_cpio(&cpio).unwrap();
-        assert_eq!(input.as_bytes(), output.as_slice());
     }
 }
