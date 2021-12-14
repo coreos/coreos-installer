@@ -72,10 +72,6 @@ jobs:
         run: cargo clippy -- -D warnings
       - name: cargo clippy (rdcore, warnings)
         run: cargo clippy --features rdcore -- -D warnings
-      - name: cargo build
-        run: cargo build
-      - name: Help text line length
-        run: tests/help.sh
   tests-other-channels:
     name: "Tests, unstable toolchain"
     runs-on: ubuntu-latest
@@ -101,3 +97,20 @@ jobs:
         run: cargo build --features rdcore
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
+  docs:
+    name: "Docs"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: "stable"
+          default: true
+      - name: cargo build
+        run: cargo build
+      - name: Help text line length
+        run: tests/help.sh
+      - name: Config file docs
+        run: tests/docs-config-file.sh
