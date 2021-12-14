@@ -5,15 +5,14 @@ nav_order: 3
 
 # coreos-installer list-stream
 
-## Description
-
+```
 List available images in a Fedora CoreOS stream
 
-## Usage
+USAGE:
+    coreos-installer list-stream
 
-**coreos-installer list-stream**
-
-## Options
-
-| **--stream**, **-s** *name* | Fedora CoreOS stream [default: stable] |
-| **--stream-base-url** *URL* | Base URL for Fedora CoreOS stream metadata |
+OPTIONS:
+    -s, --stream <name>            Fedora CoreOS stream [default: stable]
+        --stream-base-url <URL>    Base URL for Fedora CoreOS stream metadata
+    -h, --help                     Prints help information
+```

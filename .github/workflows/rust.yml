@@ -114,3 +114,12 @@ jobs:
         run: tests/help.sh
       - name: Config file docs
         run: tests/docs-config-file.sh
+      - name: Command-line docs
+        run: |
+          make docs
+          if [ -n "$(git status --porcelain docs)" ]; then
+            echo "Found local changes after regenerating docs:"
+            git --no-pager diff --color=always docs
+            echo "Rerun 'make docs'."
+            exit 1
+          fi

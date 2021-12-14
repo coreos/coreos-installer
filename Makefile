@@ -16,6 +16,10 @@ endif
 all:
 	cargo build ${CARGO_ARGS}
 
+.PHONY: docs
+docs: all
+	PROFILE=$(PROFILE) docs/_cmd.sh
+
 .PHONY: install
 install: install-bin install-scripts install-systemd install-dracut
 
