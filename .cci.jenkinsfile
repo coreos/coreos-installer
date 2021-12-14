@@ -35,6 +35,16 @@ cosaPod(buildroot: true, runAsUser: 0) {
             scenarios4k: "iso-install,iso-offline-install",
             skipUEFI: true
         )
+        // Only test ISO because kola testiso doesn't support NM keyfiles
+        // for PXE
+        fcosKolaTestIso(
+            cosaDir: "/srv/fcos",
+            scenarios: "iso-install",
+            extraArgs: "--add-nm-keyfile",
+            skipMetal4k: true,
+            skipMultipath: true,
+            skipUEFI: true
+        )
         // for embed commands, test both the built ISO and a minimal fixture
         // with the legacy embed areas
         shwrap("tests/iso-ignition.sh /srv/fcos/builds/latest/x86_64/*.iso")
