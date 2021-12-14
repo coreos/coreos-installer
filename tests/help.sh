@@ -5,7 +5,7 @@ set -euo pipefail
 
 rootdir="$(dirname $0)/.."
 help() {
-    "${rootdir}/target/debug/coreos-installer" $* --help
+    "${rootdir}/target/debug/coreos-installer" $* -h
 }
 
 hidden=
