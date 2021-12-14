@@ -30,9 +30,14 @@ EOF
 
 \`\`\`
 EOF
+        # Run coreos-installer in a PTY and override the terminal width to
+        # the one we want, regardless of the caller's terminal.  More than
+        # 100 characters will cause the code block to scroll.
+        # Drop CR characters added by `script`.
         # Drop first line with incorrectly hyphenated command name and version
         # Fix trailing whitespace
-        "${prog}" $* --help | \
+        script -qc "stty cols 95 rows 24; ${prog} $* --help" /dev/null | \
+            tr -d '\r' | \
             tail -n +2 | \
             sed 's/[[:blank:]]*$//'
         echo '```'
