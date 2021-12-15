@@ -86,6 +86,8 @@ pub enum IsoCmd {
     Inspect(IsoInspectConfig),
     /// Commands to extract files from a CoreOS live ISO image
     Extract(IsoExtractCmd),
+    /// Restore a CoreOS live ISO image to default settings
+    Reset(IsoResetConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -656,6 +658,16 @@ pub struct IsoExtractPackMinimalIsoConfig {
     /// Delete minimal ISO after packing
     #[structopt(long)]
     pub consume: bool,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoResetConfig {
+    /// Write ISO to a new output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: Option<String>,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
 }
 
 #[derive(Debug, StructOpt)]

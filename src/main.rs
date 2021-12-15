@@ -49,6 +49,7 @@ fn main() -> Result<()> {
                 IsoExtractCmd::MinimalIso(c) => live::iso_extract_minimal_iso(c),
                 IsoExtractCmd::PackMinimalIso(c) => live::iso_pack_minimal_iso(c),
             },
+            IsoCmd::Reset(c) => live::iso_reset(c),
         },
         Cmd::Osmet(c) => match c {
             OsmetCmd::Fiemap(c) => osmet::osmet_fiemap(c),

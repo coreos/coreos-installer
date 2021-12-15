@@ -192,3 +192,19 @@ ARGS:
     <ISO>           ISO image
     <OUTPUT_ISO>    Minimal ISO output file [default: -]
 ```
+
+# coreos-installer iso reset
+
+```
+Restore a CoreOS live ISO image to default settings
+
+USAGE:
+    coreos-installer iso reset <ISO>
+
+OPTIONS:
+    -o, --output <path>    Write ISO to a new output file
+    -h, --help             Prints help information
+
+ARGS:
+    <ISO>    ISO image
+```

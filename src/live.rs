@@ -332,6 +332,16 @@ pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
     Ok(())
 }
 
+pub fn iso_reset(config: IsoResetConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+
+    *iso.initrd_mut() = Initrd::default();
+    iso.set_kargs(&iso.kargs_default()?.to_string())?;
+
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
+}
+
 // output_path should be None if not outputting, or Some(output_path_argument)
 fn open_live_iso(input_path: &str, output_path: Option<Option<&String>>) -> Result<File> {
     // if output_path is Some(None), we're modifying in place, so we need to
