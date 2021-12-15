@@ -73,6 +73,8 @@ pub enum IsoCmd {
     Remove(IsoRemoveConfig),
     /// Embed an Ignition config in a CoreOS live ISO image
     Ignition(IsoIgnitionCmd),
+    /// Embed network settings in a CoreOS live ISO image
+    Network(IsoNetworkCmd),
     /// Modify kernel args in a CoreOS live ISO image
     Kargs(IsoKargsCmd),
     /// Inspect the CoreOS live ISO image
@@ -91,6 +93,16 @@ pub enum IsoIgnitionCmd {
     Show(IsoIgnitionShowConfig),
     /// Remove an existing embedded Ignition config from an ISO image
     Remove(IsoIgnitionRemoveConfig),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum IsoNetworkCmd {
+    /// Embed network settings in an ISO image
+    Embed(IsoNetworkEmbedConfig),
+    /// Extract embedded network settings from an ISO image
+    Extract(IsoNetworkExtractConfig),
+    /// Remove existing network settings from an ISO image
+    Remove(IsoNetworkRemoveConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -130,6 +142,8 @@ pub enum OsmetCmd {
 pub enum PxeCmd {
     /// Commands to manage a live PXE Ignition config
     Ignition(PxeIgnitionCmd),
+    /// Commands to manage live PXE network settings
+    Network(PxeNetworkCmd),
 }
 
 #[derive(Debug, StructOpt)]
@@ -138,6 +152,14 @@ pub enum PxeIgnitionCmd {
     Wrap(PxeIgnitionWrapConfig),
     /// Show the wrapped Ignition config in an initrd image
     Unwrap(PxeIgnitionUnwrapConfig),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum PxeNetworkCmd {
+    /// Wrap network settings in an initrd image
+    Wrap(PxeNetworkWrapConfig),
+    /// Extract wrapped network settings from an initrd image
+    Unwrap(PxeNetworkUnwrapConfig),
 }
 
 // As a special case, this struct supports Serialize and Deserialize for
@@ -507,6 +529,45 @@ pub struct IsoIgnitionRemoveConfig {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct IsoNetworkEmbedConfig {
+    /// NetworkManager keyfile to embed
+    // Required option. :-(  In future we might support other configuration
+    // sources.
+    #[structopt(short, long, required = true, value_name = "path")]
+    #[structopt(number_of_values = 1)]
+    pub keyfile: Vec<String>,
+    /// Overwrite existing network settings
+    #[structopt(short, long)]
+    pub force: bool,
+    /// Write ISO to a new output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: Option<String>,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoNetworkExtractConfig {
+    /// Extract to directory instead of stdout
+    #[structopt(short = "C", long, value_name = "path")]
+    pub directory: Option<String>,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoNetworkRemoveConfig {
+    /// Write ISO to a new output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: Option<String>,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+}
+
+#[derive(Debug, StructOpt)]
 pub struct IsoKargsModifyConfig {
     /// Kernel argument to append
     #[structopt(short, long, number_of_values = 1, value_name = "KARG")]
@@ -649,6 +710,29 @@ pub struct PxeIgnitionWrapConfig {
 
 #[derive(Debug, StructOpt)]
 pub struct PxeIgnitionUnwrapConfig {
+    /// initrd image [default: stdin]
+    #[structopt(value_name = "initrd")]
+    pub input: Option<String>,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct PxeNetworkWrapConfig {
+    /// NetworkManager keyfile to embed
+    // Required option. :-(  In future we might support other configuration
+    // sources.
+    #[structopt(short, long, required = true, value_name = "path")]
+    #[structopt(number_of_values = 1)]
+    pub keyfile: Vec<String>,
+    /// Write to a file instead of stdout
+    #[structopt(short, long, value_name = "path")]
+    pub output: Option<String>,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct PxeNetworkUnwrapConfig {
+    /// Extract to directory instead of stdout
+    #[structopt(short = "C", long, value_name = "path")]
+    pub directory: Option<String>,
     /// initrd image [default: stdin]
     #[structopt(value_name = "initrd")]
     pub input: Option<String>,

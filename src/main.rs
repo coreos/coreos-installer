@@ -33,6 +33,11 @@ fn main() -> Result<()> {
                 IsoIgnitionCmd::Show(c) => live::iso_ignition_show(c),
                 IsoIgnitionCmd::Remove(c) => live::iso_ignition_remove(c),
             },
+            IsoCmd::Network(c) => match c {
+                IsoNetworkCmd::Embed(c) => live::iso_network_embed(c),
+                IsoNetworkCmd::Extract(c) => live::iso_network_extract(c),
+                IsoNetworkCmd::Remove(c) => live::iso_network_remove(c),
+            },
             IsoCmd::Kargs(c) => match c {
                 IsoKargsCmd::Modify(c) => live::iso_kargs_modify(c),
                 IsoKargsCmd::Reset(c) => live::iso_kargs_reset(c),
@@ -54,6 +59,10 @@ fn main() -> Result<()> {
             PxeCmd::Ignition(c) => match c {
                 PxeIgnitionCmd::Wrap(c) => live::pxe_ignition_wrap(c),
                 PxeIgnitionCmd::Unwrap(c) => live::pxe_ignition_unwrap(c),
+            },
+            PxeCmd::Network(c) => match c {
+                PxeNetworkCmd::Wrap(c) => live::pxe_network_wrap(c),
+                PxeNetworkCmd::Unwrap(c) => live::pxe_network_unwrap(c),
             },
         },
     }

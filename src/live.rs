@@ -14,12 +14,13 @@
 
 use anyhow::{bail, Context, Result};
 use bytes::Buf;
+use lazy_static::lazy_static;
 use nix::unistd::isatty;
 use openat_ext::FileExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fs::{read, write, File, OpenOptions};
+use std::fs::{create_dir_all, read, write, File, OpenOptions};
 use std::io::{self, copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::iter::repeat;
 use std::os::unix::io::AsRawFd;
@@ -31,8 +32,9 @@ use crate::iso9660::{self, IsoFs};
 use crate::miniso;
 
 const INITRD_IGNITION_PATH: &str = "config.ign";
-const COREOS_IGNITION_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
-const COREOS_IGNITION_HEADER_SIZE: u64 = 24;
+const INITRD_NETWORK_DIR: &str = "etc/coreos-firstboot-network";
+const COREOS_INITRD_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
+const COREOS_INITRD_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
@@ -41,6 +43,13 @@ const COREOS_KARG_EMBED_INFO_PATH: &str = "COREOS/KARGS.JSO";
 const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 const COREOS_ISO_ROOTFS_IMG: &str = "IMAGES/PXEBOOT/ROOTFS.IMG";
 const COREOS_ISO_MINISO_FILE: &str = "COREOS/MINISO.DAT";
+
+lazy_static! {
+    static ref INITRD_IGNITION_GLOB: GlobMatcher =
+        GlobMatcher::new(&[INITRD_IGNITION_PATH]).unwrap();
+    static ref INITRD_NETWORK_GLOB: GlobMatcher =
+        GlobMatcher::new(&[&format!("{}/*", INITRD_NETWORK_DIR)]).unwrap();
+}
 
 pub fn iso_embed(config: IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -90,8 +99,7 @@ pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
         bail!("This ISO image already has an embedded Ignition config; use -f to force.");
     }
 
-    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
-    iso.set_ignition(&cpio)?;
+    iso.initrd_mut().add(INITRD_IGNITION_PATH, ignition);
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -102,7 +110,7 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     if config.header {
-        serde_json::to_writer_pretty(&mut out, &iso.ignition)
+        serde_json::to_writer_pretty(&mut out, &iso.initrd)
             .context("failed to serialize header")?;
         out.write_all(b"\n").context("failed to write newline")?;
     } else {
@@ -110,7 +118,8 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
             bail!("No embedded Ignition config.");
         }
         out.write_all(
-            &extract_initrd(iso.ignition(), INITRD_IGNITION_PATH)?
+            iso.initrd()
+                .get(INITRD_IGNITION_PATH)
                 .context("couldn't find Ignition config in archive")?,
         )
         .context("writing output")?;
@@ -123,7 +132,36 @@ pub fn iso_ignition_remove(config: IsoIgnitionRemoveConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
-    iso.set_ignition(&[])?;
+    iso.initrd_mut().remove(INITRD_IGNITION_PATH);
+
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
+}
+
+pub fn iso_network_embed(config: IsoNetworkEmbedConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+
+    if !config.force && iso.have_network() {
+        bail!("This ISO image already has embedded network settings; use -f to force.");
+    }
+
+    iso.remove_network();
+    initrd_network_embed(iso.initrd_mut(), &config.keyfile)?;
+
+    write_live_iso(&iso, &mut iso_file, config.output.as_ref())
+}
+
+pub fn iso_network_extract(config: IsoNetworkExtractConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, None)?;
+    let iso = IsoConfig::for_file(&mut iso_file)?;
+    initrd_network_extract(iso.initrd(), config.directory.as_ref())
+}
+
+pub fn iso_network_remove(config: IsoNetworkRemoveConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
+    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+
+    iso.remove_network();
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -147,20 +185,10 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
         }
     };
 
-    let cpio = make_initrd(&[(INITRD_IGNITION_PATH, &ignition)])?;
+    let mut initrd = Initrd::default();
+    initrd.add(INITRD_IGNITION_PATH, ignition);
 
-    match &config.output {
-        Some(output_path) => {
-            write(output_path, cpio).with_context(|| format!("writing {}", output_path))?
-        }
-        None => {
-            let stdout = io::stdout();
-            let mut out = stdout.lock();
-            out.write_all(&cpio).context("writing output")?;
-            out.flush().context("flushing output")?;
-        }
-    }
-    Ok(())
+    write_live_pxe(&initrd, config.output.as_ref())
 }
 
 pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
@@ -178,11 +206,87 @@ pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     out.write_all(
-        &extract_initrd(&mut f, INITRD_IGNITION_PATH)?
+        Initrd::from_reader_filtered(&mut f, &INITRD_IGNITION_GLOB)?
+            .get(INITRD_IGNITION_PATH)
             .context("couldn't find Ignition config in archive")?,
     )
     .context("writing output")?;
     out.flush().context("flushing output")?;
+    Ok(())
+}
+
+pub fn pxe_network_wrap(config: PxeNetworkWrapConfig) -> Result<()> {
+    if config.output.is_none() {
+        verify_stdout_not_tty()?;
+    }
+
+    let mut initrd = Initrd::default();
+    initrd_network_embed(&mut initrd, &config.keyfile)?;
+
+    write_live_pxe(&initrd, config.output.as_ref())
+}
+
+fn initrd_network_embed(initrd: &mut Initrd, keyfiles: &[String]) -> Result<()> {
+    for path in keyfiles {
+        let data = read(path).with_context(|| format!("reading {}", path))?;
+        let name = filename(path)?;
+        let path = format!("{}/{}", INITRD_NETWORK_DIR, name);
+        if initrd.get(&path).is_some() {
+            bail!("multiple input files named '{}'", name);
+        }
+        initrd.add(&path, data);
+    }
+    Ok(())
+}
+
+pub fn pxe_network_unwrap(config: PxeNetworkUnwrapConfig) -> Result<()> {
+    let stdin = io::stdin();
+    let f: Box<dyn Read> = if let Some(path) = &config.input {
+        Box::new(
+            OpenOptions::new()
+                .read(true)
+                .open(path)
+                .with_context(|| format!("opening {}", path))?,
+        )
+    } else {
+        Box::new(stdin.lock())
+    };
+    initrd_network_extract(
+        &Initrd::from_reader_filtered(f, &INITRD_NETWORK_GLOB)?,
+        config.directory.as_ref(),
+    )
+}
+
+fn initrd_network_extract(initrd: &Initrd, directory: Option<&String>) -> Result<()> {
+    let files = initrd.find(&INITRD_NETWORK_GLOB);
+    if files.is_empty() {
+        bail!("No embedded network settings.");
+    }
+    if let Some(dir) = directory {
+        create_dir_all(&dir)?;
+        for (path, contents) in files {
+            let path = Path::new(dir).join(filename(path)?);
+            OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+                .with_context(|| format!("opening {}", path.display()))?
+                .write_all(contents)
+                .with_context(|| format!("writing {}", path.display()))?;
+            println!("{}", path.display());
+        }
+    } else {
+        for (i, (path, contents)) in files.iter().enumerate() {
+            if i > 0 {
+                println!();
+            }
+            println!("########## {} ##########", filename(path)?);
+            io::stdout()
+                .lock()
+                .write_all(contents)
+                .context("writing network settings to stdout")?;
+        }
+    }
     Ok(())
 }
 
@@ -271,8 +375,23 @@ fn write_live_iso(iso: &IsoConfig, input: &mut File, output_path: Option<&String
     Ok(())
 }
 
+/// If output_path is None, we write to stdout.  The caller is expected to
+/// have called verify_stdout_not_tty() in this case.
+fn write_live_pxe(initrd: &Initrd, output_path: Option<&String>) -> Result<()> {
+    let initrd = initrd.to_bytes()?;
+    match output_path {
+        Some(path) => write(path, &initrd).with_context(|| format!("writing {}", path)),
+        None => {
+            let stdout = io::stdout();
+            let mut out = stdout.lock();
+            out.write_all(&initrd).context("writing output")?;
+            out.flush().context("flushing output")
+        }
+    }
+}
+
 struct IsoConfig {
-    ignition: Region,
+    initrd: InitrdEmbedArea,
     kargs: Option<KargEmbedAreas>,
 }
 
@@ -285,35 +404,37 @@ impl IsoConfig {
 
     pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
         Ok(Self {
-            ignition: ignition_embed_area(iso)?,
+            initrd: InitrdEmbedArea::for_iso(iso)?,
             kargs: KargEmbedAreas::for_iso(iso)?,
         })
     }
 
     pub fn have_ignition(&self) -> bool {
-        self.ignition().iter().any(|v| *v != 0)
+        self.initrd().get(INITRD_IGNITION_PATH).is_some()
     }
 
-    pub fn ignition(&self) -> &[u8] {
-        &self.ignition.contents[..]
+    pub fn have_network(&self) -> bool {
+        !self.initrd().find(&INITRD_NETWORK_GLOB).is_empty()
     }
 
-    pub fn set_ignition(&mut self, data: &[u8]) -> Result<()> {
-        let capacity = self.ignition.length;
-        if data.len() > capacity {
-            bail!(
-                "Compressed Ignition config is too large: {} > {}",
-                data.len(),
-                capacity
-            )
+    pub fn remove_network(&mut self) {
+        let initrd = self.initrd_mut();
+        let paths: Vec<String> = initrd
+            .find(&INITRD_NETWORK_GLOB)
+            .keys()
+            .map(|p| p.to_string())
+            .collect();
+        for path in paths {
+            initrd.remove(&path);
         }
-        self.ignition.contents.clear();
-        self.ignition.contents.extend_from_slice(data);
-        self.ignition
-            .contents
-            .extend(repeat(0).take(capacity - data.len()));
-        self.ignition.modified = true;
-        Ok(())
+    }
+
+    pub fn initrd(&self) -> &Initrd {
+        self.initrd.initrd()
+    }
+
+    pub fn initrd_mut(&mut self) -> &mut Initrd {
+        self.initrd.initrd_mut()
     }
 
     pub fn kargs(&self) -> Result<&str> {
@@ -341,7 +462,7 @@ impl IsoConfig {
     }
 
     pub fn write(&self, file: &mut File) -> Result<()> {
-        self.ignition.write(file)?;
+        self.initrd.write(file)?;
         if let Some(kargs) = &self.kargs {
             kargs.write(file)?;
         }
@@ -349,7 +470,8 @@ impl IsoConfig {
     }
 
     pub fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        let mut regions = vec![&self.ignition];
+        let initrd_region = self.initrd.region()?;
+        let mut regions = vec![&initrd_region];
         if let Some(kargs) = &self.kargs {
             regions.extend(kargs.regions.iter())
         }
@@ -357,7 +479,7 @@ impl IsoConfig {
     }
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 struct Region {
     // sort order is derived from field order
     pub offset: u64,
@@ -583,7 +705,7 @@ impl KargEmbedAreas {
         // 8 bytes little-endian x 6: offsets to karg embed areas
         let region = Region::read(
             file,
-            32768 - COREOS_IGNITION_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
+            32768 - COREOS_INITRD_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
             COREOS_KARG_EMBED_AREA_HEADER_SIZE as usize,
         )
         .context("reading karg embed header")?;
@@ -699,14 +821,69 @@ impl KargEmbedAreas {
     }
 }
 
-fn ignition_embed_area(iso: &mut IsoFs) -> Result<Region> {
-    let f = iso
-        .get_path(COREOS_IGNITION_EMBED_PATH)
-        .context("finding Ignition embed area")?
-        .try_into_file()?;
-    // read (checks offset/length as a side effect)
-    Region::read(iso.as_file()?, f.address.as_offset(), f.length as usize)
-        .context("reading Ignition embed area")
+#[derive(Debug, Serialize)]
+struct InitrdEmbedArea {
+    // region.contents is kept zero-length; region is cloned upon writing
+    #[serde(flatten)]
+    region: Region,
+    #[serde(skip)]
+    initrd: Initrd,
+}
+
+impl InitrdEmbedArea {
+    pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
+        let f = iso
+            .get_path(COREOS_INITRD_EMBED_PATH)
+            .context("finding initrd embed area")?
+            .try_into_file()?;
+        // read (checks offset/length as a side effect)
+        let mut region = Region::read(iso.as_file()?, f.address.as_offset(), f.length as usize)
+            .context("reading initrd embed area")?;
+        let initrd = if region.contents.iter().any(|v| *v != 0) {
+            Initrd::from_reader(&*region.contents).context("decoding initrd embed area")?
+        } else {
+            Initrd::default()
+        };
+        // free up the memory; we won't need it
+        region.contents = Vec::new();
+        Ok(Self { region, initrd })
+    }
+
+    pub fn initrd(&self) -> &Initrd {
+        &self.initrd
+    }
+
+    pub fn initrd_mut(&mut self) -> &mut Initrd {
+        self.region.modified = true;
+        &mut self.initrd
+    }
+
+    pub fn write(&self, file: &mut File) -> Result<()> {
+        self.region()?.write(file)
+    }
+
+    pub fn region(&self) -> Result<Region> {
+        // taking &mut self for the deferred update to self.region would
+        // require too many other methods to do the same, so clone the
+        // region and return that
+        let mut region = self.region.clone();
+        let capacity = region.length;
+        let mut data = if !self.initrd().is_empty() {
+            self.initrd().to_bytes()?
+        } else {
+            Vec::new()
+        };
+        if data.len() > capacity {
+            bail!(
+                "Compressed initramfs is too large: {} > {}",
+                data.len(),
+                capacity
+            )
+        }
+        data.extend(repeat(0).take(capacity - data.len()));
+        region.contents = data;
+        Ok(region)
+    }
 }
 
 #[derive(Serialize)]
@@ -738,7 +915,7 @@ pub fn iso_inspect(config: IsoInspectConfig) -> Result<()> {
 pub fn iso_extract_pxe(config: IsoExtractPxeConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
     let pxeboot = iso.get_path(COREOS_ISO_PXEBOOT_DIR)?.try_into_dir()?;
-    std::fs::create_dir_all(&config.output_dir)?;
+    create_dir_all(&config.output_dir)?;
 
     let base = {
         // this can't be None since we successfully opened the live ISO at the location
@@ -949,6 +1126,15 @@ fn verify_stdout_not_tty() -> Result<()> {
     Ok(())
 }
 
+fn filename(path: &str) -> Result<String> {
+    Ok(Path::new(path)
+        .file_name()
+        .with_context(|| format!("missing filename in {}", path))?
+        // path was originally a string
+        .to_string_lossy()
+        .into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -967,18 +1153,18 @@ mod tests {
     }
 
     #[test]
-    fn test_ignition_embed_area() {
+    fn test_initrd_embed_area() {
         let mut iso_file = open_iso_file();
         // normal read
         let mut iso = IsoFs::from_file(iso_file.try_clone().unwrap()).unwrap();
-        let region = ignition_embed_area(&mut iso).unwrap();
-        assert_eq!(region.offset, 102400);
-        assert_eq!(region.length, 262144);
+        let area = InitrdEmbedArea::for_iso(&mut iso).unwrap();
+        assert_eq!(area.region.offset, 102400);
+        assert_eq!(area.region.length, 262144);
         // missing embed area
         iso_file.seek(SeekFrom::Start(65903)).unwrap();
         iso_file.write_all(b"Z").unwrap();
         let mut iso = IsoFs::from_file(iso_file).unwrap();
-        ignition_embed_area(&mut iso).unwrap_err();
+        InitrdEmbedArea::for_iso(&mut iso).unwrap_err();
     }
 
     #[test]
