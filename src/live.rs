@@ -1109,10 +1109,6 @@ impl LiveInitrd {
     }
 
     fn dest_device(&mut self, device: &str) -> Result<()> {
-        eprintln!(
-            "Warning: boot media will overwrite {} without confirmation.",
-            device
-        );
         self.installer
             .get_or_insert_with(Default::default)
             .dest_device = Some(device.into());
@@ -1285,12 +1281,21 @@ RequiredBy={install_target}",
             conf.ignition_file = Some(dest_path.into());
         }
 
-        if self.installer_copy_network && (self.installer_serial > 0 || self.installer.is_some()) {
-            // The installer will run, so have it copy network settings
-            // to the destination
-            self.installer
-                .get_or_insert_with(Default::default)
-                .copy_network = true;
+        if self.installer_serial > 0 || self.installer.is_some() {
+            // The installer will run; apply deferred settings
+            if let Some(device) = self.installer.as_ref().and_then(|c| c.dest_device.as_ref()) {
+                eprintln!(
+                    "Boot media will automatically install to {} without confirmation.",
+                    device
+                );
+            } else {
+                eprintln!("Boot media will automatically run installer.");
+            }
+            if self.installer_copy_network {
+                self.installer
+                    .get_or_insert_with(Default::default)
+                    .copy_network = true;
+            }
         }
 
         if let Some(conf) = self.installer.take() {
