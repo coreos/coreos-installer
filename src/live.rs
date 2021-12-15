@@ -34,6 +34,7 @@ use crate::miniso;
 const INITRD_IGNITION_PATH: &str = "config.ign";
 const INITRD_NETWORK_DIR: &str = "etc/coreos-firstboot-network";
 const INITRD_LIVE_STAMP_PATH: &str = "etc/coreos-live-initramfs";
+const INITRD_FEATURES_PATH: &str = "etc/coreos/features.json";
 const COREOS_INITRD_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_INITRD_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
@@ -41,6 +42,7 @@ const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
 const COREOS_KARG_EMBED_AREA_HEADER_MAX_OFFSETS: usize = 6;
 const COREOS_KARG_EMBED_AREA_MAX_SIZE: usize = 2048;
 const COREOS_KARG_EMBED_INFO_PATH: &str = "COREOS/KARGS.JSO";
+const COREOS_ISO_FEATURES_PATH: &str = "COREOS/FEATURES.JSO";
 const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 const COREOS_ISO_ROOTFS_IMG: &str = "IMAGES/PXEBOOT/ROOTFS.IMG";
 const COREOS_ISO_MINISO_FILE: &str = "COREOS/MINISO.DAT";
@@ -335,7 +337,9 @@ pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
 
 pub fn iso_customize(config: IsoCustomizeConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
-    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+    let mut iso_fs = IsoFs::from_file(iso_file.try_clone().context("cloning file")?)
+        .context("parsing ISO9660 image")?;
+    let mut iso = IsoConfig::for_iso(&mut iso_fs)?;
 
     if !config.force
         && (iso.have_ignition() || iso.have_network() || iso.kargs()? != iso.kargs_default()?)
@@ -343,7 +347,19 @@ pub fn iso_customize(config: IsoCustomizeConfig) -> Result<()> {
         bail!("This ISO image is already customized; use -f to force.");
     }
 
-    let live = LiveInitrd::from_common(&config.common)?;
+    // read OS features
+    let features = match iso_fs.get_path(COREOS_ISO_FEATURES_PATH) {
+        Ok(record) => serde_json::from_reader(
+            iso_fs
+                .read_file(&record.try_into_file()?)
+                .context("reading OS features")?,
+        )
+        .context("parsing OS features")?,
+        Err(e) if e.is::<iso9660::NotFound>() => OsFeatures::default(),
+        Err(e) => return Err(e).context("looking up OS features"),
+    };
+
+    let live = LiveInitrd::from_common(&config.common, features)?;
     *iso.initrd_mut() = live.into_initrd()?;
     iso.set_kargs(&iso.kargs_default()?.to_string())?;
 
@@ -389,6 +405,7 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
     // copy and check base initrd
     let filter = GlobMatcher::new(&[
         INITRD_LIVE_STAMP_PATH,
+        INITRD_FEATURES_PATH,
         INITRD_IGNITION_PATH,
         &format!("{}/*", INITRD_NETWORK_DIR),
     ])
@@ -412,8 +429,12 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
     {
         bail!("input is already customized");
     }
+    let features = match base_initrd.get(INITRD_FEATURES_PATH) {
+        Some(json) => serde_json::from_slice::<OsFeatures>(json).context("parsing OS features")?,
+        None => OsFeatures::default(),
+    };
 
-    let live = LiveInitrd::from_common(&config.common)?;
+    let live = LiveInitrd::from_common(&config.common, features)?;
     let initrd = live.into_initrd()?;
 
     // append customizations to output
@@ -991,15 +1012,33 @@ impl InitrdEmbedArea {
     }
 }
 
+/// CoreOS feature flags in /etc/coreos/features.json in the live initramfs
+/// and /coreos/features.json in the live ISO.  Written by
+/// cosa buildextend-live.
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct OsFeatures {
+    /// Installer reads config files from /etc/coreos/installer.d
+    installer_config: bool,
+    /// Live initrd reads NM keyfiles from /etc/coreos-firstboot-network
+    live_initrd_network: bool,
+}
+
 #[derive(Default)]
 struct LiveInitrd {
+    /// OS features
+    features: OsFeatures,
+
     /// The Ignition config for the live system
     live: Ignition,
 }
 
 impl LiveInitrd {
-    fn from_common(common: &CommonCustomizeConfig) -> Result<Self> {
-        let mut conf = Self::default();
+    fn from_common(common: &CommonCustomizeConfig, features: OsFeatures) -> Result<Self> {
+        let mut conf = Self {
+            features,
+            ..Default::default()
+        };
 
         for path in &common.pre_install {
             conf.pre_install(path)?;
