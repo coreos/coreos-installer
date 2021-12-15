@@ -165,12 +165,24 @@ pub enum PxeIgnitionCmd {
 #[structopt(global_setting(AppSettings::AllArgsOverrideSelf))]
 pub struct InstallConfig {
     /// YAML config file with install options
+    ///
+    /// Load additional config options from the specified YAML config file.
+    /// Later config files override earlier ones, and command-line options
+    /// override config files.
+    ///
+    /// Config file keys are long option names without the leading "--".
+    /// Values are strings for non-repeatable options, arrays of strings for
+    /// repeatable options, and "true" for flags.  The destination device
+    /// can be specified with the "dest-device" key.
     #[serde(skip)]
     #[structopt(short, long, value_name = "path", number_of_values = 1)]
     pub config_file: Vec<String>,
 
     // ways to specify the image source
     /// Fedora CoreOS stream
+    ///
+    /// The name of the Fedora CoreOS stream to install, such as "stable",
+    /// "testing", or "next".
     #[structopt(short, long, value_name = "name")]
     #[structopt(conflicts_with = "image-file", conflicts_with = "image-url")]
     pub stream: Option<String>,
@@ -191,18 +203,30 @@ pub struct InstallConfig {
     #[structopt(conflicts_with = "ignition-url")]
     pub ignition_file: Option<String>,
     /// Embed an Ignition config from a URL
+    ///
+    /// Immediately fetch the Ignition config from the URL and embed it in
+    /// the installed system.
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[structopt(short = "I", long, value_name = "URL")]
     #[structopt(conflicts_with = "ignition-file")]
     pub ignition_url: Option<Url>,
     /// Digest (type-value) of the Ignition config
+    ///
+    /// Verify that the Ignition config matches the specified digest,
+    /// formatted as <type>-<hexvalue>.  <type> can be sha256 or sha512.
     #[structopt(long, value_name = "digest")]
     pub ignition_hash: Option<IgnitionHash>,
     /// Target CPU architecture
+    ///
+    /// Create an install disk for a different CPU architecture than the
+    /// host.
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(short, long, default_value, value_name = "name")]
     pub architecture: DefaultedString<Architecture>,
     /// Override the Ignition platform ID
+    ///
+    /// Install a system that will run on the specified cloud or
+    /// virtualization platform, such as "vmware".
     #[structopt(short, long, value_name = "name")]
     pub platform: Option<String>,
     /// Additional kernel args for the first boot
@@ -213,18 +237,28 @@ pub struct InstallConfig {
     #[structopt(long, hidden = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
+    ///
+    /// Add a kernel argument to the installed system.
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "arg", number_of_values = 1)]
     pub append_karg: Vec<String>,
     /// Delete default kernel arg
+    ///
+    /// Delete a default kernel argument from the installed system.
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "arg", number_of_values = 1)]
     pub delete_karg: Vec<String>,
     /// Copy network config from install environment
+    ///
+    /// Copy NetworkManager keyfiles from the install environment to the
+    /// installed system.
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(short = "n", long)]
     pub copy_network: bool,
     /// For use with -n
+    ///
+    /// Specify the path to NetworkManager keyfiles to be copied with
+    /// --copy-network.
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "path", default_value)]
     // so we can stay under 80 chars
@@ -260,21 +294,34 @@ pub struct InstallConfig {
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(long)]
     pub insecure_ignition: bool,
-    /// Base URL for Fedora CoreOS stream metadata
+    /// Base URL for CoreOS stream metadata
+    ///
+    /// Override the base URL for fetching CoreOS stream metadata.
+    /// The default is "https://builds.coreos.fedoraproject.org/streams/".
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[structopt(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
     /// Don't clear partition table on error
+    ///
+    /// If installation fails, coreos-installer normally clears the
+    /// destination's partition table to prevent booting from invalid
+    /// boot media.  Skip clearing the partition table as a debugging aid.
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(long)]
     pub preserve_on_error: bool,
     /// Fetch retries, or "infinite"
+    ///
+    /// Number of times to retry network fetches, or the string "infinite"
+    /// to retry indefinitely.
     #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "N", default_value)]
     pub fetch_retries: FetchRetries,
 
     // positional args
     /// Destination device
+    ///
+    /// Path to the device node for the destination disk.  The beginning of
+    /// the device will be overwritten without further confirmation.
     #[structopt(required_unless = "config-file")]
     pub dest_device: Option<String>,
 }

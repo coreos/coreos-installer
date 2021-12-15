@@ -11,29 +11,29 @@ nav_order: 5
 
 # coreos-installer pxe ignition wrap
 
-## Description
-
+```
 Wrap an Ignition config in an initrd image
 
-## Usage
+USAGE:
+    coreos-installer pxe ignition wrap
 
-**coreos-installer pxe ignition wrap**
-
-## Options
-
-| **--ignition-file**, **-i** *path* | Ignition config to wrap [default: stdin] |
-| **--output**, **-o** *path* | Write to a file instead of stdout |
+OPTIONS:
+    -i, --ignition-file <path>    Ignition config to wrap [default: stdin]
+    -o, --output <path>           Write to a file instead of stdout
+    -h, --help                    Prints help information
+```
 
 # coreos-installer pxe ignition unwrap
 
-## Description
-
+```
 Show the wrapped Ignition config in an initrd image
 
-## Usage
+USAGE:
+    coreos-installer pxe ignition unwrap [initrd]
 
-**coreos-installer pxe ignition unwrap** *initrd*
+OPTIONS:
+    -h, --help    Prints help information
 
-## Arguments
-
-| **initrd** | initrd image |
+ARGS:
+    <initrd>    initrd image [default: stdin]
+```

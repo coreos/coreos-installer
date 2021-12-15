@@ -11,147 +11,134 @@ nav_order: 4
 
 # coreos-installer iso ignition embed
 
-## Description
-
+```
 Embed an Ignition config in an ISO image
 
-## Usage
+USAGE:
+    coreos-installer iso ignition embed [OPTIONS] <ISO>
 
-**coreos-installer iso ignition embed** [*options*] *ISO*
+OPTIONS:
+    -f, --force                   Overwrite an existing Ignition config
+    -i, --ignition-file <path>    Ignition config to embed [default: stdin]
+    -o, --output <path>           Write ISO to a new output file
+    -h, --help                    Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
-
-## Options
-
-| **--force**, **-f** | Overwrite an existing Ignition config |
-| **--ignition-file**, **-i** *path* | Ignition config to embed [default: stdin] |
-| **--output**, **-o** *path* | Write ISO to a new output file |
+ARGS:
+    <ISO>    ISO image
+```
 
 # coreos-installer iso ignition show
 
-## Description
-
+```
 Show the embedded Ignition config from an ISO image
 
-## Usage
+USAGE:
+    coreos-installer iso ignition show <ISO>
 
-**coreos-installer iso ignition show** *ISO*
+OPTIONS:
+    -h, --help    Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
+ARGS:
+    <ISO>    ISO image
+```
 
 # coreos-installer iso ignition remove
 
-## Description
-
+```
 Remove an existing embedded Ignition config from an ISO image
 
-## Usage
+USAGE:
+    coreos-installer iso ignition remove <ISO>
 
-**coreos-installer iso ignition remove** *ISO*
+OPTIONS:
+    -o, --output <path>    Write ISO to a new output file
+    -h, --help             Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
-
-## Options
-
-| **--output**, **-o** *path* | Copy to a new file, instead of modifying in place |
+ARGS:
+    <ISO>    ISO image
+```
 
 # coreos-installer iso kargs modify
 
-## Description
-
+```
 Modify kernel args in an ISO image
 
-## Usage
+USAGE:
+    coreos-installer iso kargs modify <ISO>
 
-**coreos-installer iso kargs modify** *ISO*
+OPTIONS:
+    -a, --append <KARG>...                   Kernel argument to append
+    -d, --delete <KARG>...                   Kernel argument to delete
+    -r, --replace <KARG=OLDVAL=NEWVAL>...    Kernel argument to replace
+    -o, --output <PATH>                      Write ISO to a new output file
+    -h, --help                               Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
-
-## Options
-
-| **--append**, **-a** *KARG...* | Kernel argument to append |
-| **--delete**, **-d** *KARG...* | Kernel argument to delete |
-| **--replace**, **-r** *KARG=OLDVAL=NEWVAL...* | Kernel argument to replace |
-| **--output**, **-o** *path* | Write ISO to a new output file |
+ARGS:
+    <ISO>    ISO image
+```
 
 # coreos-installer iso kargs reset
 
-## Description
-
+```
 Reset kernel args in an ISO image to defaults
 
-## Usage
+USAGE:
+    coreos-installer iso kargs reset <ISO>
 
-**coreos-installer iso kargs reset** *ISO*
+OPTIONS:
+    -o, --output <PATH>    Write ISO to a new output file
+    -h, --help             Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
-
-## Options
-
-| **--output**, **-o** *path* | Write ISO to a new output file |
+ARGS:
+    <ISO>    ISO image
+```
 
 # coreos-installer iso kargs show
 
-## Description
-
+```
 Show kernel args from an ISO image
 
-## Usage
+USAGE:
+    coreos-installer iso kargs show [OPTIONS] <ISO>
 
-**coreos-installer iso kargs show** *ISO*
+OPTIONS:
+    -d, --default    Show default kernel args
+    -h, --help       Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
-
-## Options
-
-| **--default**, **-d** | Show default kernel args |
+ARGS:
+    <ISO>    ISO image
+```
 
 # coreos-installer iso extract pxe
 
-## Description
-
+```
 Extract PXE files from an ISO image
 
-## Usage
+USAGE:
+    coreos-installer iso extract pxe <ISO>
 
-**coreos-installer iso extract pxe** [*options*] *ISO*
+OPTIONS:
+    -o, --output-dir <PATH>    Output directory [default: .]
+    -h, --help                 Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
-
-## Options
-
-| **--output-dir**, **-o** | Output directory [default: .] |
+ARGS:
+    <ISO>    ISO image
+```
 
 # coreos-installer iso extract minimal-iso
 
-## Description
-
+```
 Extract a minimal ISO from a CoreOS live ISO image
 
-## Usage
+USAGE:
+    coreos-installer iso extract minimal-iso <ISO> [OUTPUT_ISO]
 
-**coreos-installer iso extract pxe** [*options*] *ISO* *[OUTPUT_ISO]*
+OPTIONS:
+        --output-rootfs <PATH>    Extract rootfs image as well
+        --rootfs-url <URL>        Inject rootfs URL karg into minimal ISO
+    -h, --help                    Prints help information
 
-## Arguments
-
-| **ISO** | ISO image |
-| **OUTPUT_ISO** | Minimal ISO output file [default: stdout] |
-
-## Options
-
-| **--output-rootfs** | Extract rootfs image as well |
-| **--rootfs-url** *URL* | Inject rootfs URL kernel argument into minimal ISO |
+ARGS:
+    <ISO>           ISO image
+    <OUTPUT_ISO>    Minimal ISO output file [default: -]
+```

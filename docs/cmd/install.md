@@ -5,87 +5,112 @@ nav_order: 1
 
 # coreos-installer install
 
-## Description
-
+```
 Install Fedora CoreOS or RHEL CoreOS
 
-## Usage
+USAGE:
+    coreos-installer install [OPTIONS] <dest-device>
 
-**coreos-installer install** [*options*] *device*
+OPTIONS:
+    -c, --config-file <path>...
+            YAML config file with install options
 
-## Arguments
+            Load additional config options from the specified YAML config file. Later config
+            files override earlier ones, and command-line options override config files.
 
-| **device** | Destination device |
+            Config file keys are long option names without the leading "--". Values are strings
+            for non-repeatable options, arrays of strings for repeatable options, and "true"
+            for flags.  The destination device can be specified with the "dest-device" key.
+    -s, --stream <name>
+            Fedora CoreOS stream
 
-## Options
+            The name of the Fedora CoreOS stream to install, such as "stable", "testing", or
+            "next".
+    -u, --image-url <URL>
+            Manually specify the image URL
 
-| **--config-file**, **-c** *path* | YAML config file with install options |
-| **--stream**, **-s** *name* | Fedora CoreOS stream |
-| **--image-url**, **-u** *URL* | Manually specify the image URL |
-| **--image-file**, **-f** *path* | Manually specify a local image file |
-| **--ignition-file**, **-i** *path* | Embed an Ignition config from a file |
-| **--ignition-url**, **-I** *URL* | Embed an Ignition config from a URL |
-| **--ignition-hash** *digest* | Digest (type-value) of the Ignition config |
-| **--platform**, **-p** *name* | Override the Ignition platform ID |
-| **--append-karg** *arg1,arg2,...* | Append default kernel arg |
-| **--delete-karg** *arg1,arg2,...* | Delete default kernel arg |
-| **--copy-network**, **-n** | Copy network config from install environment |
-| **--network-dir** *path* | For use with **-n** [default: /etc/NetworkManager/system-connections/] |
-| **--save-partlabel** *lx,...* | Save partitions with this label glob |
-| **--save-partindex** *id,...* | Save partitions with this number or range |
-| **--offline** | Force offline installation |
-| **--insecure** | Skip signature verification |
-| **--insecure-ignition** | Allow Ignition URL without HTTPS or hash |
-| **--stream-base-url** *URL* | Base URL for Fedora CoreOS stream metadata |
-| **--architecture**, **-a** *name* | Target CPU architecture [default: x86_64] |
-| **--preserve-on-error** | Don't clear partition table on error |
-| **--fetch-retries** *N* | Fetch retries, or string "infinite" |
+    -f, --image-file <path>
+            Manually specify a local image file
 
-## Config file format
+    -i, --ignition-file <path>
+            Embed an Ignition config from a file
 
-Config files specified by `--config-file` are [YAML](https://yaml.org/) documents containing directives with the same names and semantics as command-line arguments.  Each specified config file is parsed in order, and other command-line arguments are parsed afterward.
+    -I, --ignition-url <URL>
+            Embed an Ignition config from a URL
 
-All parameters are optional.
+            Immediately fetch the Ignition config from the URL and embed it in the installed
+            system.
+        --ignition-hash <digest>
+            Digest (type-value) of the Ignition config
 
-```yaml
-# Fedora CoreOS stream
-stream: name
-# Manually specify the image URL
-image-url: URL
-# Manually specify a local image file
-image-file: path
-# Embed an Ignition config from a file
-ignition-file: path
-# Embed an Ignition config from a URL
-ignition-url: URL
-# Digest (type-value) of the Ignition config
-ignition-hash: digest
-# Override the Ignition platform ID
-platform: name
-# Append default kernel arguments
-append-karg: [arg1, arg2]
-# Delete default kernel arguments
-delete-karg: [arg1, arg2]
-# Copy network config from install environment
-copy-network: true
-# Source directory for copy-network
-network-dir: path
-# Save partitions with this label glob
-save-partlabel: [glob, glob]
-# Save partitions with this number or range
-save-partindex: [id-or-range, id-or-range]
-# Force offline installation
-offline: true
-# Skip signature verification
-insecure: true
-# Allow Ignition URL without HTTPS or hash
-insecure-ignition: true
-# Base URL for Fedora CoreOS stream metadata
-stream-base-url: URL
-# Target CPU architecture
-architecture: name
-# Don't clear partition table on error
-preserve-on-error: true
-# Fetch retries, or string "infinite"
-fetch-retries: N
+            Verify that the Ignition config matches the specified digest, formatted as
+            <type>-<hexvalue>.  <type> can be sha256 or sha512.
+    -a, --architecture <name>
+            Target CPU architecture
+
+            Create an install disk for a different CPU architecture than the host. [default:
+            x86_64]
+    -p, --platform <name>
+            Override the Ignition platform ID
+
+            Install a system that will run on the specified cloud or virtualization platform,
+            such as "vmware".
+        --append-karg <arg>...
+            Append default kernel arg
+
+            Add a kernel argument to the installed system.
+        --delete-karg <arg>...
+            Delete default kernel arg
+
+            Delete a default kernel argument from the installed system.
+    -n, --copy-network
+            Copy network config from install environment
+
+            Copy NetworkManager keyfiles from the install environment to the installed system.
+        --network-dir <path>
+            For use with -n
+
+            Specify the path to NetworkManager keyfiles to be copied with --copy-network.
+            [default: /etc/NetworkManager/system-connections/]
+        --save-partlabel <lx>...
+            Save partitions with this label glob
+
+        --save-partindex <id>...
+            Save partitions with this number or range
+
+        --offline
+            Force offline installation
+
+        --insecure
+            Skip signature verification
+
+        --insecure-ignition
+            Allow Ignition URL without HTTPS or hash
+
+        --stream-base-url <URL>
+            Base URL for CoreOS stream metadata
+
+            Override the base URL for fetching CoreOS stream metadata. The default is
+            "https://builds.coreos.fedoraproject.org/streams/".
+        --preserve-on-error
+            Don't clear partition table on error
+
+            If installation fails, coreos-installer normally clears the destination's partition
+            table to prevent booting from invalid boot media.  Skip clearing the partition
+            table as a debugging aid.
+        --fetch-retries <N>
+            Fetch retries, or "infinite"
+
+            Number of times to retry network fetches, or the string "infinite" to retry
+            indefinitely. [default: 0]
+    -h, --help
+            Prints help information
+
+
+ARGS:
+    <dest-device>
+            Destination device
+
+            Path to the device node for the destination disk.  The beginning of the device will
+            be overwritten without further confirmation.
 ```
