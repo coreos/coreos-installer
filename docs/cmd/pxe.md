@@ -9,6 +9,22 @@ nav_order: 5
 1. TOC
 {:toc}
 
+# coreos-installer pxe customize
+
+```
+Create a custom live PXE boot config
+
+USAGE:
+    coreos-installer pxe customize <path> --output <path>
+
+OPTIONS:
+    -o, --output <path>    Output file
+    -h, --help             Prints help information
+
+ARGS:
+    <path>    CoreOS live initramfs image
+```
+
 # coreos-installer pxe ignition wrap
 
 ```

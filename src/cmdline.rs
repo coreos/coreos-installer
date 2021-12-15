@@ -147,6 +147,8 @@ pub enum OsmetCmd {
 
 #[derive(Debug, StructOpt)]
 pub enum PxeCmd {
+    /// Create a custom live PXE boot config
+    Customize(PxeCustomizeConfig),
     /// Commands to manage a live PXE Ignition config
     Ignition(PxeIgnitionCmd),
     /// Commands to manage live PXE network settings
@@ -726,6 +728,16 @@ pub struct OsmetFiemapConfig {
     /// File to map
     #[structopt(value_name = "PATH")]
     pub file: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct PxeCustomizeConfig {
+    /// Output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: String,
+    /// CoreOS live initramfs image
+    #[structopt(value_name = "path")]
+    pub input: String,
 }
 
 #[derive(Debug, StructOpt)]

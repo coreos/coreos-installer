@@ -58,6 +58,7 @@ fn main() -> Result<()> {
             OsmetCmd::Unpack(c) => osmet::osmet_unpack(c),
         },
         Cmd::Pxe(c) => match c {
+            PxeCmd::Customize(c) => live::pxe_customize(c),
             PxeCmd::Ignition(c) => match c {
                 PxeIgnitionCmd::Wrap(c) => live::pxe_ignition_wrap(c),
                 PxeIgnitionCmd::Unwrap(c) => live::pxe_ignition_unwrap(c),

@@ -33,6 +33,7 @@ use crate::miniso;
 
 const INITRD_IGNITION_PATH: &str = "config.ign";
 const INITRD_NETWORK_DIR: &str = "etc/coreos-firstboot-network";
+const INITRD_LIVE_STAMP_PATH: &str = "etc/coreos-live-initramfs";
 const COREOS_INITRD_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_INITRD_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
@@ -360,6 +361,85 @@ pub fn iso_reset(config: IsoResetConfig) -> Result<()> {
     iso.set_kargs(&iso.kargs_default()?.to_string())?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
+}
+
+pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
+    // open input and set up output
+    let mut input = BufReader::with_capacity(
+        BUFFER_SIZE,
+        OpenOptions::new()
+            .read(true)
+            .open(&config.input)
+            .with_context(|| format!("opening {}", &config.input))?,
+    );
+    let mut tempfile = match &*config.output {
+        "-" => {
+            verify_stdout_not_tty()?;
+            None
+        }
+        path => {
+            let dir = Path::new(path)
+                .parent()
+                .with_context(|| format!("no parent directory of {}", path))?;
+            let tempfile = tempfile::Builder::new()
+                .prefix(".coreos-installer-temp-")
+                .tempfile_in(dir)
+                .context("creating temporary file")?;
+            Some(tempfile)
+        }
+    };
+
+    // copy and check base initrd
+    let filter = GlobMatcher::new(&[
+        INITRD_LIVE_STAMP_PATH,
+        INITRD_IGNITION_PATH,
+        &format!("{}/*", INITRD_NETWORK_DIR),
+    ])
+    .unwrap();
+    let base_initrd = match &*config.output {
+        "-" => {
+            Initrd::from_reader_filtered(TeeReader::new(&mut input, io::stdout().lock()), &filter)
+                .context("reading/copying input initrd")?
+        }
+        _ => Initrd::from_reader_filtered(
+            TeeReader::new(&mut input, tempfile.as_mut().unwrap()),
+            &filter,
+        )
+        .context("reading/copying input initrd")?,
+    };
+    if base_initrd.get(INITRD_LIVE_STAMP_PATH).is_none() {
+        bail!("not a CoreOS live initramfs image");
+    }
+    if base_initrd.get(INITRD_IGNITION_PATH).is_some()
+        || !base_initrd.find(&INITRD_NETWORK_GLOB).is_empty()
+    {
+        bail!("input is already customized");
+    }
+
+    let ignition = Ignition::default();
+
+    let mut initrd = Initrd::default();
+    initrd.add(INITRD_IGNITION_PATH, ignition.to_bytes()?);
+
+    // append customizations to output
+    let do_write = |writer: &mut dyn Write| -> Result<()> {
+        let mut buf = BufWriter::with_capacity(BUFFER_SIZE, writer);
+        buf.write_all(&initrd.to_bytes()?)
+            .context("writing initrd")?;
+        buf.flush().context("flushing initrd")
+    };
+    match &*config.output {
+        "-" => do_write(&mut io::stdout().lock()),
+        path => {
+            let mut tempfile = tempfile.unwrap();
+            do_write(tempfile.as_file_mut())?;
+            tempfile
+                .persist_noclobber(&path)
+                .map_err(|e| e.error)
+                .with_context(|| format!("persisting output file to {}", path))?;
+            Ok(())
+        }
+    }
 }
 
 // output_path should be None if not outputting, or Some(output_path_argument)

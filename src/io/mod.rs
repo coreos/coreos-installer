@@ -22,6 +22,7 @@ mod hash;
 mod ignition;
 mod initrd;
 mod limit;
+mod tee;
 mod verify;
 mod xz;
 
@@ -31,6 +32,7 @@ pub use self::hash::*;
 pub use self::ignition::*;
 pub use self::initrd::*;
 pub use self::limit::*;
+pub use self::tee::*;
 pub use self::verify::*;
 pub use self::xz::*;
 
