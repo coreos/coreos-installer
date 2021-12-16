@@ -1,0 +1,22 @@
+Generate new fixtures with cosa buildextend-live --fixture.  Run it, rename
+the ISO, compress with `xz -9`, and check the compressed size.  If the size
+is unreasonable, buildextend-live may need to be fixed.
+
+embed-areas-2020-09.iso.xz
+    coreiso+ header pointing to ignition.img embed area
+
+embed-areas-2021-01.iso.xz
+    coreiso+ header pointing to ignition.img embed area
+    coreKargs header pointing to kargs areas and defaults in /.cmdline
+
+embed-areas-2021-09.iso.xz
+    coreiso+ header pointing to ignition.img embed area
+    coreKargs header pointing to kargs areas and defaults in /.cmdline
+    kargs.json pointing to kargs areas and embedding defaults
+
+embed-areas-2021-12.iso.xz
+    coreiso+ header pointing to ignition.img embed area
+    coreKargs header pointing to kargs areas and defaults in /.cmdline
+    kargs.json pointing to kargs areas and embedding defaults
+    miniso.dat version 1
+    features.json: installer-config, live-initrd-network
