@@ -1,0 +1,19 @@
+{
+  "ignition": {
+    "version": "3.3.0"
+  },
+  "systemd": {
+    "units": [
+      {
+        "contents": "[Unit]\nDescription=Dest-2 Ignition Applied\nBefore=multi-user.target\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/bin/echo @applied-dest-2-ign@\nStandardOutput=tty\n\n[Install]\nRequiredBy=multi-user.target\n",
+        "enabled": true,
+        "name": "dest-2-ignition-applied.service"
+      },
+      {
+        "contents": "[Unit]\nDescription=Shut Down Dest System\nAfter=multi-user.target\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/usr/bin/systemctl poweroff\n\n[Install]\nRequiredBy=multi-user.target\n",
+        "enabled": true,
+        "name": "terminate-multi-user.service"
+      }
+    ]
+  }
+}

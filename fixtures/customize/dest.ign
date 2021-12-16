@@ -1,0 +1,14 @@
+{
+  "ignition": {
+    "version": "3.3.0"
+  },
+  "systemd": {
+    "units": [
+      {
+        "contents": "[Unit]\nDescription=Dest Ignition Applied\nBefore=multi-user.target\nConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection\nConditionKernelCommandLine=install-config-karg-1\nConditionKernelCommandLine=install-config-karg-2\nConditionKernelCommandLine=dest-karg\nConditionKernelCommandLine=!ignition.platform.id=metal\nConditionKernelCommandLine=ignition.platform.id=qemu\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/bin/echo @applied-dest-ign@\nStandardOutput=tty\n\n[Install]\nRequiredBy=multi-user.target\n",
+        "enabled": true,
+        "name": "dest-ignition-applied.service"
+      }
+    ]
+  }
+}

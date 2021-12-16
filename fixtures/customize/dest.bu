@@ -1,0 +1,25 @@
+variant: fcos
+version: 1.4.0
+systemd:
+  units:
+    - name: dest-ignition-applied.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Dest Ignition Applied
+        Before=multi-user.target
+        ConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection
+        ConditionKernelCommandLine=install-config-karg-1
+        ConditionKernelCommandLine=install-config-karg-2
+        ConditionKernelCommandLine=dest-karg
+        ConditionKernelCommandLine=!ignition.platform.id=metal
+        ConditionKernelCommandLine=ignition.platform.id=qemu
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/echo @applied-dest-ign@
+        StandardOutput=tty
+
+        [Install]
+        RequiredBy=multi-user.target

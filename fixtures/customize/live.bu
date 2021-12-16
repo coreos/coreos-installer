@@ -1,0 +1,38 @@
+variant: fcos
+version: 1.4.0
+systemd:
+  units:
+    - name: live-ignition-applied.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Live Ignition Applied
+        Before=coreos-installer.target
+        Before=multi-user.target
+        ConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/echo @applied-live-ign@
+        StandardOutput=tty
+
+        [Install]
+        RequiredBy=coreos-installer.target
+        RequiredBy=multi-user.target
+    - name: terminate-multi-user.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Shut Down Live System
+        After=multi-user.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/echo @did-not-install@
+        ExecStart=/usr/bin/systemctl poweroff
+        StandardOutput=tty
+
+        [Install]
+        RequiredBy=multi-user.target

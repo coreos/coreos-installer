@@ -1,0 +1,14 @@
+{
+  "ignition": {
+    "version": "3.3.0"
+  },
+  "systemd": {
+    "units": [
+      {
+        "contents": "[Unit]\nDescription=Live-2 Ignition Applied\nBefore=coreos-installer.target\nBefore=multi-user.target\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/bin/echo @applied-live-2-ign@\nStandardOutput=tty\n\n[Install]\nRequiredBy=coreos-installer.target\nRequiredBy=multi-user.target\n",
+        "enabled": true,
+        "name": "live-2-ignition-applied.service"
+      }
+    ]
+  }
+}

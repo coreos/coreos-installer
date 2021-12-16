@@ -1,0 +1,19 @@
+{
+  "ignition": {
+    "version": "3.3.0"
+  },
+  "systemd": {
+    "units": [
+      {
+        "contents": "[Unit]\nDescription=Live Ignition Applied\nBefore=coreos-installer.target\nBefore=multi-user.target\nConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/bin/echo @applied-live-ign@\nStandardOutput=tty\n\n[Install]\nRequiredBy=coreos-installer.target\nRequiredBy=multi-user.target\n",
+        "enabled": true,
+        "name": "live-ignition-applied.service"
+      },
+      {
+        "contents": "[Unit]\nDescription=Shut Down Live System\nAfter=multi-user.target\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/bin/echo @did-not-install@\nExecStart=/usr/bin/systemctl poweroff\nStandardOutput=tty\n\n[Install]\nRequiredBy=multi-user.target\n",
+        "enabled": true,
+        "name": "terminate-multi-user.service"
+      }
+    ]
+  }
+}

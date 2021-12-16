@@ -1,0 +1,6 @@
+[connection]
+id=installer-test
+type=ethernet
+
+[ipv4]
+method=auto
