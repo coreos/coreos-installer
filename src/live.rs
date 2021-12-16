@@ -142,8 +142,13 @@ pub fn iso_ignition_remove(config: IsoIgnitionRemoveConfig) -> Result<()> {
 
 pub fn iso_network_embed(config: IsoNetworkEmbedConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
-    let mut iso = IsoConfig::for_file(&mut iso_file)?;
+    let mut iso_fs = IsoFs::from_file(iso_file.try_clone().context("cloning file")?)
+        .context("parsing ISO9660 image")?;
+    let mut iso = IsoConfig::for_iso(&mut iso_fs)?;
 
+    if !OsFeatures::for_iso(&mut iso_fs)?.live_initrd_network {
+        bail!("This OS image does not support customizing network settings.");
+    }
     if !config.force && iso.have_network() {
         bail!("This ISO image already has embedded network settings; use -f to force.");
     }
@@ -347,19 +352,7 @@ pub fn iso_customize(config: IsoCustomizeConfig) -> Result<()> {
         bail!("This ISO image is already customized; use -f to force.");
     }
 
-    // read OS features
-    let features = match iso_fs.get_path(COREOS_ISO_FEATURES_PATH) {
-        Ok(record) => serde_json::from_reader(
-            iso_fs
-                .read_file(&record.try_into_file()?)
-                .context("reading OS features")?,
-        )
-        .context("parsing OS features")?,
-        Err(e) if e.is::<iso9660::NotFound>() => OsFeatures::default(),
-        Err(e) => return Err(e).context("looking up OS features"),
-    };
-
-    let live = LiveInitrd::from_common(&config.common, features)?;
+    let live = LiveInitrd::from_common(&config.common, OsFeatures::for_iso(&mut iso_fs)?)?;
     *iso.initrd_mut() = live.into_initrd()?;
 
     let kargs = KargsEditor::new()
@@ -1028,6 +1021,20 @@ struct OsFeatures {
     installer_config: bool,
     /// Live initrd reads NM keyfiles from /etc/coreos-firstboot-network
     live_initrd_network: bool,
+}
+
+impl OsFeatures {
+    fn for_iso(iso: &mut IsoFs) -> Result<Self> {
+        match iso.get_path(COREOS_ISO_FEATURES_PATH) {
+            Ok(record) => serde_json::from_reader(
+                iso.read_file(&record.try_into_file()?)
+                    .context("reading OS features")?,
+            )
+            .context("parsing OS features"),
+            Err(e) if e.is::<iso9660::NotFound>() => Ok(Self::default()),
+            Err(e) => Err(e).context("looking up OS features"),
+        }
+    }
 }
 
 #[derive(Default)]

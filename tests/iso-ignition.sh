@@ -98,24 +98,27 @@ rm "${out_iso}"
 # Check that Ignition configs work independently of network configs
 echo "foo=baz" > one.nmconnection
 echo "bar=baz" > two.nmconnection
-coreos-installer iso network embed -k one.nmconnection -k two.nmconnection "${iso}"
-(coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grep -q "No embedded Ignition config"
-coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -o "${out_iso}"
-coreos-installer iso ignition show "${out_iso}" | cmp - <(echo "${config}")
-coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
-coreos-installer iso network extract "${out_iso}" | grep -q "bar=baz"
-coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -f
-coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
-rm "${out_iso}"
-coreos-installer iso ignition remove "${iso}" -o "${out_iso}"
-coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
-coreos-installer iso ignition remove "${iso}"
-coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
-(coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grep -q "No embedded Ignition config"
-coreos-installer iso network remove "${iso}"
-# verify we haven't written an empty cpio archive
-dd if="${iso}" skip="${offset}" count="${length}" bs=1 status=none | cmp -n "${length}" - /dev/zero
-rm "${out_iso}"
+if coreos-installer iso network embed -k one.nmconnection -k two.nmconnection "${iso}"; then
+    (coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grep -q "No embedded Ignition config"
+    coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -o "${out_iso}"
+    coreos-installer iso ignition show "${out_iso}" | cmp - <(echo "${config}")
+    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
+    coreos-installer iso network extract "${out_iso}" | grep -q "bar=baz"
+    coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -f
+    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
+    rm "${out_iso}"
+    coreos-installer iso ignition remove "${iso}" -o "${out_iso}"
+    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
+    coreos-installer iso ignition remove "${iso}"
+    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
+    (coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grep -q "No embedded Ignition config"
+    coreos-installer iso network remove "${iso}"
+    # verify we haven't written an empty cpio archive
+    dd if="${iso}" skip="${offset}" count="${length}" bs=1 status=none | cmp -n "${length}" - /dev/zero
+    rm "${out_iso}"
+else
+    echo "Failed to embed network settings; skipping"
+fi
 
 # Clobber the **kargs** header magic and make sure we still succeed
 dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
