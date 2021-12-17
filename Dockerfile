@@ -3,6 +3,8 @@ RUN dnf install -y cargo openssl-devel xz-devel
 WORKDIR /build
 COPY Cargo.* ./
 COPY src src/
+# Disable LTO to avoid OOM in Quay
+RUN sed -i 's/^lto = true$/lto = false/' Cargo.toml
 RUN cargo build --release
 
 FROM registry.fedoraproject.org/fedora:35
