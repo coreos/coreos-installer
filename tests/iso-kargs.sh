@@ -119,24 +119,5 @@ if ! echo -en "${expected_args}\n${filler}" | cmp -s <(dd if=${iso} skip=${offse
     fatal "Failed to manually round-trip kargs"
 fi
 
-# Clean up
-coreos-installer iso kargs reset "${iso}"
-
-# Make sure we fail with no embed area
-dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
-# Rename KARGS.JSO to XARGS.JSO
-filename_offset=$((grep --byte-offset --only-matching --text 'KARGS.JSO;1' "${iso}" ||:) | cut -f1 -d:)
-if [ -n "${filename_offset}" ]; then
-    echo -n "X" | dd of="${iso}" seek="${filename_offset}" bs=1 conv=notrunc status=none
-fi
-(coreos-installer iso kargs modify -a foobar "${iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
-(coreos-installer iso kargs modify -a foobar "${iso}" -o "${out_iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
-(coreos-installer iso kargs modify -a foobar "${iso}" -o - 2>&1 ||:) | grep -q "No karg embed areas found"
-(coreos-installer iso kargs show "${iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
-(coreos-installer iso kargs show --default "${iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
-(coreos-installer iso kargs reset "${iso}" -o - 2>&1 ||:) | grep -q "No karg embed areas found"
-(coreos-installer iso kargs reset "${iso}" -o "${out_iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
-(coreos-installer iso kargs reset "${iso}" 2>&1 ||:) | grep -q "No karg embed areas found"
-
 # Done
 echo "Success."

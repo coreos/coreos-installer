@@ -64,5 +64,6 @@ cosaPod(buildroot: true, runAsUser: 0) {
         // just pass the build dir; these tests use multiple live artifacts
         shwrap("tests/iso-extract-pxe.sh /srv/fcos/builds/latest/x86_64")
         shwrap("tests/customize.sh /srv/fcos/builds/latest/x86_64")
+        shwrap("tests/unsupported.sh")
     }
 }
