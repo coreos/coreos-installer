@@ -3,6 +3,8 @@ RUN dnf install -y cargo openssl-devel xz-devel
 WORKDIR /build
 COPY Cargo.* ./
 COPY src src/
+# Debug symbols are nice but they're not 100+ MB of nice
+RUN sed -i 's/^debug = true$/debug = false/' Cargo.toml
 RUN cargo build --release
 
 FROM registry.fedoraproject.org/fedora:35
