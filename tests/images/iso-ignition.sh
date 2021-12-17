@@ -83,7 +83,9 @@ fi
 # Test an overlarge Ignition config.  Get some random data from /dev/urandom
 # to ensure it's sufficiently incompressible.
 embed_size=$(coreos-installer iso ignition show --header "${iso}" | jq .length)
+set +x
 random=$(dd if=/dev/urandom bs=1 count=${embed_size} status=none | base64 -w0)
+set -x
 large_config() {
     # too large for sed argument list
     cat <<EOF
