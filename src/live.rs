@@ -347,7 +347,9 @@ pub fn iso_customize(config: IsoCustomizeConfig) -> Result<()> {
     let mut iso = IsoConfig::for_iso(&mut iso_fs)?;
 
     if !config.force
-        && (iso.have_ignition() || iso.have_network() || iso.kargs()? != iso.kargs_default()?)
+        && (iso.have_ignition()
+            || iso.have_network()
+            || (iso.kargs_supported() && iso.kargs()? != iso.kargs_default()?))
     {
         bail!("This ISO image is already customized; use -f to force.");
     }
@@ -355,12 +357,24 @@ pub fn iso_customize(config: IsoCustomizeConfig) -> Result<()> {
     let live = LiveInitrd::from_common(&config.common, OsFeatures::for_iso(&mut iso_fs)?)?;
     *iso.initrd_mut() = live.into_initrd()?;
 
-    let kargs = KargsEditor::new()
-        .append(&config.live_karg_append)
-        .replace(&config.live_karg_replace)
-        .delete(&config.live_karg_delete)
-        .apply_to(iso.kargs_default()?)?;
-    iso.set_kargs(&kargs)?;
+    if [
+        &config.live_karg_append,
+        &config.live_karg_replace,
+        &config.live_karg_delete,
+    ]
+    .iter()
+    .any(|v| !v.is_empty())
+    {
+        if !iso.kargs_supported() {
+            bail!("This OS image does not support customizing live kernel arguments.");
+        }
+        let kargs = KargsEditor::new()
+            .append(&config.live_karg_append)
+            .replace(&config.live_karg_replace)
+            .delete(&config.live_karg_delete)
+            .apply_to(iso.kargs_default()?)?;
+        iso.set_kargs(&kargs)?;
+    }
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -370,7 +384,9 @@ pub fn iso_reset(config: IsoResetConfig) -> Result<()> {
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
     *iso.initrd_mut() = Initrd::default();
-    iso.set_kargs(&iso.kargs_default()?.to_string())?;
+    if iso.kargs_supported() {
+        iso.set_kargs(&iso.kargs_default()?.to_string())?;
+    };
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -572,6 +588,10 @@ impl IsoConfig {
 
     pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
         self.unwrap_kargs_mut()?.set_kargs(kargs)
+    }
+
+    pub fn kargs_supported(&self) -> bool {
+        self.kargs.is_some()
     }
 
     fn unwrap_kargs(&self) -> Result<&KargEmbedAreas> {

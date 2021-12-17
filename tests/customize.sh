@@ -201,6 +201,13 @@ xz -dc "${rootdir}/fixtures/iso/embed-areas-2021-09.iso.xz" > old.iso
 (coreos-installer iso customize old.iso --dest-device /dev/loop0 2>&1 ||:) |
     grep -q "does not support customizing installer configuration"
 coreos-installer iso customize old.iso \
+    --pre-install "${fixtures}/pre-install-1" \
+    --live-karg-append "foo"
+xz -dc "${rootdir}/fixtures/iso/embed-areas-2020-09.iso.xz" > old.iso
+(coreos-installer iso customize old.iso \
+    --live-karg-append "foo" 2>&1 ||:) |
+    grep -q "does not support customizing live kernel arguments"
+coreos-installer iso customize old.iso \
     --pre-install "${fixtures}/pre-install-1"
 # no-op
 coreos-installer iso customize src-iso -o iso
