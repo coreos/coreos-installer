@@ -25,6 +25,7 @@ fn main() -> Result<()> {
         Cmd::Install(c) => install::install(c),
         Cmd::ListStream(c) => source::list_stream(c),
         Cmd::Iso(c) => match c {
+            IsoCmd::Customize(c) => live::iso_customize(c),
             IsoCmd::Embed(c) => live::iso_embed(c),
             IsoCmd::Show(c) => live::iso_show(c),
             IsoCmd::Remove(c) => live::iso_remove(c),
@@ -49,6 +50,7 @@ fn main() -> Result<()> {
                 IsoExtractCmd::MinimalIso(c) => live::iso_extract_minimal_iso(c),
                 IsoExtractCmd::PackMinimalIso(c) => live::iso_pack_minimal_iso(c),
             },
+            IsoCmd::Reset(c) => live::iso_reset(c),
         },
         Cmd::Osmet(c) => match c {
             OsmetCmd::Fiemap(c) => osmet::osmet_fiemap(c),
@@ -56,6 +58,7 @@ fn main() -> Result<()> {
             OsmetCmd::Unpack(c) => osmet::osmet_unpack(c),
         },
         Cmd::Pxe(c) => match c {
+            PxeCmd::Customize(c) => live::pxe_customize(c),
             PxeCmd::Ignition(c) => match c {
                 PxeIgnitionCmd::Wrap(c) => live::pxe_ignition_wrap(c),
                 PxeIgnitionCmd::Unwrap(c) => live::pxe_ignition_unwrap(c),

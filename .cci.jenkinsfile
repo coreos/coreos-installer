@@ -54,7 +54,8 @@ cosaPod(buildroot: true, runAsUser: 0) {
         shwrap("tests/iso-kargs.sh /srv/fcos/builds/latest/x86_64/*.iso")
         shwrap("tests/iso-kargs.sh fixtures/iso/embed-areas-2021-09.iso.xz")
         shwrap("tests/iso-inspect.sh /srv/fcos/builds/latest/x86_64/*.iso")
-        // just pass the build dir; this test also uses the other live artifacts
+        // just pass the build dir; these tests use multiple live artifacts
         shwrap("tests/iso-extract-pxe.sh /srv/fcos/builds/latest/x86_64")
+        shwrap("tests/customize.sh /srv/fcos/builds/latest/x86_64")
     }
 }

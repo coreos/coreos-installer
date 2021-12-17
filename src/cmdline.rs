@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// We don't care about the size of enum variants and don't want to box them
+#![allow(clippy::large_enum_variant)]
+
 use anyhow::{anyhow, Context, Error, Result};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -71,6 +74,8 @@ pub enum IsoCmd {
     // deprecated
     #[structopt(setting(AppSettings::Hidden))]
     Remove(IsoRemoveConfig),
+    /// Customize a CoreOS live ISO image
+    Customize(IsoCustomizeConfig),
     /// Embed an Ignition config in a CoreOS live ISO image
     Ignition(IsoIgnitionCmd),
     /// Embed network settings in a CoreOS live ISO image
@@ -83,6 +88,8 @@ pub enum IsoCmd {
     Inspect(IsoInspectConfig),
     /// Commands to extract files from a CoreOS live ISO image
     Extract(IsoExtractCmd),
+    /// Restore a CoreOS live ISO image to default settings
+    Reset(IsoResetConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -140,6 +147,8 @@ pub enum OsmetCmd {
 
 #[derive(Debug, StructOpt)]
 pub enum PxeCmd {
+    /// Create a custom live PXE boot config
+    Customize(PxeCustomizeConfig),
     /// Commands to manage a live PXE Ignition config
     Ignition(PxeIgnitionCmd),
     /// Commands to manage live PXE network settings
@@ -460,6 +469,114 @@ pub struct ListStreamConfig {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct CommonCustomizeConfig {
+    /// Ignition config fragment for dest sys
+    ///
+    /// Automatically run installer and merge the specified Ignition config
+    /// into the config for the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub dest_ignition: Vec<String>,
+    /// Install destination device
+    ///
+    /// Automatically run installer, installing to the specified destination
+    /// device.  The resulting boot media will overwrite the destination
+    /// device without confirmation.
+    #[structopt(long, value_name = "path")]
+    pub dest_device: Option<String>,
+    /// Destination kernel argument to append
+    ///
+    /// Automatically run installer, adding the specified kernel argument
+    /// for every boot of the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub dest_karg_append: Vec<String>,
+    /// Destination kernel argument to delete
+    ///
+    /// Automatically run installer, deleting the specified kernel argument
+    /// for every boot of the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub dest_karg_delete: Vec<String>,
+    /// NetworkManager keyfile for live & dest
+    ///
+    /// Configure networking using the specified NetworkManager keyfile.
+    /// Network settings will be applied in the live environment, including
+    /// when Ignition is run.  If installer is enabled via additional options,
+    /// network settings will also be applied in the destination system,
+    /// including when Ignition is run.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub network_keyfile: Vec<String>,
+    /// Ignition PEM CA bundle for live & dest
+    ///
+    /// Specify additional TLS certificate authorities to be trusted by
+    /// Ignition, in PEM format.  Authorities will be trusted by Ignition
+    /// in the live environment and, if installer is enabled via additional
+    /// options, in the destination system.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub ignition_ca: Vec<String>,
+    /// Script to run before installation
+    ///
+    /// If installer is run at boot, run this script before installation.
+    /// If the script fails, the live environment will stop at an emergency
+    /// shell.
+    #[structopt(long, value_name = "path")]
+    pub pre_install: Vec<String>,
+    /// Script to run after installation
+    ///
+    /// If installer is run at boot, run this script after installation.
+    /// If the script fails, the live environment will stop at an emergency
+    /// shell.
+    #[structopt(long, value_name = "path")]
+    pub post_install: Vec<String>,
+    /// Installer config file
+    ///
+    /// Automatically run coreos-installer and apply the specified installer
+    /// config file.  Config files are applied in the order that they are
+    /// specified.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub installer_config: Vec<String>,
+    /// Ignition config fragment for live env
+    ///
+    /// Merge the specified Ignition config into the config for the live
+    /// environment.
+    #[structopt(long, number_of_values = 1, value_name = "path")]
+    pub live_ignition: Vec<String>,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct IsoCustomizeConfig {
+    // Customizations
+    #[structopt(flatten)]
+    pub common: CommonCustomizeConfig,
+    /// Live kernel argument to append
+    ///
+    /// Kernel argument to append to boots of the live environment.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub live_karg_append: Vec<String>,
+    /// Live kernel argument to delete
+    ///
+    /// Kernel argument to delete from boots of the live environment.
+    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    pub live_karg_delete: Vec<String>,
+    /// Live kernel argument to replace
+    ///
+    /// Kernel argument to replace for boots of the live environment, in the
+    /// form key=old=new.  For a default argument "a=b", specifying
+    /// "--live-karg-replace a=b=c" will produce the argument "a=c".
+    #[structopt(long, number_of_values = 1, value_name = "k=o=n")]
+    pub live_karg_replace: Vec<String>,
+
+    // I/O configuration
+    /// Overwrite existing customizations
+    #[structopt(short, long)]
+    pub force: bool,
+    /// Write ISO to a new output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: Option<String>,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+}
+
+#[derive(Debug, StructOpt)]
 pub struct IsoEmbedConfig {
     /// Ignition config to embed [default: stdin]
     #[structopt(short, long, value_name = "path")]
@@ -656,6 +773,16 @@ pub struct IsoExtractPackMinimalIsoConfig {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct IsoResetConfig {
+    /// Write ISO to a new output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: Option<String>,
+    /// ISO image
+    #[structopt(value_name = "ISO")]
+    pub input: String,
+}
+
+#[derive(Debug, StructOpt)]
 pub struct OsmetPackConfig {
     /// Path to osmet file to write
     // could output to stdout if missing?
@@ -696,6 +823,21 @@ pub struct OsmetFiemapConfig {
     /// File to map
     #[structopt(value_name = "PATH")]
     pub file: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct PxeCustomizeConfig {
+    // Customizations
+    #[structopt(flatten)]
+    pub common: CommonCustomizeConfig,
+
+    // I/O configuration
+    /// Output file
+    #[structopt(short, long, value_name = "path")]
+    pub output: String,
+    /// CoreOS live initramfs image
+    #[structopt(value_name = "path")]
+    pub input: String,
 }
 
 #[derive(Debug, StructOpt)]

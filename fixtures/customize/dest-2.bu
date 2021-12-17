@@ -1,0 +1,33 @@
+variant: fcos
+version: 1.4.0
+systemd:
+  units:
+    - name: dest-2-ignition-applied.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Dest-2 Ignition Applied
+        Before=multi-user.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/echo @applied-dest-2-ign@
+        StandardOutput=tty
+
+        [Install]
+        RequiredBy=multi-user.target
+    - name: terminate-multi-user.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Shut Down Dest System
+        After=multi-user.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/usr/bin/systemctl poweroff
+
+        [Install]
+        RequiredBy=multi-user.target

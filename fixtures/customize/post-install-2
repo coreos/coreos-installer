@@ -1,0 +1,5 @@
+#!/bin/bash
+
+udevadm settle
+[ -e /dev/disk/by-label/root ] || exit 0
+echo @postinst-2@

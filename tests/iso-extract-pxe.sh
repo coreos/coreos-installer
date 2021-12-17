@@ -1,5 +1,6 @@
 #!/bin/bash
 set -xeuo pipefail
+PS4='${LINENO}: '
 
 fatal() {
     echo "$@" >&2

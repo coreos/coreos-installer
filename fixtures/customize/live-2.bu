@@ -1,0 +1,21 @@
+variant: fcos
+version: 1.4.0
+systemd:
+  units:
+    - name: live-2-ignition-applied.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Live-2 Ignition Applied
+        Before=coreos-installer.target
+        Before=multi-user.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/bin/echo @applied-live-2-ign@
+        StandardOutput=tty
+
+        [Install]
+        RequiredBy=coreos-installer.target
+        RequiredBy=multi-user.target
