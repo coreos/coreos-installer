@@ -34,7 +34,6 @@ path = "src/bin/rdcore/main.rs"
 required-features = ["rdcore"]
 
 [profile.release]
-lto = true
 # We assume we're being delivered via e.g. RPM which supports split debuginfo
 debug = true
 
