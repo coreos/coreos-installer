@@ -4,7 +4,7 @@ PS4='${LINENO}: '
 
 timeout=10m
 
-rootdir="$(realpath $(dirname $0)/..)"
+rootdir="$(realpath $(dirname $0)/../..)"
 fixtures="${rootdir}/fixtures/customize"
 
 tmpd=$(mktemp -d)

@@ -2,7 +2,7 @@
 set -xeuo pipefail
 PS4='${LINENO}: '
 
-fixtures="$(realpath $(dirname $0)/..)/fixtures"
+fixtures="$(realpath $(dirname $0)/../..)/fixtures"
 
 tmpd=$(mktemp -d)
 trap 'rm -rf "${tmpd}"' EXIT
