@@ -1418,10 +1418,8 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
     // For now, we require the full ISO to be completely vanilla. Otherwise, the hashes won't
     // match.
     let iso = IsoConfig::for_iso(&mut full_iso)?;
-    if iso.have_ignition() {
-        bail!("Cannot operate on ISO with embedded Ignition config. Reset it and try again.");
-    } else if iso.kargs()? != iso.kargs_default()? {
-        bail!("Cannot operate on ISO with non-default kargs. Reset it and try again.");
+    if !iso.initrd().is_empty() || iso.kargs()? != iso.kargs_default()? {
+        bail!("Cannot operate on ISO with embedded customizations.\nReset it with `coreos-installer iso reset` and try again.");
     }
 
     // do this early so we exit immediately if stdout is a TTY
