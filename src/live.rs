@@ -545,7 +545,7 @@ impl IsoConfig {
 
     pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
         Ok(Self {
-            initrd: InitrdEmbedArea::for_iso(iso)?,
+            initrd: InitrdEmbedArea::for_iso(iso).context("Unrecognized CoreOS ISO image.")?,
             kargs: KargEmbedAreas::for_iso(iso)?,
         })
     }
@@ -1367,7 +1367,10 @@ pub fn iso_inspect(config: IsoInspectConfig) -> Result<()> {
 
 pub fn iso_extract_pxe(config: IsoExtractPxeConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
-    let pxeboot = iso.get_path(COREOS_ISO_PXEBOOT_DIR)?.try_into_dir()?;
+    let pxeboot = iso
+        .get_path(COREOS_ISO_PXEBOOT_DIR)
+        .context("Unrecognized CoreOS ISO image.")?
+        .try_into_dir()?;
     create_dir_all(&config.output_dir)?;
 
     let base = {
@@ -1440,10 +1443,15 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
         copy_file_from_iso(&mut full_iso, &rootfs, Path::new(path))?;
     }
 
-    let miniso_data_file = full_iso
-        .get_path(COREOS_ISO_MINISO_FILE)
-        .with_context(|| format!("looking up '{}'", COREOS_ISO_MINISO_FILE))?
-        .try_into_file()?;
+    let miniso_data_file = match full_iso.get_path(COREOS_ISO_MINISO_FILE) {
+        Ok(record) => record.try_into_file()?,
+        Err(e) if e.is::<iso9660::NotFound>() => {
+            bail!("This ISO image does not support extracting a minimal ISO.")
+        }
+        Err(e) => {
+            return Err(e).with_context(|| format!("looking up '{}'", COREOS_ISO_MINISO_FILE))
+        }
+    };
 
     let data = {
         let mut f = full_iso.read_file(&miniso_data_file)?;

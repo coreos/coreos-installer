@@ -209,6 +209,10 @@ xz -dc "${rootdir}/fixtures/iso/embed-areas-2020-09.iso.xz" > old.iso
     grep -q "does not support customizing live kernel arguments"
 coreos-installer iso customize old.iso \
     --pre-install "${fixtures}/pre-install-1"
+xz -dc "${rootdir}/fixtures/iso/synthetic.iso.xz" > old.iso
+(coreos-installer iso customize old.iso \
+    --pre-install "${fixtures}/pre-install-1" 2>&1 ||:) |
+    grep -q "Unrecognized CoreOS ISO image"
 # no-op
 coreos-installer iso customize src-iso -o iso
 
