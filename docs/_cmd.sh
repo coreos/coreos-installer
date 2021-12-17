@@ -36,9 +36,9 @@ EOF
         # Drop CR characters added by `script`.
         # Drop first line with incorrectly hyphenated command name and version
         # Fix trailing whitespace
-        script -qc "stty cols 95 rows 24; ${prog} $* --help" /dev/null | \
-            tr -d '\r' | \
-            tail -n +2 | \
+        script -qc "stty cols 95 rows 24; ${prog} $* --help" /dev/null |
+            tr -d '\r' |
+            tail -n +2 |
             sed 's/[[:blank:]]*$//'
         echo '```'
     fi

@@ -4,7 +4,7 @@ PS4='${LINENO}: '
 
 timeout=10m
 
-rootdir="$(realpath $(dirname $0)/..)"
+rootdir="$(realpath $(dirname $0)/../..)"
 fixtures="${rootdir}/fixtures/customize"
 
 tmpd=$(mktemp -d)
@@ -185,23 +185,34 @@ found=$(coreos-installer iso customize src-iso -o - \
 
 # Check ISO error conditions
 (coreos-installer iso customize src-iso -o iso \
-    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) | \
+    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
     grep -q "File exists"
 (coreos-installer iso customize iso \
-    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) | \
+    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
     grep -q "already customized"
 (coreos-installer iso customize iso -o iso2 \
-    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) | \
+    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
     grep -q "already customized"
 rm iso
 xz -dc "${rootdir}/fixtures/iso/embed-areas-2021-09.iso.xz" > old.iso
 (coreos-installer iso customize old.iso \
-    --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) | \
+    --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
     grep -q "does not support customizing network settings"
-(coreos-installer iso customize old.iso --dest-device /dev/loop0 2>&1 ||:) | \
+(coreos-installer iso customize old.iso --dest-device /dev/loop0 2>&1 ||:) |
     grep -q "does not support customizing installer configuration"
 coreos-installer iso customize old.iso \
+    --pre-install "${fixtures}/pre-install-1" \
+    --live-karg-append "foo"
+xz -dc "${rootdir}/fixtures/iso/embed-areas-2020-09.iso.xz" > old.iso
+(coreos-installer iso customize old.iso \
+    --live-karg-append "foo" 2>&1 ||:) |
+    grep -q "does not support customizing live kernel arguments"
+coreos-installer iso customize old.iso \
     --pre-install "${fixtures}/pre-install-1"
+xz -dc "${rootdir}/fixtures/iso/synthetic.iso.xz" > old.iso
+(coreos-installer iso customize old.iso \
+    --pre-install "${fixtures}/pre-install-1" 2>&1 ||:) |
+    grep -q "Unrecognized CoreOS ISO image"
 # no-op
 coreos-installer iso customize src-iso -o iso
 
@@ -226,14 +237,14 @@ found=$(coreos-installer pxe customize src-initrd -o - \
 # don't re-test feature flags here, since the comprehensive tests would fail
 # if flags weren't being read correctly
 (coreos-installer pxe customize src-initrd -o initrd \
-    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) | \
+    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
     grep -q "File exists"
 (coreos-installer pxe customize initrd -o initrd2 \
-    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) | \
+    "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
     grep -q "already customized"
 rm initrd
 coreos-installer pxe ignition wrap -i /dev/null > empty-initrd
-(coreos-installer pxe customize empty-initrd -o initrd 2>&1 ||:) | \
+(coreos-installer pxe customize empty-initrd -o initrd 2>&1 ||:) |
     grep -q "not a CoreOS live initramfs image"
 # no-op
 coreos-installer pxe customize src-initrd -o initrd
@@ -241,20 +252,20 @@ coreos-installer pxe customize src-initrd -o initrd
 # Check arg restrictions
 (iso_customize \
     --pre-install "${fixtures}/pre-install-1" \
-    --pre-install "${fixtures}/pre-install-1" 2>&1 ||:) | \
+    --pre-install "${fixtures}/pre-install-1" 2>&1 ||:) |
     grep -q "already specifies path"
 (iso_customize \
     --network-keyfile "${fixtures}/installer-test.nmconnection" \
-    --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) | \
+    --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
     grep -q "already specifies keyfile"
 (iso_customize \
-    --live-ignition "${fixtures}/installer-test.nmconnection"  2>&1 ||:) | \
+    --live-ignition "${fixtures}/installer-test.nmconnection"  2>&1 ||:) |
     grep -q "parsing Ignition config"
 (iso_customize \
-    --dest-ignition "${fixtures}/installer-test.nmconnection" 2>&1 ||:) | \
+    --dest-ignition "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
     grep -q "parsing Ignition config"
 (iso_customize \
-    --installer-config "${fixtures}/installer-test.nmconnection" 2>&1 ||:) | \
+    --installer-config "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
     grep -q "parsing installer config"
 
 # Test live kargs by reading them back out of the ISO
