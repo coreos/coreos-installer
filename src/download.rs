@@ -52,7 +52,7 @@ pub fn download(config: DownloadConfig) -> Result<()> {
     if sources.is_empty() {
         bail!("no artifacts found");
     }
-    for mut source in sources.iter_mut() {
+    for source in sources.iter_mut() {
         // set up image source
         if source.signature.is_none() {
             if config.insecure {
@@ -86,7 +86,7 @@ pub fn download(config: DownloadConfig) -> Result<()> {
         // weren't asked to decompress, regardless of whether we actually
         // did.
         if let Err(err) = write_image_and_sig(
-            &mut source,
+            source,
             &path,
             &sig_path,
             decompress,

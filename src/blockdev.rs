@@ -199,7 +199,6 @@ pub trait PartTable {
 /// Device nodes for partitionable kernel devices, managed by the kernel.
 #[derive(Debug)]
 pub struct PartTableKernel {
-    path: String,
     file: File,
 }
 
@@ -209,10 +208,7 @@ impl PartTableKernel {
             .write(true)
             .open(path)
             .with_context(|| format!("opening {}", path))?;
-        Ok(Self {
-            path: path.to_string(),
-            file,
-        })
+        Ok(Self { file })
     }
 }
 
