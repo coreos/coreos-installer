@@ -801,11 +801,11 @@ pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
     Ok(devinfos.remove(0))
 }
 
-/// Rereads partition table and than returns all available filesystems
-/// rereading mitigates possble issue with outdated UUIDs on different
+/// Returns all available filesystems.
+/// rereadpt mitigates possible issue with outdated UUIDs on different
 /// paths to the same disk: after 'ignition-ostree-firstboot-uuid'
 /// '/dev/sdaX' path gets new UUID, but '/dev/sdbX/' path has an old one
-fn lsblk_all_and_reread_partition_tables() -> Result<Vec<HashMap<String, String>>> {
+fn lsblk_all(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
     let mut cmd = Command::new("lsblk");
     cmd.arg("--noheadings")
         .arg("--nodeps")
@@ -814,12 +814,14 @@ fn lsblk_all_and_reread_partition_tables() -> Result<Vec<HashMap<String, String>
         .arg("--output")
         .arg("NAME");
     let output = cmd_output(&mut cmd)?;
-    for dev in output.lines() {
-        if let Ok(mut fd) = std::fs::File::open(dev) {
-            let _ = reread_partition_table(&mut fd);
+    if rereadpt {
+        for dev in output.lines() {
+            if let Ok(mut fd) = std::fs::File::open(dev) {
+                let _ = reread_partition_table(&mut fd);
+            }
         }
+        udev_settle()?;
     }
-    udev_settle()?;
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for dev in output.lines() {
         let mut info = lsblk(Path::new(dev), true)?;
@@ -830,9 +832,9 @@ fn lsblk_all_and_reread_partition_tables() -> Result<Vec<HashMap<String, String>
 
 /// Returns filesystems with given label.
 /// If multiple filesystems with the label have the same UUID, we only return one of them.
-pub fn get_filesystems_with_label(label: &str) -> Result<Vec<String>> {
+pub fn get_filesystems_with_label(label: &str, rereadpt: bool) -> Result<Vec<String>> {
     let mut uuids = HashSet::new();
-    let result = lsblk_all_and_reread_partition_tables()?
+    let result = lsblk_all(rereadpt)?
         .iter()
         .filter(|v| v.get("LABEL").map(|l| l.as_str()) == Some(label))
         .filter(|v| match v.get("UUID") {

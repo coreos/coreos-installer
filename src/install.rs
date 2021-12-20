@@ -250,7 +250,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     // Because grub picks /boot by label and the OS picks /boot, we can end up racing/flapping
     // between picking a /boot partition on startup. So check amount of filesystems labeled 'boot'
     // and warn user if it's not only one
-    match get_filesystems_with_label("boot") {
+    match get_filesystems_with_label("boot", true) {
         Ok(pts) => {
             if pts.len() > 1 {
                 let rootdev = std::fs::canonicalize(device)

@@ -18,7 +18,7 @@ use anyhow::{bail, Result};
 use libcoreinst::blockdev::*;
 
 pub fn verify_unique_fs(config: VerifyUniqueFsLabelConfig) -> Result<()> {
-    let pts = get_filesystems_with_label(&config.label)?;
+    let pts = get_filesystems_with_label(&config.label, config.rereadpt)?;
     let count = pts.len();
     if count != 1 {
         bail!(
