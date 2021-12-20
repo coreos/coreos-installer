@@ -1580,17 +1580,20 @@ fn modify_miniso_kargs(f: &mut File, rootfs_url: Option<&String>) -> Result<()> 
 
     // also modify the default kargs because we don't want `coreos-installer iso kargs reset` to
     // re-add `coreos.liveiso`
-    let mut kargs_info = KargEmbedInfo::for_iso(&mut iso)?.context(
+    set_default_kargs(&mut iso, new_default_kargs)
+}
+
+// only for miniso generation
+fn set_default_kargs(iso: &mut IsoFs, default: String) -> Result<()> {
+    let mut kargs_info = KargEmbedInfo::for_iso(iso)?.context(
         // should be impossible; we only support new-style CoreOS ISOs with kargs.json
         "minimal ISO does not have kargs.json; please report this as a bug",
     )?;
 
     // NB: We don't need to update the length for this; it's a fixed property of the kargs files.
     // (Though its original value did depend on the original default kargs at build time.)
-    kargs_info.default = new_default_kargs;
-    kargs_info.update_iso(&mut iso)?;
-
-    Ok(())
+    kargs_info.default = default;
+    kargs_info.update_iso(iso)
 }
 
 fn verify_stdout_not_tty() -> Result<()> {
