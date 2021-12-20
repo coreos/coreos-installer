@@ -166,7 +166,7 @@ dependencies = [
  "libc",
  "maplit",
  "mbrman",
- "nix",
+ "nix 0.23.1",
  "openat-ext",
  "openssl",
  "pipe",
@@ -403,7 +403,7 @@ checksum = "f5a6ef4b3fdbdf3d312de4fb312ea65d2e58cc046a7554742dbf8eccc49eb0c5"
 dependencies = [
  "bincode",
  "crc",
- "nix",
+ "nix 0.22.0",
  "serde",
  "thiserror",
 ]
@@ -743,6 +743,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f866317acbd3a240710c63f065ffb1e4fd466259045ccb504130b7f668f35c6"
+dependencies = [
+ "bitflags",
+ "cc",
+ "cfg-if",
+ "libc",
+ "memoffset",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -783,7 +796,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08ebe55c8d6ada962ca7ddaef14f020dae1af91748bea3d36e8c941036b5d85b"
 dependencies = [
  "libc",
- "nix",
+ "nix 0.22.0",
  "openat",
  "rand",
 ]
