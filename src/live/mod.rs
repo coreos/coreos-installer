@@ -1604,7 +1604,7 @@ mod tests {
     use xz2::read::XzDecoder;
 
     fn open_iso_file() -> File {
-        let iso_bytes: &[u8] = include_bytes!("../fixtures/iso/embed-areas-2021-09.iso.xz");
+        let iso_bytes: &[u8] = include_bytes!("../../fixtures/iso/embed-areas-2021-09.iso.xz");
         let mut decoder = XzDecoder::new(iso_bytes);
         let mut iso_file = tempfile().unwrap();
         copy(&mut decoder, &mut iso_file).unwrap();
