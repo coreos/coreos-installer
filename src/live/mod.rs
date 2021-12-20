@@ -113,9 +113,8 @@ pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     if config.header {
-        serde_json::to_writer_pretty(&mut out, &iso.initrd)
-            .context("failed to serialize header")?;
-        out.write_all(b"\n").context("failed to write newline")?;
+        out.write_all(&iso.initrd_header_json()?)
+            .context("failed to write header")?;
     } else {
         if !iso.have_ignition() {
             bail!("No embedded Ignition config.");
@@ -325,10 +324,10 @@ pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     if config.header {
-        let stdout = io::stdout();
-        let mut out = stdout.lock();
-        serde_json::to_writer_pretty(&mut out, &iso.kargs).context("failed to serialize header")?;
-        out.write_all(b"\n").context("failed to write newline")?;
+        io::stdout()
+            .lock()
+            .write_all(&iso.kargs_header_json()?)
+            .context("failed to write header")?;
     } else {
         let kargs = if config.default {
             iso.kargs_default()?
@@ -578,6 +577,14 @@ impl IsoConfig {
         self.initrd.initrd_mut()
     }
 
+    // for debugging
+    pub fn initrd_header_json(&self) -> Result<Vec<u8>> {
+        let mut ret =
+            serde_json::to_vec_pretty(&self.initrd).context("failed to serialize initrd header")?;
+        ret.push(b'\n');
+        Ok(ret)
+    }
+
     pub fn kargs(&self) -> Result<&str> {
         Ok(self.unwrap_kargs()?.kargs())
     }
@@ -592,6 +599,14 @@ impl IsoConfig {
 
     pub fn kargs_supported(&self) -> bool {
         self.kargs.is_some()
+    }
+
+    // for debugging
+    pub fn kargs_header_json(&self) -> Result<Vec<u8>> {
+        let mut ret =
+            serde_json::to_vec_pretty(&self.kargs).context("failed to serialize kargs header")?;
+        ret.push(b'\n');
+        Ok(ret)
     }
 
     fn unwrap_kargs(&self) -> Result<&KargEmbedAreas> {
