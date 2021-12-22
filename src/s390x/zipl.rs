@@ -103,7 +103,7 @@ fn extract_firstboot_kargs(s: &str) -> Result<Option<String>> {
 
     let captures = Regex::new(r#"^set ignition_network_kcmdline="([^\n]*)"$"#)
         .expect("compiling RE")
-        .captures(&s)
+        .captures(s)
         .context("couldn't parse kargs from ignition.firstboot file")?;
     match captures.get(1).expect("kargs").as_str() {
         "" => Ok(None), // this shouldn't really happen, but be nice
