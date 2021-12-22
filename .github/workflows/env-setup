@@ -2,6 +2,30 @@
 
 set -euxo pipefail
 
+# Start the job container
+mkdir ~/ctx
+CID=$(podman create -v ${GITHUB_WORKSPACE}:/workspace -v ~/ctx:/ctx \
+    "${CONTAINER}" tail -f /dev/null)
+podman start ${CID}
+
+# Build the wrapper script that will be used as a shell by subsequent job steps
+sudo tee /usr/bin/wrap-container > /dev/null <<EOF
+#!/bin/bash
+set -euxo pipefail
+script=$(mktemp ~/ctx/script-XXXXXX)
+cp "\$1" "\${script}"
+chmod +x "\${script}"
+# Use the same shell invocation that GitHub Actions does
+podman exec -w /workspace -e PATH="/root/.cargo/bin:/usr/sbin:/usr/bin:/sbin:/bin" ${CID} \
+    bash --noprofile --norc -eo pipefail "/ctx/\$(basename \${script})"
+EOF
+sudo chmod +x /usr/bin/wrap-container
+
+# Use it to install the requested Rust version
+wrap-container <(cat <<EOF
+set -x
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
     sh -s -- --default-toolchain ${TOOLCHAIN} --profile minimal \
     ${COMPONENTS:+--component ${COMPONENTS}} -y
+EOF
+)

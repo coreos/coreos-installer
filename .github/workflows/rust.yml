@@ -9,12 +9,18 @@ permissions:
   contents: read
 
 env:
+  CONTAINER: registry.fedoraproject.org/fedora:latest
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   # Minimum supported Rust version (MSRV)
   ACTIONS_MSRV_TOOLCHAIN: 1.49.0
   # Pinned toolchain for linting
   ACTIONS_LINTS_TOOLCHAIN: 1.57.0
+
+defaults:
+  run:
+    # Created by env-setup early in the job
+    shell: 'wrap-container {0}'
 
 jobs:
   tests-stable:
@@ -25,8 +31,11 @@ jobs:
         uses: actions/checkout@v2
       - name: Set up environment
         run: .github/workflows/env-setup
+        shell: bash
         env:
           TOOLCHAIN: stable
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -45,8 +54,11 @@ jobs:
         uses: actions/checkout@v2
       - name: Set up environment
         run: .github/workflows/env-setup
+        shell: bash
         env:
           TOOLCHAIN: ${{ env.ACTIONS_MSRV_TOOLCHAIN }}
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -65,9 +77,12 @@ jobs:
         uses: actions/checkout@v2
       - name: Set up environment
         run: .github/workflows/env-setup
+        shell: bash
         env:
           TOOLCHAIN: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
           COMPONENTS: rustfmt,clippy
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel
       - name: cargo fmt (check)
         run: cargo fmt -- --check -l
       - name: cargo clippy (warnings)
@@ -88,8 +103,11 @@ jobs:
         uses: actions/checkout@v2
       - name: Set up environment
         run: .github/workflows/env-setup
+        shell: bash
         env:
           TOOLCHAIN: ${{ matrix.channel }}
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -108,8 +126,11 @@ jobs:
         uses: actions/checkout@v2
       - name: Set up environment
         run: .github/workflows/env-setup
+        shell: bash
         env:
           TOOLCHAIN: stable
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel util-linux
       - name: cargo build
         run: cargo build
       - name: Help text line length
