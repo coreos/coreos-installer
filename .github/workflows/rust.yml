@@ -23,11 +23,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: "stable"
-          default: true
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        env:
+          TOOLCHAIN: stable
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -44,11 +43,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env['ACTIONS_MSRV_TOOLCHAIN']  }}
-          default: true
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        env:
+          TOOLCHAIN: ${{ env.ACTIONS_MSRV_TOOLCHAIN }}
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -65,12 +63,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env['ACTIONS_LINTS_TOOLCHAIN']  }}
-          default: true
-          components: rustfmt, clippy
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        env:
+          TOOLCHAIN: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
+          COMPONENTS: rustfmt,clippy
       - name: cargo fmt (check)
         run: cargo fmt -- --check -l
       - name: cargo clippy (warnings)
@@ -89,11 +86,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.channel }}
-          default: true
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        env:
+          TOOLCHAIN: ${{ matrix.channel }}
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -110,11 +106,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: "stable"
-          default: true
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        env:
+          TOOLCHAIN: stable
       - name: cargo build
         run: cargo build
       - name: Help text line length
