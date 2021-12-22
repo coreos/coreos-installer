@@ -43,5 +43,7 @@ set -x
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
     sh -s -- --default-toolchain ${TOOLCHAIN} --profile minimal \
     ${COMPONENTS:+--component ${COMPONENTS}} -y
+rustc -V | cut -f2 -d\  > /ctx/toolchain-version
 EOF
 )
+echo "INSTALLED_TOOLCHAIN=$(cat ~/ctx/toolchain-version)" >> $GITHUB_ENV

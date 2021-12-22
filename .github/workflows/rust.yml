@@ -40,6 +40,12 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           TOOLCHAIN: stable
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
+        with:
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
@@ -53,6 +59,8 @@ jobs:
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   tests-msrv:
     name: "Tests, minimum supported toolchain"
     runs-on: ubuntu-latest
@@ -70,6 +78,12 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ env.ACTIONS_MSRV_TOOLCHAIN }}
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
+        with:
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
@@ -83,6 +97,8 @@ jobs:
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   lints:
     name: "Lints, pinned toolchain"
     runs-on: ubuntu-latest
@@ -101,6 +117,12 @@ jobs:
           ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
           COMPONENTS: rustfmt,clippy
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
+        with:
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}-lints
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel
       - name: cargo fmt (check)
@@ -109,6 +131,8 @@ jobs:
         run: cargo clippy -- -D warnings
       - name: cargo clippy (rdcore, warnings)
         run: cargo clippy --features rdcore -- -D warnings
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   tests-other-channels:
     name: "Tests, unstable toolchain"
     runs-on: ubuntu-latest
@@ -129,6 +153,12 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ matrix.channel }}
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
+        with:
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
@@ -142,6 +172,8 @@ jobs:
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   docs:
     name: "Docs"
     runs-on: ubuntu-latest
