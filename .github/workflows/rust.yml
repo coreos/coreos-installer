@@ -26,6 +26,11 @@ jobs:
   tests-stable:
     name: "Tests, stable toolchain"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch:
+          - x86_64
+          - s390x
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -33,6 +38,7 @@ jobs:
         run: .github/workflows/env-setup
         shell: bash
         env:
+          ARCH: ${{ matrix.arch }}
           TOOLCHAIN: stable
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel cpio diffutils jq xz
@@ -45,10 +51,16 @@ jobs:
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
       - name: Image tests
+        if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
   tests-msrv:
     name: "Tests, minimum supported toolchain"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch:
+          - x86_64
+          - s390x
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -56,6 +68,7 @@ jobs:
         run: .github/workflows/env-setup
         shell: bash
         env:
+          ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ env.ACTIONS_MSRV_TOOLCHAIN }}
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel cpio diffutils jq xz
@@ -68,10 +81,16 @@ jobs:
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
       - name: Image tests
+        if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
   lints:
     name: "Lints, pinned toolchain"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch:
+          - x86_64
+          - s390x
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -79,6 +98,7 @@ jobs:
         run: .github/workflows/env-setup
         shell: bash
         env:
+          ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
           COMPONENTS: rustfmt,clippy
       - name: Install dependencies
@@ -98,6 +118,8 @@ jobs:
         channel:
           - "beta"
           - "nightly"
+        arch:
+          - x86_64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -105,6 +127,7 @@ jobs:
         run: .github/workflows/env-setup
         shell: bash
         env:
+          ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ matrix.channel }}
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel cpio diffutils jq xz
@@ -117,6 +140,7 @@ jobs:
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
       - name: Image tests
+        if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
   docs:
     name: "Docs"
@@ -128,6 +152,7 @@ jobs:
         run: .github/workflows/env-setup
         shell: bash
         env:
+          ARCH: x86_64
           TOOLCHAIN: stable
       - name: Install dependencies
         run: dnf install -y gcc openssl-devel util-linux

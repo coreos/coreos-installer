@@ -2,10 +2,26 @@
 
 set -euxo pipefail
 
+case "${ARCH}" in
+x86_64)
+    ARCH=amd64
+    ;;
+*)
+    # We need qemu-user-static.  Ubuntu 20.04 has it, but the s390x emulation
+    # causes segfaults in rustup-init.  Luckily it's statically linked, so
+    # extract the working Fedora package.
+    podman run --rm -v $HOME:/pwd -w /pwd "${CONTAINER}" \
+        sh -c "dnf install -y python3-dnf-plugins-core && dnf download qemu-user-static.x86_64"
+    rpm2cpio ~/qemu-user-static-*.x86_64.rpm |
+        sudo cpio -D / -i --make-directories
+    sudo systemctl restart systemd-binfmt
+    ;;
+esac
+
 # Start the job container
 mkdir ~/ctx
 CID=$(podman create -v ${GITHUB_WORKSPACE}:/workspace -v ~/ctx:/ctx \
-    "${CONTAINER}" tail -f /dev/null)
+    --arch="${ARCH}" "${CONTAINER}" tail -f /dev/null)
 podman start ${CID}
 
 # Build the wrapper script that will be used as a shell by subsequent job steps
