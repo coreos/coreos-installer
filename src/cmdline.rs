@@ -36,6 +36,7 @@ use crate::io::IgnitionHash;
 // Please keep the entire help text to 80 columns.
 
 #[derive(Debug, Parser)]
+#[clap(version)]
 #[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(global_setting(AppSettings::DisableHelpSubcommand))]

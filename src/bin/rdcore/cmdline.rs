@@ -20,7 +20,7 @@ use clap::{AppSettings, Parser};
 // Args are listed in --help in the order declared in these structs/enums.
 
 #[derive(Debug, Parser)]
-#[clap(name = "rdcore")]
+#[clap(name = "rdcore", version)]
 #[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(global_setting(AppSettings::DisableHelpSubcommand))]
