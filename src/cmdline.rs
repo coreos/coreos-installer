@@ -36,11 +36,11 @@ use crate::io::IgnitionHash;
 // Please keep the entire help text to 80 columns.
 
 #[derive(Debug, Parser)]
-#[structopt(name = "coreos-installer")]
-#[structopt(global_setting(AppSettings::ArgsNegateSubcommands))]
-#[structopt(global_setting(AppSettings::DeriveDisplayOrder))]
-#[structopt(global_setting(AppSettings::DisableHelpSubcommand))]
-#[structopt(global_setting(AppSettings::UnifiedHelpMessage))]
+#[clap(name = "coreos-installer")]
+#[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
+#[clap(global_setting(AppSettings::DeriveDisplayOrder))]
+#[clap(global_setting(AppSettings::DisableHelpSubcommand))]
+#[clap(global_setting(AppSettings::UnifiedHelpMessage))]
 pub enum Cmd {
     /// Install Fedora CoreOS or RHEL CoreOS
     Install(InstallConfig),
@@ -66,15 +66,15 @@ pub enum Cmd {
 pub enum IsoCmd {
     /// Embed an Ignition config in an ISO image
     // deprecated
-    #[structopt(setting(AppSettings::Hidden))]
+    #[clap(setting(AppSettings::Hidden))]
     Embed(IsoEmbedConfig),
     /// Show the embedded Ignition config from an ISO image
     // deprecated
-    #[structopt(setting(AppSettings::Hidden))]
+    #[clap(setting(AppSettings::Hidden))]
     Show(IsoShowConfig),
     /// Remove an existing embedded Ignition config from an ISO image
     // deprecated
-    #[structopt(setting(AppSettings::Hidden))]
+    #[clap(setting(AppSettings::Hidden))]
     Remove(IsoRemoveConfig),
     /// Customize a CoreOS live ISO image
     Customize(IsoCustomizeConfig),
@@ -162,7 +162,7 @@ pub enum PxeNetworkCmd {
 
 #[derive(Debug, Parser)]
 // users shouldn't be interacting with this command normally
-#[structopt(setting(AppSettings::Hidden))]
+#[clap(setting(AppSettings::Hidden))]
 pub enum PackCmd {
     /// Create osmet file from CoreOS block device
     Osmet(PackOsmetConfig),
@@ -172,7 +172,7 @@ pub enum PackCmd {
 
 #[derive(Debug, Parser)]
 // users shouldn't be interacting with this command normally
-#[structopt(setting(AppSettings::Hidden))]
+#[clap(setting(AppSettings::Hidden))]
 pub enum DevCmd {
     /// Commands to show metadata
     #[clap(subcommand)]
@@ -203,9 +203,9 @@ pub enum DevExtractCmd {
 // As a special case, this struct supports Serialize and Deserialize for
 // config file parsing.  Here are the rules.  Build or test should fail if
 // you break anything too badly.
-// - Defaults cannot be specified using #[structopt(default_value = "x")]
+// - Defaults cannot be specified using #[clap(default_value = "x")]
 //   because serde won't see them otherwise.  Instead, use
-//   #[structopt(default_value_t)], implement Default, and derive PartialEq
+//   #[clap(default_value_t)], implement Default, and derive PartialEq
 //   for the type.  (For string-typed defaults, you can use
 //   DefaultedString<T> where T is a custom type implementing
 //   DefaultString.)
@@ -222,7 +222,7 @@ pub enum DevExtractCmd {
 #[skip_serializing_none]
 #[derive(Debug, Default, Parser, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
-#[structopt(global_setting(AppSettings::AllArgsOverrideSelf))]
+#[clap(global_setting(AppSettings::AllArgsOverrideSelf))]
 pub struct InstallConfig {
     /// YAML config file with install options
     ///
@@ -235,7 +235,7 @@ pub struct InstallConfig {
     /// repeatable options, and "true" for flags.  The destination device
     /// can be specified with the "dest-device" key.
     #[serde(skip)]
-    #[structopt(short, long, value_name = "path", number_of_values = 1)]
+    #[clap(short, long, value_name = "path", number_of_values = 1)]
     pub config_file: Vec<String>,
 
     // ways to specify the image source
@@ -243,125 +243,125 @@ pub struct InstallConfig {
     ///
     /// The name of the Fedora CoreOS stream to install, such as "stable",
     /// "testing", or "next".
-    #[structopt(short, long, value_name = "name")]
-    #[structopt(conflicts_with = "image-file", conflicts_with = "image-url")]
+    #[clap(short, long, value_name = "name")]
+    #[clap(conflicts_with = "image-file", conflicts_with = "image-url")]
     pub stream: Option<String>,
     /// Manually specify the image URL
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[structopt(short = 'u', long, value_name = "URL")]
-    #[structopt(conflicts_with = "stream", conflicts_with = "image-file")]
+    #[clap(short = 'u', long, value_name = "URL")]
+    #[clap(conflicts_with = "stream", conflicts_with = "image-file")]
     pub image_url: Option<Url>,
     /// Manually specify a local image file
-    #[structopt(short = 'f', long, value_name = "path")]
-    #[structopt(conflicts_with = "stream", conflicts_with = "image-url")]
+    #[clap(short = 'f', long, value_name = "path")]
+    #[clap(conflicts_with = "stream", conflicts_with = "image-url")]
     pub image_file: Option<String>,
 
     // postprocessing options
     /// Embed an Ignition config from a file
     // deprecated long name from <= 0.1.2
-    #[structopt(short, long, alias = "ignition", value_name = "path")]
-    #[structopt(conflicts_with = "ignition-url")]
+    #[clap(short, long, alias = "ignition", value_name = "path")]
+    #[clap(conflicts_with = "ignition-url")]
     pub ignition_file: Option<String>,
     /// Embed an Ignition config from a URL
     ///
     /// Immediately fetch the Ignition config from the URL and embed it in
     /// the installed system.
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[structopt(short = 'I', long, value_name = "URL")]
-    #[structopt(conflicts_with = "ignition-file")]
+    #[clap(short = 'I', long, value_name = "URL")]
+    #[clap(conflicts_with = "ignition-file")]
     pub ignition_url: Option<Url>,
     /// Digest (type-value) of the Ignition config
     ///
     /// Verify that the Ignition config matches the specified digest,
     /// formatted as <type>-<hexvalue>.  <type> can be sha256 or sha512.
-    #[structopt(long, value_name = "digest")]
+    #[clap(long, value_name = "digest")]
     pub ignition_hash: Option<IgnitionHash>,
     /// Target CPU architecture
     ///
     /// Create an install disk for a different CPU architecture than the
     /// host.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(short, long, default_value_t, value_name = "name")]
+    #[clap(short, long, default_value_t, value_name = "name")]
     pub architecture: DefaultedString<Architecture>,
     /// Override the Ignition platform ID
     ///
     /// Install a system that will run on the specified cloud or
     /// virtualization platform, such as "vmware".
-    #[structopt(short, long, value_name = "name")]
+    #[clap(short, long, value_name = "name")]
     pub platform: Option<String>,
     /// Additional kernel args for the first boot
     // This used to be for configuring networking from the cmdline, but it has
     // been obsoleted by the nicer `--copy-network` approach. We still need it
     // for now though. It's used at least by `coreos-installer.service`.
     #[serde(skip)]
-    #[structopt(long, hide = true, value_name = "args")]
+    #[clap(long, hide = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
     ///
     /// Add a kernel argument to the installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "arg", number_of_values = 1)]
+    #[clap(long, value_name = "arg", number_of_values = 1)]
     pub append_karg: Vec<String>,
     /// Delete default kernel arg
     ///
     /// Delete a default kernel argument from the installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "arg", number_of_values = 1)]
+    #[clap(long, value_name = "arg", number_of_values = 1)]
     pub delete_karg: Vec<String>,
     /// Copy network config from install environment
     ///
     /// Copy NetworkManager keyfiles from the install environment to the
     /// installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(short = 'n', long)]
+    #[clap(short = 'n', long)]
     pub copy_network: bool,
     /// For use with -n
     ///
     /// Specify the path to NetworkManager keyfiles to be copied with
     /// --copy-network.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "path", default_value_t)]
+    #[clap(long, value_name = "path", default_value_t)]
     // so we can stay under 80 chars
-    #[structopt(next_line_help(true))]
+    #[clap(next_line_help(true))]
     pub network_dir: DefaultedString<NetworkDir>,
     /// Save partitions with this label glob
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "lx")]
+    #[clap(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
     // one argument.
-    #[structopt(number_of_values = 1, require_delimiter = true)]
-    #[structopt(value_delimiter = ',')]
+    #[clap(number_of_values = 1, require_delimiter = true)]
+    #[clap(value_delimiter = ',')]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "id")]
+    #[clap(long, value_name = "id")]
     // Allow argument multiple times, but one value each.  Allow "1-5,7" in
     // one argument.
-    #[structopt(number_of_values = 1, require_delimiter = true)]
-    #[structopt(value_delimiter = ',')]
+    #[clap(number_of_values = 1, require_delimiter = true)]
+    #[clap(value_delimiter = ',')]
     // Allow ranges like "-2".
-    #[structopt(allow_hyphen_values = true)]
+    #[clap(allow_hyphen_values = true)]
     pub save_partindex: Vec<String>,
 
     // obscure options without short names
     /// Force offline installation
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long)]
+    #[clap(long)]
     pub offline: bool,
     /// Skip signature verification
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long)]
+    #[clap(long)]
     pub insecure: bool,
     /// Allow Ignition URL without HTTPS or hash
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long)]
+    #[clap(long)]
     pub insecure_ignition: bool,
     /// Base URL for CoreOS stream metadata
     ///
     /// Override the base URL for fetching CoreOS stream metadata.
     /// The default is "https://builds.coreos.fedoraproject.org/streams/".
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[structopt(long, value_name = "URL")]
+    #[clap(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
     /// Don't clear partition table on error
     ///
@@ -369,14 +369,14 @@ pub struct InstallConfig {
     /// destination's partition table to prevent booting from invalid
     /// boot media.  Skip clearing the partition table as a debugging aid.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long)]
+    #[clap(long)]
     pub preserve_on_error: bool,
     /// Fetch retries, or "infinite"
     ///
     /// Number of times to retry network fetches, or the string "infinite"
     /// to retry indefinitely.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "N", default_value_t)]
+    #[clap(long, value_name = "N", default_value_t)]
     pub fetch_retries: FetchRetries,
 
     // positional args
@@ -384,7 +384,7 @@ pub struct InstallConfig {
     ///
     /// Path to the device node for the destination disk.  The beginning of
     /// the device will be overwritten without further confirmation.
-    #[structopt(required_unless_present = "config-file")]
+    #[clap(required_unless_present = "config-file")]
     pub dest_device: Option<String>,
 }
 
@@ -458,44 +458,44 @@ pub enum PartitionFilter {
 #[derive(Debug, Parser)]
 pub struct DownloadConfig {
     /// Fedora CoreOS stream
-    #[structopt(short, long, value_name = "name", default_value = "stable")]
+    #[clap(short, long, value_name = "name", default_value = "stable")]
     pub stream: String,
     /// Target CPU architecture
-    #[structopt(short, long, value_name = "name", default_value_t)]
+    #[clap(short, long, value_name = "name", default_value_t)]
     pub architecture: DefaultedString<Architecture>,
     /// Fedora CoreOS platform name
-    #[structopt(short, long, value_name = "name", default_value = "metal")]
+    #[clap(short, long, value_name = "name", default_value = "metal")]
     pub platform: String,
     /// Image format
-    #[structopt(short, long, value_name = "name", default_value = "raw.xz")]
+    #[clap(short, long, value_name = "name", default_value = "raw.xz")]
     pub format: String,
     /// Manually specify the image URL
-    #[structopt(short = 'u', long, value_name = "URL")]
+    #[clap(short = 'u', long, value_name = "URL")]
     pub image_url: Option<Url>,
     /// Destination directory
-    #[structopt(short = 'C', long, value_name = "path", default_value = ".")]
+    #[clap(short = 'C', long, value_name = "path", default_value = ".")]
     pub directory: String,
     /// Decompress image and don't save signature
-    #[structopt(short, long)]
+    #[clap(short, long)]
     pub decompress: bool,
     /// Skip signature verification
-    #[structopt(long)]
+    #[clap(long)]
     pub insecure: bool,
     /// Base URL for Fedora CoreOS stream metadata
-    #[structopt(long, value_name = "URL")]
+    #[clap(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
     /// Fetch retries, or "infinite"
-    #[structopt(long, value_name = "N", default_value_t)]
+    #[clap(long, value_name = "N", default_value_t)]
     pub fetch_retries: FetchRetries,
 }
 
 #[derive(Debug, Parser)]
 pub struct ListStreamConfig {
     /// Fedora CoreOS stream
-    #[structopt(short, long, value_name = "name", default_value = "stable")]
+    #[clap(short, long, value_name = "name", default_value = "stable")]
     pub stream: String,
     /// Base URL for Fedora CoreOS stream metadata
-    #[structopt(long, value_name = "URL")]
+    #[clap(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
 }
 
@@ -505,26 +505,26 @@ pub struct CommonCustomizeConfig {
     ///
     /// Automatically run installer and merge the specified Ignition config
     /// into the config for the destination system.
-    #[structopt(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, number_of_values = 1, value_name = "path")]
     pub dest_ignition: Vec<String>,
     /// Install destination device
     ///
     /// Automatically run installer, installing to the specified destination
     /// device.  The resulting boot media will overwrite the destination
     /// device without confirmation.
-    #[structopt(long, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub dest_device: Option<String>,
     /// Destination kernel argument to append
     ///
     /// Automatically run installer, adding the specified kernel argument
     /// for every boot of the destination system.
-    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, number_of_values = 1, value_name = "arg")]
     pub dest_karg_append: Vec<String>,
     /// Destination kernel argument to delete
     ///
     /// Automatically run installer, deleting the specified kernel argument
     /// for every boot of the destination system.
-    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, number_of_values = 1, value_name = "arg")]
     pub dest_karg_delete: Vec<String>,
     /// NetworkManager keyfile for live & dest
     ///
@@ -533,7 +533,7 @@ pub struct CommonCustomizeConfig {
     /// when Ignition is run.  If installer is enabled via additional options,
     /// network settings will also be applied in the destination system,
     /// including when Ignition is run.
-    #[structopt(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, number_of_values = 1, value_name = "path")]
     pub network_keyfile: Vec<String>,
     /// Ignition PEM CA bundle for live & dest
     ///
@@ -541,135 +541,135 @@ pub struct CommonCustomizeConfig {
     /// Ignition, in PEM format.  Authorities will be trusted by Ignition
     /// in the live environment and, if installer is enabled via additional
     /// options, in the destination system.
-    #[structopt(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, number_of_values = 1, value_name = "path")]
     pub ignition_ca: Vec<String>,
     /// Script to run before installation
     ///
     /// If installer is run at boot, run this script before installation.
     /// If the script fails, the live environment will stop at an emergency
     /// shell.
-    #[structopt(long, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub pre_install: Vec<String>,
     /// Script to run after installation
     ///
     /// If installer is run at boot, run this script after installation.
     /// If the script fails, the live environment will stop at an emergency
     /// shell.
-    #[structopt(long, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub post_install: Vec<String>,
     /// Installer config file
     ///
     /// Automatically run coreos-installer and apply the specified installer
     /// config file.  Config files are applied in the order that they are
     /// specified.
-    #[structopt(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, number_of_values = 1, value_name = "path")]
     pub installer_config: Vec<String>,
     /// Ignition config fragment for live env
     ///
     /// Merge the specified Ignition config into the config for the live
     /// environment.
-    #[structopt(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, number_of_values = 1, value_name = "path")]
     pub live_ignition: Vec<String>,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoCustomizeConfig {
     // Customizations
-    #[structopt(flatten)]
+    #[clap(flatten)]
     pub common: CommonCustomizeConfig,
     /// Live kernel argument to append
     ///
     /// Kernel argument to append to boots of the live environment.
-    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, number_of_values = 1, value_name = "arg")]
     pub live_karg_append: Vec<String>,
     /// Live kernel argument to delete
     ///
     /// Kernel argument to delete from boots of the live environment.
-    #[structopt(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, number_of_values = 1, value_name = "arg")]
     pub live_karg_delete: Vec<String>,
     /// Live kernel argument to replace
     ///
     /// Kernel argument to replace for boots of the live environment, in the
     /// form key=old=new.  For a default argument "a=b", specifying
     /// "--live-karg-replace a=b=c" will produce the argument "a=c".
-    #[structopt(long, number_of_values = 1, value_name = "k=o=n")]
+    #[clap(long, number_of_values = 1, value_name = "k=o=n")]
     pub live_karg_replace: Vec<String>,
 
     // I/O configuration
     /// Overwrite existing customizations
-    #[structopt(short, long)]
+    #[clap(short, long)]
     pub force: bool,
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoEmbedConfig {
     /// Ignition config to embed [default: stdin]
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub config: Option<String>,
     /// Overwrite an existing embedded Ignition config
-    #[structopt(short, long)]
+    #[clap(short, long)]
     pub force: bool,
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoShowConfig {
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoRemoveConfig {
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoIgnitionEmbedConfig {
     /// Overwrite an existing Ignition config
-    #[structopt(short, long)]
+    #[clap(short, long)]
     pub force: bool,
     /// Ignition config to embed [default: stdin]
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub ignition_file: Option<String>,
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoIgnitionShowConfig {
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoIgnitionRemoveConfig {
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
@@ -678,215 +678,215 @@ pub struct IsoNetworkEmbedConfig {
     /// NetworkManager keyfile to embed
     // Required option. :-(  In future we might support other configuration
     // sources.
-    #[structopt(short, long, required = true, value_name = "path")]
-    #[structopt(number_of_values = 1)]
+    #[clap(short, long, required = true, value_name = "path")]
+    #[clap(number_of_values = 1)]
     pub keyfile: Vec<String>,
     /// Overwrite existing network settings
-    #[structopt(short, long)]
+    #[clap(short, long)]
     pub force: bool,
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoNetworkExtractConfig {
     /// Extract to directory instead of stdout
-    #[structopt(short = 'C', long, value_name = "path")]
+    #[clap(short = 'C', long, value_name = "path")]
     pub directory: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoNetworkRemoveConfig {
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoKargsModifyConfig {
     /// Kernel argument to append
-    #[structopt(short, long, number_of_values = 1, value_name = "KARG")]
+    #[clap(short, long, number_of_values = 1, value_name = "KARG")]
     pub append: Vec<String>,
     /// Kernel argument to delete
-    #[structopt(short, long, number_of_values = 1, value_name = "KARG")]
+    #[clap(short, long, number_of_values = 1, value_name = "KARG")]
     pub delete: Vec<String>,
     /// Kernel argument to replace
-    #[structopt(short, long, number_of_values = 1, value_name = "KARG=OLDVAL=NEWVAL")]
+    #[clap(short, long, number_of_values = 1, value_name = "KARG=OLDVAL=NEWVAL")]
     pub replace: Vec<String>,
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "PATH")]
+    #[clap(short, long, value_name = "PATH")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoKargsResetConfig {
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "PATH")]
+    #[clap(short, long, value_name = "PATH")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoKargsShowConfig {
     /// Show default kernel args
-    #[structopt(short, long)]
+    #[clap(short, long)]
     pub default: bool,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct DevShowIsoConfig {
     /// Show Ignition embed area parameters
-    #[structopt(long, conflicts_with = "kargs")]
+    #[clap(long, conflicts_with = "kargs")]
     pub ignition: bool,
     /// Show kargs embed area parameters
-    #[structopt(long, conflicts_with = "ignition")]
+    #[clap(long, conflicts_with = "ignition")]
     pub kargs: bool,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoExtractPxeConfig {
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
     /// Output directory
-    #[structopt(short, long, value_name = "PATH", default_value = ".")]
+    #[clap(short, long, value_name = "PATH", default_value = ".")]
     pub output_dir: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoExtractMinimalIsoConfig {
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
     /// Extract rootfs image as well
-    #[structopt(long, value_name = "PATH")]
+    #[clap(long, value_name = "PATH")]
     pub output_rootfs: Option<String>,
     /// Minimal ISO output file
-    #[structopt(value_name = "OUTPUT_ISO", default_value = "-")]
+    #[clap(value_name = "OUTPUT_ISO", default_value = "-")]
     pub output: String,
     /// Inject rootfs URL karg into minimal ISO
-    #[structopt(long, value_name = "URL")]
+    #[clap(long, value_name = "URL")]
     pub rootfs_url: Option<String>,
 }
 
 #[derive(Debug, Parser)]
 pub struct PackMinimalIsoConfig {
     /// ISO image
-    #[structopt(value_name = "FULL_ISO")]
+    #[clap(value_name = "FULL_ISO")]
     pub full: String,
     /// Minimal ISO image
-    #[structopt(value_name = "MINIMAL_ISO")]
+    #[clap(value_name = "MINIMAL_ISO")]
     pub minimal: String,
     /// Delete minimal ISO after packing
-    #[structopt(long)]
+    #[clap(long)]
     pub consume: bool,
 }
 
 #[derive(Debug, Parser)]
 pub struct IsoResetConfig {
     /// Write ISO to a new output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
     /// ISO image
-    #[structopt(value_name = "ISO")]
+    #[clap(value_name = "ISO")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 // default usage line lists all mandatory options and so exceeds 80 characters
-#[structopt(override_usage = "coreos-installer pack osmet [OPTIONS]")]
+#[clap(override_usage = "coreos-installer pack osmet [OPTIONS]")]
 pub struct PackOsmetConfig {
     /// Path to osmet file to write
     // could output to stdout if missing?
-    #[structopt(long, required = true, value_name = "FILE")]
+    #[clap(long, required = true, value_name = "FILE")]
     pub output: String,
     /// Expected SHA256 of block device
     // XXX: rebase on top of
     // https://github.com/coreos/coreos-installer/pull/178 and use the same
     // type-digest format
-    #[structopt(long, required = true, value_name = "SHA256")]
+    #[clap(long, required = true, value_name = "SHA256")]
     pub checksum: String,
     /// Description of OS
-    #[structopt(long, required = true, value_name = "TEXT")]
+    #[clap(long, required = true, value_name = "TEXT")]
     pub description: String,
     /// Use worse compression, for development builds
-    #[structopt(long)]
+    #[clap(long)]
     pub fast: bool,
     /// Source device
-    #[structopt(value_name = "DEV")]
+    #[clap(value_name = "DEV")]
     pub device: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct DevExtractOsmetConfig {
     /// osmet file
-    #[structopt(long, required = true, value_name = "PATH")]
+    #[clap(long, required = true, value_name = "PATH")]
     pub osmet: String,
     /// OSTree repo
-    #[structopt(value_name = "PATH")]
+    #[clap(value_name = "PATH")]
     pub repo: String,
     /// Destination device
-    #[structopt(value_name = "DEV")]
+    #[clap(value_name = "DEV")]
     pub device: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct DevShowFiemapConfig {
     /// File to map
-    #[structopt(value_name = "PATH")]
+    #[clap(value_name = "PATH")]
     pub file: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct PxeCustomizeConfig {
     // Customizations
-    #[structopt(flatten)]
+    #[clap(flatten)]
     pub common: CommonCustomizeConfig,
 
     // I/O configuration
     /// Output file
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: String,
     /// CoreOS live initramfs image
-    #[structopt(value_name = "path")]
+    #[clap(value_name = "path")]
     pub input: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct PxeIgnitionWrapConfig {
     /// Ignition config to wrap [default: stdin]
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub ignition_file: Option<String>,
     /// Write to a file instead of stdout
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
 }
 
 #[derive(Debug, Parser)]
 pub struct PxeIgnitionUnwrapConfig {
     /// initrd image [default: stdin]
-    #[structopt(value_name = "initrd")]
+    #[clap(value_name = "initrd")]
     pub input: Option<String>,
 }
 
@@ -895,47 +895,47 @@ pub struct PxeNetworkWrapConfig {
     /// NetworkManager keyfile to embed
     // Required option. :-(  In future we might support other configuration
     // sources.
-    #[structopt(short, long, required = true, value_name = "path")]
-    #[structopt(number_of_values = 1)]
+    #[clap(short, long, required = true, value_name = "path")]
+    #[clap(number_of_values = 1)]
     pub keyfile: Vec<String>,
     /// Write to a file instead of stdout
-    #[structopt(short, long, value_name = "path")]
+    #[clap(short, long, value_name = "path")]
     pub output: Option<String>,
 }
 
 #[derive(Debug, Parser)]
 pub struct PxeNetworkUnwrapConfig {
     /// Extract to directory instead of stdout
-    #[structopt(short = 'C', long, value_name = "path")]
+    #[clap(short = 'C', long, value_name = "path")]
     pub directory: Option<String>,
     /// initrd image [default: stdin]
-    #[structopt(value_name = "initrd")]
+    #[clap(value_name = "initrd")]
     pub input: Option<String>,
 }
 
 #[derive(Debug, Parser)]
 pub struct DevShowInitrdConfig {
     /// initrd image ("-" for stdin)
-    #[structopt(value_name = "initrd")]
+    #[clap(value_name = "initrd")]
     pub input: String,
     /// Files or globs to list
-    #[structopt(value_name = "glob")]
+    #[clap(value_name = "glob")]
     pub filter: Vec<String>,
 }
 
 #[derive(Debug, Parser)]
 pub struct DevExtractInitrdConfig {
     /// Output directory
-    #[structopt(short = 'C', long, value_name = "path", default_value = ".")]
+    #[clap(short = 'C', long, value_name = "path", default_value = ".")]
     pub directory: String,
     /// List extracted contents
-    #[structopt(short, long)]
+    #[clap(short, long)]
     pub verbose: bool,
     /// initrd image ("-" for stdin)
-    #[structopt(value_name = "initrd")]
+    #[clap(value_name = "initrd")]
     pub input: String,
     /// Files or globs to list
-    #[structopt(value_name = "glob")]
+    #[clap(value_name = "glob")]
     pub filter: Vec<String>,
 }
 
