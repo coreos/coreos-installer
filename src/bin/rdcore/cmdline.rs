@@ -117,3 +117,14 @@ pub struct VerifyUniqueFsLabelConfig {
     #[clap(long)]
     pub rereadpt: bool,
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use clap::IntoApp;
+
+    #[test]
+    fn clap_app() {
+        Cmd::into_app().debug_assert()
+    }
+}

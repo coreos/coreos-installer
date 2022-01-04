@@ -1365,8 +1365,14 @@ mod serializer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use clap::IntoApp;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn clap_app() {
+        Cmd::into_app().debug_assert()
+    }
 
     /// Check that full InstallConfig serializes as expected
     #[test]
