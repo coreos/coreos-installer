@@ -1072,7 +1072,11 @@ mod serializer {
             .context("reading subcommand help text")?;
 
         let mut serializer = Serializer {
-            help_text: String::from_utf8(help).context("decoding subcommand help text")?,
+            help_text: String::from_utf8(help)
+                .context("decoding subcommand help text")?
+                // add trailing space to each line, so push_field()
+                // option check works consistently for boolean flags
+                .replace('\n', " \n"),
             output: Vec::new(),
             field_stack: Vec::new(),
         };
