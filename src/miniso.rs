@@ -67,13 +67,16 @@ impl Table {
         }
 
         entries.sort_by_key(|e| e.minimal.as_sector());
-        // drop duplicate entries (hardlinks), and calculate how many there were for reporting
+        // drop zero-length files (which can overlap with other files) and
+        // duplicate entries (hardlinks), and calculate how many there were
+        // for reporting
         let size = entries.len();
+        entries = entries.drain(..).filter(|e| e.length > 0).collect();
         entries.dedup();
-        let hardlinks = size - entries.len();
+        let extraneous = size - entries.len();
         let table = Table { entries };
         table.validate().context("validating table")?;
-        Ok((table, hardlinks))
+        Ok((table, extraneous))
     }
 
     fn validate(&self) -> Result<()> {
@@ -152,7 +155,7 @@ impl Data {
         full_files: &HashMap<String, iso9660::File>,
         minimal_files: &HashMap<String, iso9660::File>,
     ) -> Result<(Self, usize, u64, u64, u64)> {
-        let (table, hardlinks) = Table::new(full_files, minimal_files)?;
+        let (table, extraneous) = Table::new(full_files, minimal_files)?;
 
         // A `ReadHasher` here would let us wrap the miniso so we calculate the digest as we read.
         let digest = Sha256Digest::from_file(miniso)?;
@@ -187,7 +190,7 @@ impl Data {
         copy(miniso, &mut xzw).context("copying remaining miniso bytes")?;
 
         xzw.try_finish().context("trying to finish xz stream")?;
-        let matches = table.entries.len() + hardlinks;
+        let matches = table.entries.len() + extraneous;
         let written = xzw.total_in();
         let written_compressed = xzw.total_out();
         Ok((
