@@ -24,6 +24,7 @@ use clap::{AppSettings, Parser};
 #[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(global_setting(AppSettings::DisableHelpSubcommand))]
+#[clap(global_setting(AppSettings::HelpExpected))]
 pub enum Cmd {
     /// Generate rootmap kargs and optionally inject into BLS configs
     Rootmap(RootmapConfig),

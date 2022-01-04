@@ -40,6 +40,7 @@ use crate::io::IgnitionHash;
 #[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(global_setting(AppSettings::DisableHelpSubcommand))]
+#[clap(global_setting(AppSettings::HelpExpected))]
 pub enum Cmd {
     /// Install Fedora CoreOS or RHEL CoreOS
     Install(InstallConfig),
