@@ -55,12 +55,8 @@ pub enum Cmd {
     /// Commands to manage a CoreOS live PXE image
     Pxe(PxeCmd),
     /// Metadata packing commands used when building an OS image
-    // users shouldn't be interacting with this command normally
-    #[structopt(setting(AppSettings::Hidden))]
     Pack(PackCmd),
     /// Development commands (unstable)
-    // users shouldn't be interacting with this command normally
-    #[structopt(setting(AppSettings::Hidden))]
     Dev(DevCmd),
 }
 
@@ -157,6 +153,8 @@ pub enum PxeNetworkCmd {
 }
 
 #[derive(Debug, StructOpt)]
+// users shouldn't be interacting with this command normally
+#[structopt(setting(AppSettings::Hidden))]
 pub enum PackCmd {
     /// Create osmet file from CoreOS block device
     Osmet(PackOsmetConfig),
@@ -165,6 +163,8 @@ pub enum PackCmd {
 }
 
 #[derive(Debug, StructOpt)]
+// users shouldn't be interacting with this command normally
+#[structopt(setting(AppSettings::Hidden))]
 pub enum DevCmd {
     /// Commands to show metadata
     Show(DevShowCmd),
