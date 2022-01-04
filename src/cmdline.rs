@@ -199,6 +199,8 @@ pub enum DevExtractCmd {
     Initrd(DevExtractInitrdConfig),
 }
 
+const ADVANCED: &str = "ADVANCED OPTIONS";
+
 // As a special case, this struct supports Serialize and Deserialize for
 // config file parsing.  Here are the rules.  Build or test should fail if
 // you break anything too badly.
@@ -347,22 +349,22 @@ pub struct InstallConfig {
     // obscure options without short names
     /// Force offline installation
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long)]
+    #[clap(long, help_heading = ADVANCED)]
     pub offline: bool,
     /// Skip signature verification
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long)]
+    #[clap(long, help_heading = ADVANCED)]
     pub insecure: bool,
     /// Allow Ignition URL without HTTPS or hash
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long)]
+    #[clap(long, help_heading = ADVANCED)]
     pub insecure_ignition: bool,
     /// Base URL for CoreOS stream metadata
     ///
     /// Override the base URL for fetching CoreOS stream metadata.
     /// The default is "https://builds.coreos.fedoraproject.org/streams/".
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[clap(long, value_name = "URL")]
+    #[clap(long, value_name = "URL", help_heading = ADVANCED)]
     pub stream_base_url: Option<Url>,
     /// Don't clear partition table on error
     ///
@@ -370,14 +372,14 @@ pub struct InstallConfig {
     /// destination's partition table to prevent booting from invalid
     /// boot media.  Skip clearing the partition table as a debugging aid.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long)]
+    #[clap(long, help_heading = ADVANCED)]
     pub preserve_on_error: bool,
     /// Fetch retries, or "infinite"
     ///
     /// Number of times to retry network fetches, or the string "infinite"
     /// to retry indefinitely.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "N", default_value_t)]
+    #[clap(long, value_name = "N", default_value_t, help_heading = ADVANCED)]
     pub fetch_retries: FetchRetries,
 
     // positional args

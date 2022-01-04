@@ -97,6 +97,10 @@ OPTIONS:
         --save-partindex <id>
             Save partitions with this number or range
 
+    -h, --help
+            Print help information
+
+ADVANCED OPTIONS:
         --offline
             Force offline installation
 
@@ -126,7 +130,4 @@ OPTIONS:
             indefinitely.
 
             [default: 0]
-
-    -h, --help
-            Print help information
 ```
