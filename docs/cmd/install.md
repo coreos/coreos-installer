@@ -85,7 +85,7 @@ OPTIONS:
             Copy NetworkManager keyfiles from the install environment to the installed system.
 
         --network-dir <path>
-            For use with -n
+            Override NetworkManager keyfile dir for -n
 
             Specify the path to NetworkManager keyfiles to be copied with --copy-network.
 

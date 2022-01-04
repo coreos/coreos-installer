@@ -313,14 +313,16 @@ pub struct InstallConfig {
     #[serde(skip_serializing_if = "is_default")]
     #[clap(short = 'n', long)]
     pub copy_network: bool,
-    /// For use with -n
+    /// Override NetworkManager keyfile dir for -n
     ///
     /// Specify the path to NetworkManager keyfiles to be copied with
     /// --copy-network.
+    ///
+    /// [default: /etc/NetworkManager/system-connections/]
     #[serde(skip_serializing_if = "is_default")]
     #[clap(long, value_name = "path", default_value_t)]
-    // so we can stay under 80 chars
-    #[clap(next_line_help(true))]
+    // showing the default converts every option to multiline help
+    #[clap(hide_default_value = true)]
     pub network_dir: DefaultedString<NetworkDir>,
     /// Save partitions with this label glob
     #[serde(skip_serializing_if = "is_default")]
