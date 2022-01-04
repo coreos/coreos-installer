@@ -24,7 +24,6 @@ use clap::{AppSettings, Parser};
 #[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(global_setting(AppSettings::DisableHelpSubcommand))]
-#[clap(global_setting(AppSettings::UnifiedHelpMessage))]
 pub enum Cmd {
     /// Generate rootmap kargs and optionally inject into BLS configs
     Rootmap(RootmapConfig),
@@ -89,14 +88,14 @@ pub struct KargsConfig {
     #[clap(long, value_name = "PATH")]
     pub create_if_changed: Option<String>,
     /// Append kernel arg
-    #[clap(long, value_name = "ARG", number_of_values = 1)]
+    #[clap(long, value_name = "ARG")]
     pub append: Vec<String>,
     /// Append kernel arg if missing
-    #[clap(long, value_name = "ARG", number_of_values = 1)]
+    #[clap(long, value_name = "ARG")]
     #[clap(alias = "should-exist")]
     pub append_if_missing: Vec<String>,
     /// Delete kernel arg
-    #[clap(long, value_name = "ARG", number_of_values = 1)]
+    #[clap(long, value_name = "ARG")]
     #[clap(alias = "should-not-exist")]
     pub delete: Vec<String>,
 }

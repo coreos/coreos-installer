@@ -36,11 +36,9 @@ use crate::io::IgnitionHash;
 // Please keep the entire help text to 80 columns.
 
 #[derive(Debug, Parser)]
-#[clap(name = "coreos-installer")]
 #[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(global_setting(AppSettings::DisableHelpSubcommand))]
-#[clap(global_setting(AppSettings::UnifiedHelpMessage))]
 pub enum Cmd {
     /// Install Fedora CoreOS or RHEL CoreOS
     Install(InstallConfig),
@@ -235,7 +233,7 @@ pub struct InstallConfig {
     /// repeatable options, and "true" for flags.  The destination device
     /// can be specified with the "dest-device" key.
     #[serde(skip)]
-    #[clap(short, long, value_name = "path", number_of_values = 1)]
+    #[clap(short, long, value_name = "path")]
     pub config_file: Vec<String>,
 
     // ways to specify the image source
@@ -300,13 +298,13 @@ pub struct InstallConfig {
     ///
     /// Add a kernel argument to the installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "arg", number_of_values = 1)]
+    #[clap(long, value_name = "arg")]
     pub append_karg: Vec<String>,
     /// Delete default kernel arg
     ///
     /// Delete a default kernel argument from the installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "arg", number_of_values = 1)]
+    #[clap(long, value_name = "arg")]
     pub delete_karg: Vec<String>,
     /// Copy network config from install environment
     ///
@@ -505,7 +503,7 @@ pub struct CommonCustomizeConfig {
     ///
     /// Automatically run installer and merge the specified Ignition config
     /// into the config for the destination system.
-    #[clap(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub dest_ignition: Vec<String>,
     /// Install destination device
     ///
@@ -518,13 +516,13 @@ pub struct CommonCustomizeConfig {
     ///
     /// Automatically run installer, adding the specified kernel argument
     /// for every boot of the destination system.
-    #[clap(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, value_name = "arg")]
     pub dest_karg_append: Vec<String>,
     /// Destination kernel argument to delete
     ///
     /// Automatically run installer, deleting the specified kernel argument
     /// for every boot of the destination system.
-    #[clap(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, value_name = "arg")]
     pub dest_karg_delete: Vec<String>,
     /// NetworkManager keyfile for live & dest
     ///
@@ -533,7 +531,7 @@ pub struct CommonCustomizeConfig {
     /// when Ignition is run.  If installer is enabled via additional options,
     /// network settings will also be applied in the destination system,
     /// including when Ignition is run.
-    #[clap(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub network_keyfile: Vec<String>,
     /// Ignition PEM CA bundle for live & dest
     ///
@@ -541,7 +539,7 @@ pub struct CommonCustomizeConfig {
     /// Ignition, in PEM format.  Authorities will be trusted by Ignition
     /// in the live environment and, if installer is enabled via additional
     /// options, in the destination system.
-    #[clap(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub ignition_ca: Vec<String>,
     /// Script to run before installation
     ///
@@ -562,13 +560,13 @@ pub struct CommonCustomizeConfig {
     /// Automatically run coreos-installer and apply the specified installer
     /// config file.  Config files are applied in the order that they are
     /// specified.
-    #[clap(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub installer_config: Vec<String>,
     /// Ignition config fragment for live env
     ///
     /// Merge the specified Ignition config into the config for the live
     /// environment.
-    #[clap(long, number_of_values = 1, value_name = "path")]
+    #[clap(long, value_name = "path")]
     pub live_ignition: Vec<String>,
 }
 
@@ -580,19 +578,19 @@ pub struct IsoCustomizeConfig {
     /// Live kernel argument to append
     ///
     /// Kernel argument to append to boots of the live environment.
-    #[clap(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, value_name = "arg")]
     pub live_karg_append: Vec<String>,
     /// Live kernel argument to delete
     ///
     /// Kernel argument to delete from boots of the live environment.
-    #[clap(long, number_of_values = 1, value_name = "arg")]
+    #[clap(long, value_name = "arg")]
     pub live_karg_delete: Vec<String>,
     /// Live kernel argument to replace
     ///
     /// Kernel argument to replace for boots of the live environment, in the
     /// form key=old=new.  For a default argument "a=b", specifying
     /// "--live-karg-replace a=b=c" will produce the argument "a=c".
-    #[clap(long, number_of_values = 1, value_name = "k=o=n")]
+    #[clap(long, value_name = "k=o=n")]
     pub live_karg_replace: Vec<String>,
 
     // I/O configuration
@@ -679,7 +677,6 @@ pub struct IsoNetworkEmbedConfig {
     // Required option. :-(  In future we might support other configuration
     // sources.
     #[clap(short, long, required = true, value_name = "path")]
-    #[clap(number_of_values = 1)]
     pub keyfile: Vec<String>,
     /// Overwrite existing network settings
     #[clap(short, long)]
@@ -715,13 +712,13 @@ pub struct IsoNetworkRemoveConfig {
 #[derive(Debug, Parser)]
 pub struct IsoKargsModifyConfig {
     /// Kernel argument to append
-    #[clap(short, long, number_of_values = 1, value_name = "KARG")]
+    #[clap(short, long, value_name = "KARG")]
     pub append: Vec<String>,
     /// Kernel argument to delete
-    #[clap(short, long, number_of_values = 1, value_name = "KARG")]
+    #[clap(short, long, value_name = "KARG")]
     pub delete: Vec<String>,
     /// Kernel argument to replace
-    #[clap(short, long, number_of_values = 1, value_name = "KARG=OLDVAL=NEWVAL")]
+    #[clap(short, long, value_name = "KARG=OLDVAL=NEWVAL")]
     pub replace: Vec<String>,
     /// Write ISO to a new output file
     #[clap(short, long, value_name = "PATH")]
@@ -896,7 +893,6 @@ pub struct PxeNetworkWrapConfig {
     // Required option. :-(  In future we might support other configuration
     // sources.
     #[clap(short, long, required = true, value_name = "path")]
-    #[clap(number_of_values = 1)]
     pub keyfile: Vec<String>,
     /// Write to a file instead of stdout
     #[clap(short, long, value_name = "path")]
