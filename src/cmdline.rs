@@ -315,10 +315,10 @@ pub struct InstallConfig {
     #[structopt(next_line_help(true))]
     pub network_dir: DefaultedString<NetworkDir>,
     /// Save partitions with this label glob
+    #[serde(skip_serializing_if = "is_default")]
     #[structopt(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
     // one argument.
-    #[serde(skip_serializing_if = "is_default")]
     #[structopt(number_of_values = 1, require_delimiter = true)]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
