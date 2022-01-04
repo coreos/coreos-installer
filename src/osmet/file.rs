@@ -18,8 +18,8 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use bincode::Options;
+use clap::crate_version;
 use serde::{Deserialize, Serialize};
-use structopt::clap::crate_version;
 use xz2::bufread::XzDecoder;
 
 use crate::io::{bincoder, BUFFER_SIZE};

@@ -15,8 +15,7 @@
 // For consistency, have all parse_*() functions return Result.
 #![allow(clippy::unnecessary_wraps)]
 
-use structopt::clap::AppSettings;
-use structopt::StructOpt;
+use clap::{AppSettings, StructOpt};
 
 // Args are listed in --help in the order declared in these structs/enums.
 
@@ -26,7 +25,6 @@ use structopt::StructOpt;
 #[structopt(global_setting(AppSettings::DeriveDisplayOrder))]
 #[structopt(global_setting(AppSettings::DisableHelpSubcommand))]
 #[structopt(global_setting(AppSettings::UnifiedHelpMessage))]
-#[structopt(global_setting(AppSettings::VersionlessSubcommands))]
 pub enum Cmd {
     /// Generate rootmap kargs and optionally inject into BLS configs
     Rootmap(RootmapConfig),

@@ -16,6 +16,7 @@
 #![allow(clippy::large_enum_variant)]
 
 use anyhow::{anyhow, Context, Error, Result};
+use clap::{AppSettings, StructOpt};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_with::{
@@ -28,8 +29,6 @@ use std::fs::OpenOptions;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::str::FromStr;
-use structopt::clap::AppSettings;
-use structopt::StructOpt;
 
 use crate::io::IgnitionHash;
 
@@ -42,7 +41,6 @@ use crate::io::IgnitionHash;
 #[structopt(global_setting(AppSettings::DeriveDisplayOrder))]
 #[structopt(global_setting(AppSettings::DisableHelpSubcommand))]
 #[structopt(global_setting(AppSettings::UnifiedHelpMessage))]
-#[structopt(global_setting(AppSettings::VersionlessSubcommands))]
 pub enum Cmd {
     /// Install Fedora CoreOS or RHEL CoreOS
     Install(InstallConfig),
@@ -51,12 +49,16 @@ pub enum Cmd {
     /// List available images in a Fedora CoreOS stream
     ListStream(ListStreamConfig),
     /// Commands to manage a CoreOS live ISO image
+    #[clap(subcommand)]
     Iso(IsoCmd),
     /// Commands to manage a CoreOS live PXE image
+    #[clap(subcommand)]
     Pxe(PxeCmd),
     /// Metadata packing commands used when building an OS image
+    #[clap(subcommand)]
     Pack(PackCmd),
     /// Development commands (unstable)
+    #[clap(subcommand)]
     Dev(DevCmd),
 }
 
@@ -77,12 +79,16 @@ pub enum IsoCmd {
     /// Customize a CoreOS live ISO image
     Customize(IsoCustomizeConfig),
     /// Embed an Ignition config in a CoreOS live ISO image
+    #[clap(subcommand)]
     Ignition(IsoIgnitionCmd),
     /// Embed network settings in a CoreOS live ISO image
+    #[clap(subcommand)]
     Network(IsoNetworkCmd),
     /// Modify kernel args in a CoreOS live ISO image
+    #[clap(subcommand)]
     Kargs(IsoKargsCmd),
     /// Commands to extract files from a CoreOS live ISO image
+    #[clap(subcommand)]
     Extract(IsoExtractCmd),
     /// Restore a CoreOS live ISO image to default settings
     Reset(IsoResetConfig),
@@ -131,8 +137,10 @@ pub enum PxeCmd {
     /// Create a custom live PXE boot config
     Customize(PxeCustomizeConfig),
     /// Commands to manage a live PXE Ignition config
+    #[clap(subcommand)]
     Ignition(PxeIgnitionCmd),
     /// Commands to manage live PXE network settings
+    #[clap(subcommand)]
     Network(PxeNetworkCmd),
 }
 
@@ -167,8 +175,10 @@ pub enum PackCmd {
 #[structopt(setting(AppSettings::Hidden))]
 pub enum DevCmd {
     /// Commands to show metadata
+    #[clap(subcommand)]
     Show(DevShowCmd),
     /// Commands to extract data
+    #[clap(subcommand)]
     Extract(DevExtractCmd),
 }
 
@@ -195,7 +205,7 @@ pub enum DevExtractCmd {
 // you break anything too badly.
 // - Defaults cannot be specified using #[structopt(default_value = "x")]
 //   because serde won't see them otherwise.  Instead, use
-//   #[structopt(default_value)], implement Default, and derive PartialEq
+//   #[structopt(default_value_t)], implement Default, and derive PartialEq
 //   for the type.  (For string-typed defaults, you can use
 //   DefaultedString<T> where T is a custom type implementing
 //   DefaultString.)
@@ -238,11 +248,11 @@ pub struct InstallConfig {
     pub stream: Option<String>,
     /// Manually specify the image URL
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[structopt(short = "u", long, value_name = "URL")]
+    #[structopt(short = 'u', long, value_name = "URL")]
     #[structopt(conflicts_with = "stream", conflicts_with = "image-file")]
     pub image_url: Option<Url>,
     /// Manually specify a local image file
-    #[structopt(short = "f", long, value_name = "path")]
+    #[structopt(short = 'f', long, value_name = "path")]
     #[structopt(conflicts_with = "stream", conflicts_with = "image-url")]
     pub image_file: Option<String>,
 
@@ -257,7 +267,7 @@ pub struct InstallConfig {
     /// Immediately fetch the Ignition config from the URL and embed it in
     /// the installed system.
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[structopt(short = "I", long, value_name = "URL")]
+    #[structopt(short = 'I', long, value_name = "URL")]
     #[structopt(conflicts_with = "ignition-file")]
     pub ignition_url: Option<Url>,
     /// Digest (type-value) of the Ignition config
@@ -271,7 +281,7 @@ pub struct InstallConfig {
     /// Create an install disk for a different CPU architecture than the
     /// host.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(short, long, default_value, value_name = "name")]
+    #[structopt(short, long, default_value_t, value_name = "name")]
     pub architecture: DefaultedString<Architecture>,
     /// Override the Ignition platform ID
     ///
@@ -303,14 +313,14 @@ pub struct InstallConfig {
     /// Copy NetworkManager keyfiles from the install environment to the
     /// installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(short = "n", long)]
+    #[structopt(short = 'n', long)]
     pub copy_network: bool,
     /// For use with -n
     ///
     /// Specify the path to NetworkManager keyfiles to be copied with
     /// --copy-network.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "path", default_value)]
+    #[structopt(long, value_name = "path", default_value_t)]
     // so we can stay under 80 chars
     #[structopt(next_line_help(true))]
     pub network_dir: DefaultedString<NetworkDir>,
@@ -320,6 +330,7 @@ pub struct InstallConfig {
     // Allow argument multiple times, but one value each.  Allow "a,b" in
     // one argument.
     #[structopt(number_of_values = 1, require_delimiter = true)]
+    #[structopt(value_delimiter = ',')]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
     #[serde(skip_serializing_if = "is_default")]
@@ -327,6 +338,7 @@ pub struct InstallConfig {
     // Allow argument multiple times, but one value each.  Allow "1-5,7" in
     // one argument.
     #[structopt(number_of_values = 1, require_delimiter = true)]
+    #[structopt(value_delimiter = ',')]
     // Allow ranges like "-2".
     #[structopt(allow_hyphen_values = true)]
     pub save_partindex: Vec<String>,
@@ -364,7 +376,7 @@ pub struct InstallConfig {
     /// Number of times to retry network fetches, or the string "infinite"
     /// to retry indefinitely.
     #[serde(skip_serializing_if = "is_default")]
-    #[structopt(long, value_name = "N", default_value)]
+    #[structopt(long, value_name = "N", default_value_t)]
     pub fetch_retries: FetchRetries,
 
     // positional args
@@ -449,7 +461,7 @@ pub struct DownloadConfig {
     #[structopt(short, long, value_name = "name", default_value = "stable")]
     pub stream: String,
     /// Target CPU architecture
-    #[structopt(short, long, value_name = "name", default_value)]
+    #[structopt(short, long, value_name = "name", default_value_t)]
     pub architecture: DefaultedString<Architecture>,
     /// Fedora CoreOS platform name
     #[structopt(short, long, value_name = "name", default_value = "metal")]
@@ -458,10 +470,10 @@ pub struct DownloadConfig {
     #[structopt(short, long, value_name = "name", default_value = "raw.xz")]
     pub format: String,
     /// Manually specify the image URL
-    #[structopt(short = "u", long, value_name = "URL")]
+    #[structopt(short = 'u', long, value_name = "URL")]
     pub image_url: Option<Url>,
     /// Destination directory
-    #[structopt(short = "C", long, value_name = "path", default_value = ".")]
+    #[structopt(short = 'C', long, value_name = "path", default_value = ".")]
     pub directory: String,
     /// Decompress image and don't save signature
     #[structopt(short, long)]
@@ -473,7 +485,7 @@ pub struct DownloadConfig {
     #[structopt(long, value_name = "URL")]
     pub stream_base_url: Option<Url>,
     /// Fetch retries, or "infinite"
-    #[structopt(long, value_name = "N", default_value)]
+    #[structopt(long, value_name = "N", default_value_t)]
     pub fetch_retries: FetchRetries,
 }
 
@@ -683,7 +695,7 @@ pub struct IsoNetworkEmbedConfig {
 #[derive(Debug, StructOpt)]
 pub struct IsoNetworkExtractConfig {
     /// Extract to directory instead of stdout
-    #[structopt(short = "C", long, value_name = "path")]
+    #[structopt(short = 'C', long, value_name = "path")]
     pub directory: Option<String>,
     /// ISO image
     #[structopt(value_name = "ISO")]
@@ -894,7 +906,7 @@ pub struct PxeNetworkWrapConfig {
 #[derive(Debug, StructOpt)]
 pub struct PxeNetworkUnwrapConfig {
     /// Extract to directory instead of stdout
-    #[structopt(short = "C", long, value_name = "path")]
+    #[structopt(short = 'C', long, value_name = "path")]
     pub directory: Option<String>,
     /// initrd image [default: stdin]
     #[structopt(value_name = "initrd")]
@@ -914,7 +926,7 @@ pub struct DevShowInitrdConfig {
 #[derive(Debug, StructOpt)]
 pub struct DevExtractInitrdConfig {
     /// Output directory
-    #[structopt(short = "C", long, value_name = "path", default_value = ".")]
+    #[structopt(short = 'C', long, value_name = "path", default_value = ".")]
     pub directory: String,
     /// List extracted contents
     #[structopt(short, long)]
@@ -1047,8 +1059,8 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 
 mod serializer {
     use anyhow::Context;
+    use clap::StructOpt;
     use serde::{ser, Serialize};
-    use structopt::StructOpt;
 
     pub fn to_args<T>(value: &T) -> anyhow::Result<Vec<String>>
     where

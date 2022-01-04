@@ -19,7 +19,7 @@ mod stream_hash;
 mod unique_fs;
 
 use anyhow::Result;
-use structopt::StructOpt;
+use clap::StructOpt;
 
 use crate::cmdline::*;
 

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use anyhow::Result;
-use structopt::StructOpt;
+use clap::StructOpt;
 
 use libcoreinst::{cmdline, download, install, live, osmet, source};
 
