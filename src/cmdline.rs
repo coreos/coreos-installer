@@ -813,6 +813,8 @@ pub struct IsoResetConfig {
 }
 
 #[derive(Debug, StructOpt)]
+// default usage line lists all mandatory options and so exceeds 80 characters
+#[structopt(usage = "coreos-installer pack osmet [OPTIONS]")]
 pub struct PackOsmetConfig {
     /// Path to osmet file to write
     // could output to stdout if missing?
