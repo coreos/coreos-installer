@@ -48,8 +48,8 @@ if [ "${stdout_hash}" != "${hash}" ]; then
 fi
 
 # Check the actual file bits.
-offset=$(coreos-installer iso ignition show --header "${iso}" | jq -r .offset)
-length=$(coreos-installer iso ignition show --header "${iso}" | jq -r .length)
+offset=$(coreos-installer dev show iso --ignition "${iso}" | jq -r .offset)
+length=$(coreos-installer dev show iso --ignition "${iso}" | jq -r .length)
 if [ "${config}" != "$(dd if=${iso} skip=${offset} count=${length} bs=1 status=none | xzcat | cpio -i --to-stdout --quiet)" ]; then
     fatal "Failed to manually round-trip Ignition config"
 fi
@@ -82,7 +82,7 @@ fi
 
 # Test an overlarge Ignition config.  Get some random data from /dev/urandom
 # to ensure it's sufficiently incompressible.
-embed_size=$(coreos-installer iso ignition show --header "${iso}" | jq .length)
+embed_size=$(coreos-installer dev show iso --ignition "${iso}" | jq .length)
 set +x
 random=$(dd if=/dev/urandom bs=1 count=${embed_size} status=none | base64 -w0)
 set -x

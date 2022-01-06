@@ -75,7 +75,7 @@ fi
 
 # Test the largest karg; we get the full area length from --header and subtract
 # the default kargs size to get the size of the overflow embed area.
-embed_size=$(coreos-installer iso kargs show --header "${iso}" | jq .length)
+embed_size=$(coreos-installer dev show iso --kargs "${iso}" | jq .length)
 embed_default_kargs_size=$(coreos-installer iso kargs show --default "${iso}" | wc -c)
 embed_usable_size=$((${embed_size} - ${embed_default_kargs_size} - 1))
 
@@ -110,8 +110,8 @@ fi
 
 # Check modification against expected ground truth.
 coreos-installer iso kargs modify -a foobar=val "${iso}"
-offset=$(coreos-installer iso kargs show --header "${iso}" | jq -r .kargs[0].offset)
-length=$(coreos-installer iso kargs show --header "${iso}" | jq -r .kargs[0].length)
+offset=$(coreos-installer dev show iso --kargs "${iso}" | jq -r .kargs[0].offset)
+length=$(coreos-installer dev show iso --kargs "${iso}" | jq -r .kargs[0].length)
 expected_args="$(coreos-installer iso kargs show --default "${iso}") foobar=val"
 expected_args_len="$(echo -n "${expected_args}" | wc -c)"
 filler="$(printf '%*s' $((${length} - ${expected_args_len} - 1)) | tr ' ' '#')"

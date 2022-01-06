@@ -660,9 +660,6 @@ pub struct IsoIgnitionShowConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
-    /// Show ISO header (for debugging/testing only)
-    #[structopt(long, hidden = true)]
-    pub header: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -748,9 +745,6 @@ pub struct IsoKargsShowConfig {
     /// Show default kernel args
     #[structopt(short, long)]
     pub default: bool,
-    /// Show ISO header (for debugging/testing only)
-    #[structopt(long, hidden = true)]
-    pub header: bool,
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
@@ -758,6 +752,12 @@ pub struct IsoKargsShowConfig {
 
 #[derive(Debug, StructOpt)]
 pub struct DevShowIsoConfig {
+    /// Show Ignition embed area parameters
+    #[structopt(long, conflicts_with = "kargs")]
+    pub ignition: bool,
+    /// Show kargs embed area parameters
+    #[structopt(long, conflicts_with = "ignition")]
+    pub kargs: bool,
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
