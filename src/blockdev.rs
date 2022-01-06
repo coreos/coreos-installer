@@ -19,7 +19,6 @@ use nix::{errno::Errno, mount, sched};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
-use std::env;
 use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
@@ -32,7 +31,6 @@ use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Once;
 use std::thread::sleep;
 use std::time::Duration;
 use uuid::Uuid;
@@ -424,25 +422,8 @@ impl Mount {
 
         // Ensure we're in a private mount namespace so the mount isn't
         // visible to the rest of the system.  Multiple unshare calls
-        // should be safe.  For now, skip the unshare if the
-        // COREOS_INSTALLER_NO_MOUNT_NAMESPACE environment variable is set,
-        // in case there are use cases where the unshare call fails.
-        // https://github.com/coreos/coreos-installer/issues/557
-        match env::var("COREOS_INSTALLER_NO_MOUNT_NAMESPACE")
-            .as_ref()
-            .map(|v| v as &str)
-        {
-            Ok("") | Err(env::VarError::NotPresent) => {
-                sched::unshare(sched::CloneFlags::CLONE_NEWNS)
-                    .context("unsharing mount namespace")?
-            }
-            _ => {
-                static WARNED: Once = Once::new();
-                WARNED.call_once(|| {
-                    eprintln!("\nMounting filesystems in parent namespace because\nCOREOS_INSTALLER_NO_MOUNT_NAMESPACE is set.  If you need this, file a bug at\nhttps://github.com/coreos/coreos-installer/issues/new/choose.\n");
-                });
-            }
-        }
+        // should be safe.
+        sched::unshare(sched::CloneFlags::CLONE_NEWNS).context("unsharing mount namespace")?;
 
         mount::mount::<str, Path, str, str>(Some(device), &mountpoint, Some(fstype), flags, None)
             .with_context(|| format!("mounting device {} on {}", device, mountpoint.display()))?;
