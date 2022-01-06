@@ -58,6 +58,10 @@ pub enum Cmd {
     Osmet(OsmetCmd),
     /// Commands to manage a CoreOS live PXE image
     Pxe(PxeCmd),
+    /// Metadata packing commands used when building an OS image
+    // users shouldn't be interacting with this command normally
+    #[structopt(setting(AppSettings::Hidden))]
+    Pack(PackCmd),
 }
 
 #[derive(Debug, StructOpt)]
@@ -128,17 +132,17 @@ pub enum IsoExtractCmd {
     Pxe(IsoExtractPxeConfig),
     /// Extract a minimal ISO from a CoreOS live ISO image
     MinimalIso(IsoExtractMinimalIsoConfig),
-    // This doesn't really make sense under `extract`, but it's hidden and conceptually feels
-    // cleaner being alongside `coreos-installer iso extract minimal-iso`.
     /// Pack a minimal ISO into a CoreOS live ISO image
+    // deprecated in favor of "pack minimal-iso"
     #[structopt(setting(AppSettings::Hidden))]
-    PackMinimalIso(IsoExtractPackMinimalIsoConfig),
+    PackMinimalIso(PackMinimalIsoConfig),
 }
 
 #[derive(Debug, StructOpt)]
 pub enum OsmetCmd {
     /// Create osmet file from CoreOS block device
-    Pack(OsmetPackConfig),
+    // deprecated in favor of "pack osmet"
+    Pack(PackOsmetConfig),
     /// Generate raw metal image from osmet file and OSTree repo
     Unpack(OsmetUnpackConfig),
     /// Print file extent mapping of specific file
@@ -169,6 +173,14 @@ pub enum PxeNetworkCmd {
     Wrap(PxeNetworkWrapConfig),
     /// Extract wrapped network settings from an initrd image
     Unwrap(PxeNetworkUnwrapConfig),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum PackCmd {
+    /// Create osmet file from CoreOS block device
+    Osmet(PackOsmetConfig),
+    /// Pack a minimal ISO into a CoreOS live ISO image
+    MinimalIso(PackMinimalIsoConfig),
 }
 
 // As a special case, this struct supports Serialize and Deserialize for
@@ -760,7 +772,7 @@ pub struct IsoExtractMinimalIsoConfig {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct IsoExtractPackMinimalIsoConfig {
+pub struct PackMinimalIsoConfig {
     /// ISO image
     #[structopt(value_name = "FULL_ISO")]
     pub full: String,
@@ -783,7 +795,7 @@ pub struct IsoResetConfig {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct OsmetPackConfig {
+pub struct PackOsmetConfig {
     /// Path to osmet file to write
     // could output to stdout if missing?
     #[structopt(long, required = true, value_name = "FILE")]

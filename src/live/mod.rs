@@ -581,7 +581,7 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
     Ok(())
 }
 
-pub fn iso_pack_minimal_iso(config: IsoExtractPackMinimalIsoConfig) -> Result<()> {
+pub fn pack_minimal_iso(config: PackMinimalIsoConfig) -> Result<()> {
     let mut full_iso = IsoFs::from_file(open_live_iso(&config.full, Some(None))?)?;
     let mut minimal_iso = IsoFs::from_file(open_live_iso(&config.minimal, None)?)?;
 

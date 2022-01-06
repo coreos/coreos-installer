@@ -90,7 +90,7 @@ pub fn osmet_fiemap(config: OsmetFiemapConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn osmet_pack(config: OsmetPackConfig) -> Result<()> {
+pub fn pack_osmet(config: PackOsmetConfig) -> Result<()> {
     // First, mount the two main partitions we want to suck out data from: / and /boot. Note
     // MS_RDONLY; this also ensures that the partition isn't already mounted rw elsewhere.
     let disk = Disk::new(&config.device)?;
