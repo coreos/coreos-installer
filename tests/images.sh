@@ -31,7 +31,7 @@ if [ -n "${1:-}" ]; then
     call iso-ignition.sh "${basedir}"/*.iso
     call iso-network.sh "${basedir}"/*.iso
     call iso-kargs.sh "${basedir}"/*.iso
-    call iso-inspect.sh "${basedir}"/*.iso
+    call dev-show-iso.sh "${basedir}"/*.iso
     call iso-extract-pxe.sh "${basedir}"
     call customize.sh "${basedir}"
 else

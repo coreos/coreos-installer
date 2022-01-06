@@ -456,27 +456,26 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
 }
 
 #[derive(Serialize)]
-struct IsoInspectOutput {
+struct DevShowIsoOutput {
     header: IsoFs,
     records: Vec<String>,
 }
 
-pub fn iso_inspect(config: IsoInspectConfig) -> Result<()> {
+pub fn dev_show_iso(config: DevShowIsoConfig) -> Result<()> {
     let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
     let records = iso
         .walk()?
         .map(|r| r.map(|(path, _)| path))
         .collect::<Result<Vec<String>>>()
         .context("while walking ISO filesystem")?;
-    let inspect_out = IsoInspectOutput {
+    let info = DevShowIsoOutput {
         header: iso,
         records,
     };
 
     let stdout = io::stdout();
     let mut out = stdout.lock();
-    serde_json::to_writer_pretty(&mut out, &inspect_out)
-        .context("failed to serialize ISO metadata")?;
+    serde_json::to_writer_pretty(&mut out, &info).context("failed to serialize ISO metadata")?;
     out.write_all(b"\n").context("failed to write newline")?;
     Ok(())
 }

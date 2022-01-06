@@ -79,7 +79,7 @@ struct FiemapOutput {
     extents: Vec<Extent>,
 }
 
-pub fn osmet_fiemap(config: OsmetFiemapConfig) -> Result<()> {
+pub fn dev_show_fiemap(config: DevShowFiemapConfig) -> Result<()> {
     let output = FiemapOutput {
         extents: fiemap_path(config.file.as_str().as_ref())?,
     };
@@ -154,7 +154,7 @@ pub fn pack_osmet(config: PackOsmetConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn osmet_unpack(config: OsmetUnpackConfig) -> Result<()> {
+pub fn dev_extract_osmet(config: DevExtractOsmetConfig) -> Result<()> {
     // open output device for writing
     let mut dev = OpenOptions::new()
         .write(true)

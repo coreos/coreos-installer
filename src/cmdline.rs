@@ -62,6 +62,10 @@ pub enum Cmd {
     // users shouldn't be interacting with this command normally
     #[structopt(setting(AppSettings::Hidden))]
     Pack(PackCmd),
+    /// Development commands (unstable)
+    // users shouldn't be interacting with this command normally
+    #[structopt(setting(AppSettings::Hidden))]
+    Dev(DevCmd),
 }
 
 #[derive(Debug, StructOpt)]
@@ -86,10 +90,6 @@ pub enum IsoCmd {
     Network(IsoNetworkCmd),
     /// Modify kernel args in a CoreOS live ISO image
     Kargs(IsoKargsCmd),
-    /// Inspect the CoreOS live ISO image
-    // for testing and debugging purposes only
-    #[structopt(setting(AppSettings::Hidden))]
-    Inspect(IsoInspectConfig),
     /// Commands to extract files from a CoreOS live ISO image
     Extract(IsoExtractCmd),
     /// Restore a CoreOS live ISO image to default settings
@@ -143,10 +143,6 @@ pub enum OsmetCmd {
     /// Create osmet file from CoreOS block device
     // deprecated in favor of "pack osmet"
     Pack(PackOsmetConfig),
-    /// Generate raw metal image from osmet file and OSTree repo
-    Unpack(OsmetUnpackConfig),
-    /// Print file extent mapping of specific file
-    Fiemap(OsmetFiemapConfig),
 }
 
 #[derive(Debug, StructOpt)]
@@ -181,6 +177,28 @@ pub enum PackCmd {
     Osmet(PackOsmetConfig),
     /// Pack a minimal ISO into a CoreOS live ISO image
     MinimalIso(PackMinimalIsoConfig),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum DevCmd {
+    /// Commands to show metadata
+    Show(DevShowCmd),
+    /// Commands to extract data
+    Extract(DevExtractCmd),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum DevShowCmd {
+    /// Inspect the CoreOS live ISO image
+    Iso(DevShowIsoConfig),
+    /// Print file extent mapping of specific file
+    Fiemap(DevShowFiemapConfig),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum DevExtractCmd {
+    /// Generate raw metal image from osmet file and OSTree repo
+    Osmet(DevExtractOsmetConfig),
 }
 
 // As a special case, this struct supports Serialize and Deserialize for
@@ -739,7 +757,7 @@ pub struct IsoKargsShowConfig {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct IsoInspectConfig {
+pub struct DevShowIsoConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
@@ -818,7 +836,7 @@ pub struct PackOsmetConfig {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct OsmetUnpackConfig {
+pub struct DevExtractOsmetConfig {
     /// osmet file
     #[structopt(long, required = true, value_name = "PATH")]
     pub osmet: String,
@@ -831,7 +849,7 @@ pub struct OsmetUnpackConfig {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct OsmetFiemapConfig {
+pub struct DevShowFiemapConfig {
     /// File to map
     #[structopt(value_name = "PATH")]
     pub file: String,
