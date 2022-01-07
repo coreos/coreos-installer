@@ -34,19 +34,19 @@ if [ -n "${1:-}" ]; then
     call iso-inspect.sh "${basedir}"/*.iso
     call iso-extract-pxe.sh "${basedir}"
     call customize.sh "${basedir}"
-else
-    # test historical layouts using fixtures
-    call iso-ignition.sh ${fixtures}/iso/embed-areas-2020-09.iso.xz
-    call iso-ignition.sh ${fixtures}/iso/embed-areas-2021-01.iso.xz
-    call iso-ignition.sh ${fixtures}/iso/embed-areas-2021-09.iso.xz
-    call iso-ignition.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
-    call iso-network.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
-    call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-01.iso.xz
-    call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-09.iso.xz
-    call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
-    # replace this with a no-coreKarg fixture when available
-    call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz nolegacy
-    call unsupported.sh
 fi
+
+# test historical layouts using fixtures
+call iso-ignition.sh ${fixtures}/iso/embed-areas-2020-09.iso.xz
+call iso-ignition.sh ${fixtures}/iso/embed-areas-2021-01.iso.xz
+call iso-ignition.sh ${fixtures}/iso/embed-areas-2021-09.iso.xz
+call iso-ignition.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
+call iso-network.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
+call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-01.iso.xz
+call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-09.iso.xz
+call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
+# replace this with a no-coreKarg fixture when available
+call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz nolegacy
+call unsupported.sh
 
 msg Success.
