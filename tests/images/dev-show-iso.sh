@@ -14,7 +14,7 @@ tmpd=$(mktemp -d)
 trap 'rm -rf "${tmpd}"' EXIT
 cd "${tmpd}"
 
-coreos-installer iso inspect "${iso}" | tee inspect.json
+coreos-installer dev show iso "${iso}" | tee inspect.json
 
 # check that we found the descriptors
 jq -e '.header.descriptors|length > 0' inspect.json

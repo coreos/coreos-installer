@@ -51,7 +51,6 @@ pub fn iso_show(config: IsoShowConfig) -> Result<()> {
     eprintln!("`iso show` is deprecated; use `iso ignition show`.  Continuing.");
     iso_ignition_show(IsoIgnitionShowConfig {
         input: config.input,
-        header: false,
     })
 }
 
@@ -93,23 +92,18 @@ pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
 pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
+    if !iso.have_ignition() {
+        bail!("No embedded Ignition config.");
+    }
     let stdout = io::stdout();
     let mut out = stdout.lock();
-    if config.header {
-        out.write_all(&iso.initrd_header_json()?)
-            .context("failed to write header")?;
-    } else {
-        if !iso.have_ignition() {
-            bail!("No embedded Ignition config.");
-        }
-        out.write_all(
-            iso.initrd()
-                .get(INITRD_IGNITION_PATH)
-                .context("couldn't find Ignition config in archive")?,
-        )
-        .context("writing output")?;
-        out.flush().context("flushing output")?;
-    }
+    out.write_all(
+        iso.initrd()
+            .get(INITRD_IGNITION_PATH)
+            .context("couldn't find Ignition config in archive")?,
+    )
+    .context("writing output")?;
+    out.flush().context("flushing output")?;
     Ok(())
 }
 
@@ -306,19 +300,12 @@ pub fn iso_kargs_reset(config: IsoKargsResetConfig) -> Result<()> {
 pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
-    if config.header {
-        io::stdout()
-            .lock()
-            .write_all(&iso.kargs_header_json()?)
-            .context("failed to write header")?;
+    let kargs = if config.default {
+        iso.kargs_default()?
     } else {
-        let kargs = if config.default {
-            iso.kargs_default()?
-        } else {
-            iso.kargs()?
-        };
-        println!("{}", kargs);
-    }
+        iso.kargs()?
+    };
+    println!("{}", kargs);
     Ok(())
 }
 
@@ -456,28 +443,39 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
 }
 
 #[derive(Serialize)]
-struct IsoInspectOutput {
+struct DevShowIsoOutput {
     header: IsoFs,
     records: Vec<String>,
 }
 
-pub fn iso_inspect(config: IsoInspectConfig) -> Result<()> {
-    let mut iso = IsoFs::from_file(open_live_iso(&config.input, None)?)?;
-    let records = iso
-        .walk()?
-        .map(|r| r.map(|(path, _)| path))
-        .collect::<Result<Vec<String>>>()
-        .context("while walking ISO filesystem")?;
-    let inspect_out = IsoInspectOutput {
-        header: iso,
-        records,
-    };
-
+pub fn dev_show_iso(config: DevShowIsoConfig) -> Result<()> {
+    let mut iso_file = open_live_iso(&config.input, None)?;
     let stdout = io::stdout();
     let mut out = stdout.lock();
-    serde_json::to_writer_pretty(&mut out, &inspect_out)
-        .context("failed to serialize ISO metadata")?;
-    out.write_all(b"\n").context("failed to write newline")?;
+    if config.ignition || config.kargs {
+        let iso = IsoConfig::for_file(&mut iso_file)?;
+        let data = if config.ignition {
+            iso.initrd_header_json()?
+        } else {
+            iso.kargs_header_json()?
+        };
+        out.write_all(&data).context("failed to write header")?;
+    } else {
+        let mut iso = IsoFs::from_file(iso_file)?;
+        let records = iso
+            .walk()?
+            .map(|r| r.map(|(path, _)| path))
+            .collect::<Result<Vec<String>>>()
+            .context("while walking ISO filesystem")?;
+        let info = DevShowIsoOutput {
+            header: iso,
+            records,
+        };
+
+        serde_json::to_writer_pretty(&mut out, &info)
+            .context("failed to serialize ISO metadata")?;
+        out.write_all(b"\n").context("failed to write newline")?;
+    }
     Ok(())
 }
 
@@ -581,7 +579,7 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
     Ok(())
 }
 
-pub fn iso_pack_minimal_iso(config: IsoExtractPackMinimalIsoConfig) -> Result<()> {
+pub fn pack_minimal_iso(config: PackMinimalIsoConfig) -> Result<()> {
     let mut full_iso = IsoFs::from_file(open_live_iso(&config.full, Some(None))?)?;
     let mut minimal_iso = IsoFs::from_file(open_live_iso(&config.minimal, None)?)?;
 

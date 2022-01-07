@@ -44,18 +44,15 @@ fn main() -> Result<()> {
                 IsoKargsCmd::Reset(c) => live::iso_kargs_reset(c),
                 IsoKargsCmd::Show(c) => live::iso_kargs_show(c),
             },
-            IsoCmd::Inspect(c) => live::iso_inspect(c),
             IsoCmd::Extract(c) => match c {
                 IsoExtractCmd::Pxe(c) => live::iso_extract_pxe(c),
                 IsoExtractCmd::MinimalIso(c) => live::iso_extract_minimal_iso(c),
-                IsoExtractCmd::PackMinimalIso(c) => live::iso_pack_minimal_iso(c),
+                IsoExtractCmd::PackMinimalIso(c) => live::pack_minimal_iso(c),
             },
             IsoCmd::Reset(c) => live::iso_reset(c),
         },
         Cmd::Osmet(c) => match c {
-            OsmetCmd::Fiemap(c) => osmet::osmet_fiemap(c),
-            OsmetCmd::Pack(c) => osmet::osmet_pack(c),
-            OsmetCmd::Unpack(c) => osmet::osmet_unpack(c),
+            OsmetCmd::Pack(c) => osmet::pack_osmet(c),
         },
         Cmd::Pxe(c) => match c {
             PxeCmd::Customize(c) => live::pxe_customize(c),
@@ -66,6 +63,19 @@ fn main() -> Result<()> {
             PxeCmd::Network(c) => match c {
                 PxeNetworkCmd::Wrap(c) => live::pxe_network_wrap(c),
                 PxeNetworkCmd::Unwrap(c) => live::pxe_network_unwrap(c),
+            },
+        },
+        Cmd::Pack(c) => match c {
+            PackCmd::Osmet(c) => osmet::pack_osmet(c),
+            PackCmd::MinimalIso(c) => live::pack_minimal_iso(c),
+        },
+        Cmd::Dev(c) => match c {
+            DevCmd::Show(c) => match c {
+                DevShowCmd::Iso(c) => live::dev_show_iso(c),
+                DevShowCmd::Fiemap(c) => osmet::dev_show_fiemap(c),
+            },
+            DevCmd::Extract(c) => match c {
+                DevExtractCmd::Osmet(c) => osmet::dev_extract_osmet(c),
             },
         },
     }

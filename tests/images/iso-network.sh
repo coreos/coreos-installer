@@ -111,8 +111,8 @@ coreos-installer iso ignition show "${iso}" | grep -q "version"
 (coreos-installer iso network extract "${iso}" 2>&1 ||:) | grep -q "No embedded network settings"
 coreos-installer iso ignition remove "${iso}"
 # verify we haven't written an empty cpio archive
-offset=$(coreos-installer iso ignition show --header "${iso}" | jq -r .offset)
-length=$(coreos-installer iso ignition show --header "${iso}" | jq -r .length)
+offset=$(coreos-installer dev show iso --ignition "${iso}" | jq -r .offset)
+length=$(coreos-installer dev show iso --ignition "${iso}" | jq -r .length)
 dd if="${iso}" skip="${offset}" count="${length}" bs=1 status=none | cmp -n "${length}" - /dev/zero
 rm "${out_iso}"
 

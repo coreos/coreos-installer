@@ -39,6 +39,8 @@ hidden=1
 checklen iso embed
 checklen iso show
 checklen iso remove
+checklen pack
+checklen dev
 
 if [ "${fail}" = 1 ]; then
     exit 1
