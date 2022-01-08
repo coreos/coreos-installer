@@ -1,0 +1,49 @@
+#!/bin/bash
+
+set -euxo pipefail
+
+case "${ARCH}" in
+x86_64)
+    ARCH=amd64
+    ;;
+*)
+    # We need qemu-user-static.  Ubuntu 20.04 has it, but the s390x emulation
+    # causes segfaults in rustup-init.  Luckily it's statically linked, so
+    # extract the working Fedora package.
+    podman run --rm -v $HOME:/pwd -w /pwd "${CONTAINER}" \
+        sh -c "dnf install -y python3-dnf-plugins-core && dnf download qemu-user-static.x86_64"
+    rpm2cpio ~/qemu-user-static-*.x86_64.rpm |
+        sudo cpio -D / -i --make-directories
+    sudo systemctl restart systemd-binfmt
+    ;;
+esac
+
+# Start the job container
+mkdir ~/ctx
+CID=$(podman create -v ${GITHUB_WORKSPACE}:/workspace -v ~/ctx:/ctx \
+    --arch="${ARCH}" "${CONTAINER}" tail -f /dev/null)
+podman start ${CID}
+
+# Build the wrapper script that will be used as a shell by subsequent job steps
+sudo tee /usr/bin/wrap-container > /dev/null <<EOF
+#!/bin/bash
+set -euxo pipefail
+script=$(mktemp ~/ctx/script-XXXXXX)
+cp "\$1" "\${script}"
+chmod +x "\${script}"
+# Use the same shell invocation that GitHub Actions does
+podman exec -w /workspace -e PATH="/root/.cargo/bin:/usr/sbin:/usr/bin:/sbin:/bin" ${CID} \
+    bash --noprofile --norc -eo pipefail "/ctx/\$(basename \${script})"
+EOF
+sudo chmod +x /usr/bin/wrap-container
+
+# Use it to install the requested Rust version
+wrap-container <(cat <<EOF
+set -x
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+    sh -s -- --default-toolchain ${TOOLCHAIN} --profile minimal \
+    ${COMPONENTS:+--component ${COMPONENTS}} -y
+rustc -V | cut -f2 -d\  > /ctx/toolchain-version
+EOF
+)
+echo "INSTALLED_TOOLCHAIN=$(cat ~/ctx/toolchain-version)" >> $GITHUB_ENV

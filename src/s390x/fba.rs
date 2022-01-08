@@ -25,7 +25,7 @@ pub(crate) fn fba_make_partitions(
     device: &mut File,
     first_mb: &[u8],
 ) -> Result<Vec<Range>> {
-    let bytes_per_block = get_sector_size(&device)?.get();
+    let bytes_per_block = get_sector_size(device)?.get();
     let partitions = partitions_from_gpt_header(bytes_per_block as u64, first_mb)?;
     let mut ranges = Vec::new();
     let mut mbr = MBR::new_from(device, bytes_per_block, rand::random())

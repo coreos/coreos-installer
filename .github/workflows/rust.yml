@@ -9,6 +9,7 @@ permissions:
   contents: read
 
 env:
+  CONTAINER: registry.fedoraproject.org/fedora:latest
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   # Minimum supported Rust version (MSRV)
@@ -16,18 +17,37 @@ env:
   # Pinned toolchain for linting
   ACTIONS_LINTS_TOOLCHAIN: 1.57.0
 
+defaults:
+  run:
+    # Created by env-setup early in the job
+    shell: 'wrap-container {0}'
+
 jobs:
   tests-stable:
     name: "Tests, stable toolchain"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch:
+          - x86_64
+          - s390x
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          TOOLCHAIN: stable
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
         with:
-          toolchain: "stable"
-          default: true
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -37,18 +57,35 @@ jobs:
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
       - name: Image tests
+        if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   tests-msrv:
     name: "Tests, minimum supported toolchain"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch:
+          - x86_64
+          - s390x
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          TOOLCHAIN: ${{ env.ACTIONS_MSRV_TOOLCHAIN }}
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
         with:
-          toolchain: ${{ env['ACTIONS_MSRV_TOOLCHAIN']  }}
-          default: true
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -58,25 +95,44 @@ jobs:
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
       - name: Image tests
+        if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   lints:
     name: "Lints, pinned toolchain"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch:
+          - x86_64
+          - s390x
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          TOOLCHAIN: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
+          COMPONENTS: rustfmt,clippy
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
         with:
-          toolchain: ${{ env['ACTIONS_LINTS_TOOLCHAIN']  }}
-          default: true
-          components: rustfmt, clippy
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}-lints
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel
       - name: cargo fmt (check)
         run: cargo fmt -- --check -l
       - name: cargo clippy (warnings)
         run: cargo clippy -- -D warnings
       - name: cargo clippy (rdcore, warnings)
         run: cargo clippy --features rdcore -- -D warnings
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   tests-other-channels:
     name: "Tests, unstable toolchain"
     runs-on: ubuntu-latest
@@ -86,14 +142,25 @@ jobs:
         channel:
           - "beta"
           - "nightly"
+        arch:
+          - x86_64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          TOOLCHAIN: ${{ matrix.channel }}
+      - name: Cache build artifacts
+        if: ${{ matrix.arch == 's390x' }}
+        uses: actions/cache@v2
         with:
-          toolchain: ${{ matrix.channel }}
-          default: true
+          path: target/debug
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -103,18 +170,24 @@ jobs:
       - name: cargo test (rdcore)
         run: cargo test --features rdcore
       - name: Image tests
+        if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
+      - name: Clean up cache
+        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   docs:
     name: "Docs"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-      - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: "stable"
-          default: true
+      - name: Set up environment
+        run: .github/workflows/env-setup
+        shell: bash
+        env:
+          ARCH: x86_64
+          TOOLCHAIN: stable
+      - name: Install dependencies
+        run: dnf install -y gcc openssl-devel util-linux
       - name: cargo build
         run: cargo build
       - name: Help text line length
