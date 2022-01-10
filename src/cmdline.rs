@@ -191,6 +191,8 @@ pub enum DevCmd {
 pub enum DevShowCmd {
     /// Inspect the CoreOS live ISO image
     Iso(DevShowIsoConfig),
+    /// Show the contents of an initrd image
+    Initrd(DevShowInitrdConfig),
     /// Print file extent mapping of specific file
     Fiemap(DevShowFiemapConfig),
 }
@@ -199,6 +201,8 @@ pub enum DevShowCmd {
 pub enum DevExtractCmd {
     /// Generate raw metal image from osmet file and OSTree repo
     Osmet(DevExtractOsmetConfig),
+    /// Extract the contents of an initrd image
+    Initrd(DevExtractInitrdConfig),
 }
 
 // As a special case, this struct supports Serialize and Deserialize for
@@ -910,6 +914,32 @@ pub struct PxeNetworkUnwrapConfig {
     /// initrd image [default: stdin]
     #[structopt(value_name = "initrd")]
     pub input: Option<String>,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct DevShowInitrdConfig {
+    /// initrd image ("-" for stdin)
+    #[structopt(value_name = "initrd")]
+    pub input: String,
+    /// Files or globs to list
+    #[structopt(value_name = "glob")]
+    pub filter: Vec<String>,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct DevExtractInitrdConfig {
+    /// Output directory
+    #[structopt(short = "C", long, value_name = "path", default_value = ".")]
+    pub directory: String,
+    /// List extracted contents
+    #[structopt(short, long)]
+    pub verbose: bool,
+    /// initrd image ("-" for stdin)
+    #[structopt(value_name = "initrd")]
+    pub input: String,
+    /// Files or globs to list
+    #[structopt(value_name = "glob")]
+    pub filter: Vec<String>,
 }
 
 impl FromStr for FetchRetries {

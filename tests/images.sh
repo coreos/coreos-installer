@@ -49,4 +49,7 @@ call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
 call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz nolegacy
 call unsupported.sh
 
+# other image tests
+call dev-initrd.sh
+
 msg Success.

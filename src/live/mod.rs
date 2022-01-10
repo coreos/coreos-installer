@@ -13,11 +13,12 @@
 // limitations under the License.
 
 use anyhow::{bail, Context, Result};
+use lazy_static::lazy_static;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read, File, OpenOptions};
 use std::io::{self, copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::cmdline::*;
 use crate::io::*;
@@ -36,6 +37,10 @@ const INITRD_LIVE_STAMP_PATH: &str = "etc/coreos-live-initramfs";
 const COREOS_ISO_PXEBOOT_DIR: &str = "IMAGES/PXEBOOT";
 const COREOS_ISO_ROOTFS_IMG: &str = "IMAGES/PXEBOOT/ROOTFS.IMG";
 const COREOS_ISO_MINISO_FILE: &str = "COREOS/MINISO.DAT";
+
+lazy_static! {
+    static ref ALL_GLOB: GlobMatcher = GlobMatcher::new(&["*"]).unwrap();
+}
 
 pub fn iso_embed(config: IsoEmbedConfig) -> Result<()> {
     eprintln!("`iso embed` is deprecated; use `iso ignition embed`.  Continuing.");
@@ -477,6 +482,63 @@ pub fn dev_show_iso(config: DevShowIsoConfig) -> Result<()> {
         out.write_all(b"\n").context("failed to write newline")?;
     }
     Ok(())
+}
+
+pub fn dev_show_initrd(config: DevShowInitrdConfig) -> Result<()> {
+    let initrd = read_initrd(&config.input, &config.filter)?;
+    for path in initrd.find(&ALL_GLOB).keys() {
+        println!("{}", path);
+    }
+    Ok(())
+}
+
+pub fn dev_extract_initrd(config: DevExtractInitrdConfig) -> Result<()> {
+    let initrd = read_initrd(&config.input, &config.filter)?;
+    let base_path = Path::new(&config.directory);
+    for (path, contents) in initrd.find(&ALL_GLOB) {
+        if Path::new(path)
+            .components()
+            .any(|c| matches!(c, Component::RootDir | Component::ParentDir))
+        {
+            bail!("path {} contains path traversal", path);
+        }
+        let out_path = base_path.join(path);
+        if config.verbose {
+            println!("{}", out_path.display());
+        }
+        let out_parent = out_path
+            .parent()
+            .with_context(|| format!("finding parent of {}", out_path.display()))?;
+        create_dir_all(out_parent).with_context(|| format!("creating {}", out_parent.display()))?;
+        OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&out_path)
+            .with_context(|| format!("opening {}", out_path.display()))?
+            .write_all(contents)
+            .with_context(|| format!("writing {}", out_path.display()))?;
+    }
+    Ok(())
+}
+
+fn read_initrd(path: &str, filter: &[String]) -> Result<Initrd> {
+    let filter = if filter.is_empty() {
+        vec!["*"]
+    } else {
+        filter.iter().map(String::as_str).collect()
+    };
+    let filter = GlobMatcher::new(&filter).context("parsing glob patterns")?;
+    match path {
+        "-" => Initrd::from_reader_filtered(io::stdin().lock(), &filter),
+        path => Initrd::from_reader_filtered(
+            OpenOptions::new()
+                .read(true)
+                .open(path)
+                .with_context(|| format!("opening {}", path))?,
+            &filter,
+        ),
+    }
+    .context("decoding initrd")
 }
 
 pub fn iso_extract_pxe(config: IsoExtractPxeConfig) -> Result<()> {

@@ -72,10 +72,12 @@ fn main() -> Result<()> {
         Cmd::Dev(c) => match c {
             DevCmd::Show(c) => match c {
                 DevShowCmd::Iso(c) => live::dev_show_iso(c),
+                DevShowCmd::Initrd(c) => live::dev_show_initrd(c),
                 DevShowCmd::Fiemap(c) => osmet::dev_show_fiemap(c),
             },
             DevCmd::Extract(c) => match c {
                 DevExtractCmd::Osmet(c) => osmet::dev_extract_osmet(c),
+                DevExtractCmd::Initrd(c) => live::dev_extract_initrd(c),
             },
         },
     }
