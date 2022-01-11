@@ -16,7 +16,7 @@
 #![allow(clippy::large_enum_variant)]
 
 use anyhow::{anyhow, Context, Error, Result};
-use clap::{AppSettings, StructOpt};
+use clap::{AppSettings, Parser};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_with::{
@@ -35,7 +35,7 @@ use crate::io::IgnitionHash;
 // Args are listed in --help in the order declared in these structs/enums.
 // Please keep the entire help text to 80 columns.
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 #[structopt(name = "coreos-installer")]
 #[structopt(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[structopt(global_setting(AppSettings::DeriveDisplayOrder))]
@@ -62,7 +62,7 @@ pub enum Cmd {
     Dev(DevCmd),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum IsoCmd {
     /// Embed an Ignition config in an ISO image
     // deprecated
@@ -94,7 +94,7 @@ pub enum IsoCmd {
     Reset(IsoResetConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum IsoIgnitionCmd {
     /// Embed an Ignition config in an ISO image
     Embed(IsoIgnitionEmbedConfig),
@@ -104,7 +104,7 @@ pub enum IsoIgnitionCmd {
     Remove(IsoIgnitionRemoveConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum IsoNetworkCmd {
     /// Embed network settings in an ISO image
     Embed(IsoNetworkEmbedConfig),
@@ -114,7 +114,7 @@ pub enum IsoNetworkCmd {
     Remove(IsoNetworkRemoveConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum IsoKargsCmd {
     /// Modify kernel args in an ISO image
     Modify(IsoKargsModifyConfig),
@@ -124,7 +124,7 @@ pub enum IsoKargsCmd {
     Show(IsoKargsShowConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum IsoExtractCmd {
     /// Extract PXE files from an ISO image
     Pxe(IsoExtractPxeConfig),
@@ -132,7 +132,7 @@ pub enum IsoExtractCmd {
     MinimalIso(IsoExtractMinimalIsoConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum PxeCmd {
     /// Create a custom live PXE boot config
     Customize(PxeCustomizeConfig),
@@ -144,7 +144,7 @@ pub enum PxeCmd {
     Network(PxeNetworkCmd),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum PxeIgnitionCmd {
     /// Wrap an Ignition config in an initrd image
     Wrap(PxeIgnitionWrapConfig),
@@ -152,7 +152,7 @@ pub enum PxeIgnitionCmd {
     Unwrap(PxeIgnitionUnwrapConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum PxeNetworkCmd {
     /// Wrap network settings in an initrd image
     Wrap(PxeNetworkWrapConfig),
@@ -160,7 +160,7 @@ pub enum PxeNetworkCmd {
     Unwrap(PxeNetworkUnwrapConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 // users shouldn't be interacting with this command normally
 #[structopt(setting(AppSettings::Hidden))]
 pub enum PackCmd {
@@ -170,7 +170,7 @@ pub enum PackCmd {
     MinimalIso(PackMinimalIsoConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 // users shouldn't be interacting with this command normally
 #[structopt(setting(AppSettings::Hidden))]
 pub enum DevCmd {
@@ -182,7 +182,7 @@ pub enum DevCmd {
     Extract(DevExtractCmd),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum DevShowCmd {
     /// Inspect the CoreOS live ISO image
     Iso(DevShowIsoConfig),
@@ -192,7 +192,7 @@ pub enum DevShowCmd {
     Fiemap(DevShowFiemapConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub enum DevExtractCmd {
     /// Generate raw metal image from osmet file and OSTree repo
     Osmet(DevExtractOsmetConfig),
@@ -220,7 +220,7 @@ pub enum DevExtractCmd {
 //   files.
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Debug, Default, StructOpt, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Parser, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 #[structopt(global_setting(AppSettings::AllArgsOverrideSelf))]
 pub struct InstallConfig {
@@ -294,7 +294,7 @@ pub struct InstallConfig {
     // been obsoleted by the nicer `--copy-network` approach. We still need it
     // for now though. It's used at least by `coreos-installer.service`.
     #[serde(skip)]
-    #[structopt(long, hidden = true, value_name = "args")]
+    #[structopt(long, hide = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
     ///
@@ -384,7 +384,7 @@ pub struct InstallConfig {
     ///
     /// Path to the device node for the destination disk.  The beginning of
     /// the device will be overwritten without further confirmation.
-    #[structopt(required_unless = "config-file")]
+    #[structopt(required_unless_present = "config-file")]
     pub dest_device: Option<String>,
 }
 
@@ -422,7 +422,7 @@ impl InstallConfig {
     }
 
     fn from_args<T: AsRef<OsStr>>(args: &[T]) -> Result<Self> {
-        match Cmd::from_iter_safe(
+        match Cmd::try_parse_from(
             vec![
                 std::env::args_os().next().expect("no program name"),
                 "install".into(),
@@ -455,7 +455,7 @@ pub enum PartitionFilter {
     Index(Option<NonZeroU32>, Option<NonZeroU32>),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct DownloadConfig {
     /// Fedora CoreOS stream
     #[structopt(short, long, value_name = "name", default_value = "stable")]
@@ -489,7 +489,7 @@ pub struct DownloadConfig {
     pub fetch_retries: FetchRetries,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct ListStreamConfig {
     /// Fedora CoreOS stream
     #[structopt(short, long, value_name = "name", default_value = "stable")]
@@ -499,7 +499,7 @@ pub struct ListStreamConfig {
     pub stream_base_url: Option<Url>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct CommonCustomizeConfig {
     /// Ignition config fragment for dest sys
     ///
@@ -572,7 +572,7 @@ pub struct CommonCustomizeConfig {
     pub live_ignition: Vec<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoCustomizeConfig {
     // Customizations
     #[structopt(flatten)]
@@ -607,7 +607,7 @@ pub struct IsoCustomizeConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoEmbedConfig {
     /// Ignition config to embed [default: stdin]
     #[structopt(short, long, value_name = "path")]
@@ -623,14 +623,14 @@ pub struct IsoEmbedConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoShowConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoRemoveConfig {
     /// Write ISO to a new output file
     #[structopt(short, long, value_name = "path")]
@@ -640,7 +640,7 @@ pub struct IsoRemoveConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoIgnitionEmbedConfig {
     /// Overwrite an existing Ignition config
     #[structopt(short, long)]
@@ -656,14 +656,14 @@ pub struct IsoIgnitionEmbedConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoIgnitionShowConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoIgnitionRemoveConfig {
     /// Write ISO to a new output file
     #[structopt(short, long, value_name = "path")]
@@ -673,7 +673,7 @@ pub struct IsoIgnitionRemoveConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoNetworkEmbedConfig {
     /// NetworkManager keyfile to embed
     // Required option. :-(  In future we might support other configuration
@@ -692,7 +692,7 @@ pub struct IsoNetworkEmbedConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoNetworkExtractConfig {
     /// Extract to directory instead of stdout
     #[structopt(short = 'C', long, value_name = "path")]
@@ -702,7 +702,7 @@ pub struct IsoNetworkExtractConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoNetworkRemoveConfig {
     /// Write ISO to a new output file
     #[structopt(short, long, value_name = "path")]
@@ -712,7 +712,7 @@ pub struct IsoNetworkRemoveConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoKargsModifyConfig {
     /// Kernel argument to append
     #[structopt(short, long, number_of_values = 1, value_name = "KARG")]
@@ -731,7 +731,7 @@ pub struct IsoKargsModifyConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoKargsResetConfig {
     /// Write ISO to a new output file
     #[structopt(short, long, value_name = "PATH")]
@@ -741,7 +741,7 @@ pub struct IsoKargsResetConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoKargsShowConfig {
     /// Show default kernel args
     #[structopt(short, long)]
@@ -751,7 +751,7 @@ pub struct IsoKargsShowConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct DevShowIsoConfig {
     /// Show Ignition embed area parameters
     #[structopt(long, conflicts_with = "kargs")]
@@ -764,7 +764,7 @@ pub struct DevShowIsoConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoExtractPxeConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
@@ -774,7 +774,7 @@ pub struct IsoExtractPxeConfig {
     pub output_dir: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoExtractMinimalIsoConfig {
     /// ISO image
     #[structopt(value_name = "ISO")]
@@ -790,7 +790,7 @@ pub struct IsoExtractMinimalIsoConfig {
     pub rootfs_url: Option<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct PackMinimalIsoConfig {
     /// ISO image
     #[structopt(value_name = "FULL_ISO")]
@@ -803,7 +803,7 @@ pub struct PackMinimalIsoConfig {
     pub consume: bool,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct IsoResetConfig {
     /// Write ISO to a new output file
     #[structopt(short, long, value_name = "path")]
@@ -813,9 +813,9 @@ pub struct IsoResetConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 // default usage line lists all mandatory options and so exceeds 80 characters
-#[structopt(usage = "coreos-installer pack osmet [OPTIONS]")]
+#[structopt(override_usage = "coreos-installer pack osmet [OPTIONS]")]
 pub struct PackOsmetConfig {
     /// Path to osmet file to write
     // could output to stdout if missing?
@@ -838,7 +838,7 @@ pub struct PackOsmetConfig {
     pub device: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct DevExtractOsmetConfig {
     /// osmet file
     #[structopt(long, required = true, value_name = "PATH")]
@@ -851,14 +851,14 @@ pub struct DevExtractOsmetConfig {
     pub device: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct DevShowFiemapConfig {
     /// File to map
     #[structopt(value_name = "PATH")]
     pub file: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct PxeCustomizeConfig {
     // Customizations
     #[structopt(flatten)]
@@ -873,7 +873,7 @@ pub struct PxeCustomizeConfig {
     pub input: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct PxeIgnitionWrapConfig {
     /// Ignition config to wrap [default: stdin]
     #[structopt(short, long, value_name = "path")]
@@ -883,14 +883,14 @@ pub struct PxeIgnitionWrapConfig {
     pub output: Option<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct PxeIgnitionUnwrapConfig {
     /// initrd image [default: stdin]
     #[structopt(value_name = "initrd")]
     pub input: Option<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct PxeNetworkWrapConfig {
     /// NetworkManager keyfile to embed
     // Required option. :-(  In future we might support other configuration
@@ -903,7 +903,7 @@ pub struct PxeNetworkWrapConfig {
     pub output: Option<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct PxeNetworkUnwrapConfig {
     /// Extract to directory instead of stdout
     #[structopt(short = 'C', long, value_name = "path")]
@@ -913,7 +913,7 @@ pub struct PxeNetworkUnwrapConfig {
     pub input: Option<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct DevShowInitrdConfig {
     /// initrd image ("-" for stdin)
     #[structopt(value_name = "initrd")]
@@ -923,7 +923,7 @@ pub struct DevShowInitrdConfig {
     pub filter: Vec<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct DevExtractInitrdConfig {
     /// Output directory
     #[structopt(short = 'C', long, value_name = "path", default_value = ".")]
@@ -1059,20 +1059,19 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 
 mod serializer {
     use anyhow::Context;
-    use clap::StructOpt;
+    use clap::Parser;
     use serde::{ser, Serialize};
 
     pub fn to_args<T>(value: &T) -> anyhow::Result<Vec<String>>
     where
-        T: Serialize + StructOpt,
+        T: Serialize + Parser,
     {
         // We need to be able to find out whether a field is an --option
-        // or a positional argument.  structopt and clap don't provide an
-        // API for this, and we don't want to implement a proc macro because
-        // those have to go in a separate crate.  Get the subcommand help
-        // text and grep it.  :-(
+        // or a positional argument.  clap doesn't provide an API for this,
+        // and we don't want to implement a proc macro because those have to
+        // go in a separate crate.  Get the subcommand help text and grep it.
         let mut help = Vec::new();
-        T::clap()
+        T::into_app()
             .write_long_help(&mut help)
             .context("reading subcommand help text")?;
 

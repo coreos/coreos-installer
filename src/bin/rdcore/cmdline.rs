@@ -15,11 +15,11 @@
 // For consistency, have all parse_*() functions return Result.
 #![allow(clippy::unnecessary_wraps)]
 
-use clap::{AppSettings, StructOpt};
+use clap::{AppSettings, Parser};
 
 // Args are listed in --help in the order declared in these structs/enums.
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 #[structopt(name = "rdcore")]
 #[structopt(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[structopt(global_setting(AppSettings::DeriveDisplayOrder))]
@@ -38,7 +38,7 @@ pub enum Cmd {
     VerifyUniqueFsLabel(VerifyUniqueFsLabelConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct RootmapConfig {
     // we allow mounting /boot ourselves (--boot-device) or letting our
     // caller do the mount and point us to it (--boot-mount); lots of
@@ -56,7 +56,7 @@ pub struct RootmapConfig {
     pub root_mount: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct BindBootConfig {
     /// Path to rootfs mount
     #[structopt(value_name = "ROOT_MOUNT")]
@@ -66,7 +66,7 @@ pub struct BindBootConfig {
     pub boot_mount: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct KargsConfig {
     // see comment block in rootmap command above
     /// Boot device containing BLS entries to modify
@@ -83,7 +83,7 @@ pub struct KargsConfig {
     pub current: bool,
     /// Modify this option string instead of fetching from BLS entry
     // this is purely for dev testing
-    #[structopt(long, value_name = "OPTIONS", hidden = true)]
+    #[structopt(long, value_name = "OPTIONS", hide = true)]
     pub override_options: Option<String>,
     /// File to create if BLS entry was modified
     #[structopt(long, value_name = "PATH")]
@@ -101,14 +101,14 @@ pub struct KargsConfig {
     pub delete: Vec<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct StreamHashConfig {
     /// Path to the piecewise hash file
     #[structopt(value_name = "hash-file")]
     pub hash_file: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct VerifyUniqueFsLabelConfig {
     /// Filesystem's label
     #[structopt(value_name = "LABEL")]

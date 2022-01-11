@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use anyhow::Result;
-use clap::StructOpt;
+use clap::Parser;
 
 use libcoreinst::{cmdline, download, install, live, osmet, source};
 
 use cmdline::*;
 
 fn main() -> Result<()> {
-    match Cmd::from_args() {
+    match Cmd::parse() {
         Cmd::Download(c) => download::download(c),
         Cmd::Install(c) => install::install(c),
         Cmd::ListStream(c) => source::list_stream(c),
