@@ -115,4 +115,8 @@ pub struct VerifyUniqueFsLabelConfig {
     /// Filesystem's label
     #[structopt(value_name = "LABEL")]
     pub label: String,
+
+    /// Force rereading of partition table
+    #[structopt(long)]
+    pub rereadpt: bool,
 }
