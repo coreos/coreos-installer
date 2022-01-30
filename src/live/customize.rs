@@ -194,6 +194,7 @@ impl LiveInitrd {
         )
     }
 
+    #[allow(clippy::format_in_format_args)]
     fn install_hook(
         &mut self,
         path: &str,
