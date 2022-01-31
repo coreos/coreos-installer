@@ -188,9 +188,9 @@ dependencies = [
 
 [[package]]
 name = "cpio"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f00177cda1bb5c5b0a05b1b506125c776411cdfc6a41085126881266e0cdc242"
+checksum = "ebd1e700d20da5cc95f5bde94323a72a4081cc1e6764bdc31262cc0f173662a8"
 
 [[package]]
 name = "crc"
