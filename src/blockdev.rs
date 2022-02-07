@@ -136,7 +136,7 @@ impl Disk {
                 .write(true)
                 .open(&self.path)
                 .with_context(|| format!("opening {}", &self.path))?;
-            reread_partition_table(&mut f).map(|_| Vec::new())
+            reread_partition_table(&mut f, false).map(|_| Vec::new())
         };
         if rereadpt_result.is_ok() {
             return rereadpt_result;
@@ -212,7 +212,7 @@ impl PartTableKernel {
 
 impl PartTable for PartTableKernel {
     fn reread(&mut self) -> Result<()> {
-        reread_partition_table(&mut self.file)?;
+        reread_partition_table(&mut self.file, true)?;
         udev_settle()
     }
 }
@@ -798,7 +798,8 @@ fn lsblk_all(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
     if rereadpt {
         for dev in output.lines() {
             if let Ok(mut fd) = std::fs::File::open(dev) {
-                let _ = reread_partition_table(&mut fd);
+                // best-effort reread of disk that may have busy partitions; don't retry
+                let _ = reread_partition_table(&mut fd, false);
             }
         }
         udev_settle()?;
@@ -993,11 +994,12 @@ pub fn get_blkdev_deps_recursing(device: &Path) -> Result<Vec<PathBuf>> {
     Ok(ret)
 }
 
-fn reread_partition_table(file: &mut File) -> Result<()> {
+fn reread_partition_table(file: &mut File, retry: bool) -> Result<()> {
     let fd = file.as_raw_fd();
     // Reread sometimes fails inexplicably.  Retry several times before
     // giving up.
-    for retries in (0..20).rev() {
+    let max_tries = if retry { 20 } else { 1 };
+    for retries in (0..max_tries).rev() {
         let result = unsafe { ioctl::blkrrpart(fd) };
         match result {
             Ok(_) => break,
