@@ -76,6 +76,52 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `git push ${UPSTREAM_REMOTE} :release-${RELEASE_VER}`
   - [ ] `git branch -d release-${RELEASE_VER}`
 
+- Fedora packaging:
+  - [ ] update the `rust-coreos-installer` spec file in [Fedora](https://src.fedoraproject.org/rpms/rust-coreos-installer)
+    - bump the `Version`
+    - switch the `Release` back to `1%{?dist}`
+    - remove any patches obsoleted by the new release
+    - update changelog
+  - [ ] run `spectool -g -S rust-coreos-installer.spec`
+  - [ ] run `kinit your_fas_account@FEDORAPROJECT.ORG`
+  - [ ] run `fedpkg new-sources <crate-name> <vendor-tarball-name> <coreos-installer-dracut-tarball-name>`
+  - [ ] PR the changes in [Fedora](https://src.fedoraproject.org/rpms/rust-coreos-installer)
+  - [ ] once the PR merges to rawhide, merge rawhide into the other relevant branches (e.g. f35) then push those, for example:
+    ```bash
+    git checkout rawhide
+    git pull --ff-only
+    git checkout f35
+    git merge --ff-only rawhide
+    git push origin f35
+    ```
+  - [ ] on each of those branches run `fedpkg build`
+  - [ ] once the builds have finished, submit them to [bodhi](https://bodhi.fedoraproject.org/updates/new), filling in:
+    - `rust-coreos-installer` for `Packages`
+    - selecting the build(s) that just completed, except for the rawhide one (which gets submitted automatically)
+    - writing brief release notes like "New upstream release; see release notes at `link to GitHub release`"
+    - leave `Update name` blank
+    - `Type`, `Severity` and `Suggestion` can be left as `unspecified` unless it is a security release. In that case select `security` with the appropriate severity.
+    - `Stable karma` and `Unstable` karma can be set to `2` and `-1`, respectively.
+  - [ ] [submit a fast-track](https://github.com/coreos/fedora-coreos-config/actions/workflows/add-override.yml) for FCOS testing-devel
+  - [ ] [submit a fast-track](https://github.com/coreos/fedora-coreos-config/actions/workflows/add-override.yml) for FCOS next-devel if it is [open](https://github.com/coreos/fedora-coreos-pipeline/blob/main/next-devel/README.md)
+
+- RHCOS packaging:
+  - [ ] update the `coreos-installer` spec file
+    - bump the `Version`
+    - switch the `Release` back to `1%{?dist}`
+    - remove any patches obsoleted by the new release
+    - update changelog
+  - [ ] run `spectool -g -S coreos-installer.spec`
+  - [ ] run `kinit your_account@REDHAT.COM`
+  - [ ] run `rhpkg new-sources <crate-name> <vendor-tarball-name> <coreos-installer-dracut-tarball-name>`
+  - [ ] PR the changes
+  - [ ] get the PR reviewed and merge it
+  - [ ] update your local repo and run `rhpkg build`
+  - [ ] file ticket similar to [this one](https://issues.redhat.com/browse/ART-3772) to sync the new version to mirror.openshift.com
+
+CentOS Stream 9 packaging:
+  - [ ] to be written
+
 [cargo-release]: https://github.com/sunng87/cargo-release
 [rustup]: https://rustup.rs/
 [crates-io]: https://crates.io/
