@@ -52,10 +52,6 @@ pub enum Cmd {
     ListStream(ListStreamConfig),
     /// Commands to manage a CoreOS live ISO image
     Iso(IsoCmd),
-    /// Efficient CoreOS metal disk image packing using OSTree commits
-    // users shouldn't be interacting with this command normally
-    #[structopt(setting(AppSettings::Hidden))]
-    Osmet(OsmetCmd),
     /// Commands to manage a CoreOS live PXE image
     Pxe(PxeCmd),
     /// Metadata packing commands used when building an OS image
@@ -132,17 +128,6 @@ pub enum IsoExtractCmd {
     Pxe(IsoExtractPxeConfig),
     /// Extract a minimal ISO from a CoreOS live ISO image
     MinimalIso(IsoExtractMinimalIsoConfig),
-    /// Pack a minimal ISO into a CoreOS live ISO image
-    // deprecated in favor of "pack minimal-iso"
-    #[structopt(setting(AppSettings::Hidden))]
-    PackMinimalIso(PackMinimalIsoConfig),
-}
-
-#[derive(Debug, StructOpt)]
-pub enum OsmetCmd {
-    /// Create osmet file from CoreOS block device
-    // deprecated in favor of "pack osmet"
-    Pack(PackOsmetConfig),
 }
 
 #[derive(Debug, StructOpt)]
