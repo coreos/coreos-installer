@@ -110,6 +110,8 @@ architecture: name
 preserve-on-error: true
 # Fetch retries, or string "infinite"
 fetch-retries: N
+# Destination device
+dest-device: path
 ```
 
 ## Hooking coreos-installer at boot time
