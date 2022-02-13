@@ -103,46 +103,6 @@ All config files in the `installer.d` directory are evaluated in
 alphabetical order, and any `coreos.inst` kernel command line arguments are
 evaluated afterward.
 
-### Example manual customization via `installer.d`
-
-This is an example procedure for configuring an ISO or PXE installation to
-`/dev/zda` using an installer config file.  The ISO procedure matches the
-steps performed by `coreos-installer iso customize --dest-device`, and the
-PXE procedure produces the same result as `coreos-installer pxe customize
---dest-device` via a slightly different path.
-
-Write a Butane config that installs to `/dev/zda`:
-
-```
-variant: fcos
-version: 1.4.0
-storage:
-  files:
-    - path: /etc/coreos/installer.d/custom.yaml
-      contents:
-        inline: |
-          dest-device: /dev/zda
-```
-
-Convert this Butane config to an Ignition config with:
-
-```
-butane < install.bu > install.ign
-```
-
-For live ISO booting, embed the resulting config in the live ISO:
-
-```
-coreos-installer iso ignition embed -i install.ign fedora-coreos-35.20211029.3.0-live.x86_64.iso
-```
-
-For live PXE booting, use only the Ignition first-boot arguments in the
-kernel argument list:
-
-```
-ignition.config.url=https://example.com/install.ign ignition.firstboot ignition.platform.id=metal
-```
-
 ### Config file format
 
 Config files in `/etc/coreos/installer.d` (or specified by `--config-file`)
@@ -195,4 +155,44 @@ preserve-on-error: true
 fetch-retries: N
 # Destination device
 dest-device: path
+```
+
+### Example manual customization via `installer.d`
+
+This is an example procedure for configuring an ISO or PXE installation to
+`/dev/zda` using an installer config file.  The ISO procedure matches the
+steps performed by `coreos-installer iso customize --dest-device`, and the
+PXE procedure produces the same result as `coreos-installer pxe customize
+--dest-device` via a slightly different path.
+
+Write a Butane config that installs to `/dev/zda`:
+
+```
+variant: fcos
+version: 1.4.0
+storage:
+  files:
+    - path: /etc/coreos/installer.d/custom.yaml
+      contents:
+        inline: |
+          dest-device: /dev/zda
+```
+
+Convert this Butane config to an Ignition config with:
+
+```
+butane < install.bu > install.ign
+```
+
+For live ISO booting, embed the resulting config in the live ISO:
+
+```
+coreos-installer iso ignition embed -i install.ign fedora-coreos-35.20211029.3.0-live.x86_64.iso
+```
+
+For live PXE booting, use only the Ignition first-boot arguments in the
+kernel argument list:
+
+```
+ignition.config.url=https://example.com/install.ign ignition.firstboot ignition.platform.id=metal
 ```
