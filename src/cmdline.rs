@@ -37,10 +37,10 @@ use crate::io::IgnitionHash;
 
 #[derive(Debug, Parser)]
 #[clap(version)]
-#[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
-#[clap(global_setting(AppSettings::DisableHelpSubcommand))]
-#[clap(global_setting(AppSettings::HelpExpected))]
+#[clap(args_conflicts_with_subcommands = true)]
+#[clap(disable_help_subcommand = true)]
+#[clap(help_expected = true)]
 pub enum Cmd {
     /// Install Fedora CoreOS or RHEL CoreOS
     Install(InstallConfig),
@@ -66,15 +66,15 @@ pub enum Cmd {
 pub enum IsoCmd {
     /// Embed an Ignition config in an ISO image
     // deprecated
-    #[clap(setting(AppSettings::Hidden))]
+    #[clap(hide = true)]
     Embed(IsoEmbedConfig),
     /// Show the embedded Ignition config from an ISO image
     // deprecated
-    #[clap(setting(AppSettings::Hidden))]
+    #[clap(hide = true)]
     Show(IsoShowConfig),
     /// Remove an existing embedded Ignition config from an ISO image
     // deprecated
-    #[clap(setting(AppSettings::Hidden))]
+    #[clap(hide = true)]
     Remove(IsoRemoveConfig),
     /// Customize a CoreOS live ISO image
     Customize(IsoCustomizeConfig),
@@ -162,7 +162,7 @@ pub enum PxeNetworkCmd {
 
 #[derive(Debug, Parser)]
 // users shouldn't be interacting with this command normally
-#[clap(setting(AppSettings::Hidden))]
+#[clap(hide = true)]
 pub enum PackCmd {
     /// Create osmet file from CoreOS block device
     Osmet(PackOsmetConfig),
@@ -172,7 +172,7 @@ pub enum PackCmd {
 
 #[derive(Debug, Parser)]
 // users shouldn't be interacting with this command normally
-#[clap(setting(AppSettings::Hidden))]
+#[clap(hide = true)]
 pub enum DevCmd {
     /// Commands to show metadata
     #[clap(subcommand)]
@@ -224,7 +224,7 @@ const ADVANCED: &str = "ADVANCED OPTIONS";
 #[skip_serializing_none]
 #[derive(Debug, Default, Parser, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
-#[clap(global_setting(AppSettings::AllArgsOverrideSelf))]
+#[clap(args_override_self = true)]
 pub struct InstallConfig {
     /// YAML config file with install options
     ///
@@ -333,7 +333,7 @@ pub struct InstallConfig {
     #[clap(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
     // one argument.
-    #[clap(number_of_values = 1, require_delimiter = true)]
+    #[clap(number_of_values = 1, require_value_delimiter = true)]
     #[clap(value_delimiter = ',')]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
@@ -341,7 +341,7 @@ pub struct InstallConfig {
     #[clap(long, value_name = "id")]
     // Allow argument multiple times, but one value each.  Allow "1-5,7" in
     // one argument.
-    #[clap(number_of_values = 1, require_delimiter = true)]
+    #[clap(number_of_values = 1, require_value_delimiter = true)]
     #[clap(value_delimiter = ',')]
     // Allow ranges like "-2".
     #[clap(allow_hyphen_values = true)]
@@ -1073,7 +1073,7 @@ mod serializer {
         // and we don't want to implement a proc macro because those have to
         // go in a separate crate.  Get the subcommand help text and grep it.
         let mut help = Vec::new();
-        T::into_app()
+        T::command()
             .write_long_help(&mut help)
             .context("reading subcommand help text")?;
 
@@ -1372,7 +1372,7 @@ mod test {
 
     #[test]
     fn clap_app() {
-        Cmd::into_app().debug_assert()
+        Cmd::command().debug_assert()
     }
 
     /// Check that full InstallConfig serializes as expected

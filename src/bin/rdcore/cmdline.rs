@@ -21,10 +21,10 @@ use clap::{AppSettings, Parser};
 
 #[derive(Debug, Parser)]
 #[clap(name = "rdcore", version)]
-#[clap(global_setting(AppSettings::ArgsNegateSubcommands))]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
-#[clap(global_setting(AppSettings::DisableHelpSubcommand))]
-#[clap(global_setting(AppSettings::HelpExpected))]
+#[clap(args_conflicts_with_subcommands = true)]
+#[clap(disable_help_subcommand = true)]
+#[clap(help_expected = true)]
 pub enum Cmd {
     /// Generate rootmap kargs and optionally inject into BLS configs
     Rootmap(RootmapConfig),
@@ -126,6 +126,6 @@ mod test {
 
     #[test]
     fn clap_app() {
-        Cmd::into_app().debug_assert()
+        Cmd::command().debug_assert()
     }
 }
