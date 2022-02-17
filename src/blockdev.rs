@@ -796,13 +796,18 @@ fn lsblk_all(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
         .arg("NAME");
     let output = cmd_output(&mut cmd)?;
     if rereadpt {
-        for dev in output.lines() {
-            if let Ok(mut fd) = std::fs::File::open(dev) {
-                // best-effort reread of disk that may have busy partitions; don't retry
-                let _ = reread_partition_table(&mut fd, false);
+        // First try using 'partprobe', cause it uses newer BLKPG ioctl and updates partition
+        // table in safier way. Otherwise try calling BLKRRPART, which may lead
+        // in some case to race between udev and systemd
+        if runcmd!("partprobe").is_err() {
+            for dev in output.lines() {
+                if let Ok(mut fd) = std::fs::File::open(dev) {
+                    // best-effort reread of disk that may have busy partitions; don't retry
+                    let _ = reread_partition_table(&mut fd, false);
+                }
             }
+            udev_settle()?;
         }
-        udev_settle()?;
     }
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for dev in output.lines() {
