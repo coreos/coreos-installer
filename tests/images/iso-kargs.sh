@@ -27,12 +27,6 @@ fi
 iso=test.iso
 out_iso="${iso}.out"
 
-# FIXME: accept an argument to manually zero out the coreKarg header, until
-# we get a fixture without it
-if [ "${1:-}" = "nolegacy" ]; then
-    dd if=/dev/zero of="${iso}" seek=32672 count=8 bs=1 conv=notrunc status=none
-fi
-
 # Sanity-check the ISO doesn't somehow already have the karg we're testing with.
 if coreos-installer iso kargs show "${iso}" | grep -q foobar; then
     fatal "Unexpected foobar karg in iso kargs"

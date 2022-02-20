@@ -45,8 +45,7 @@ call iso-network.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
 call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-01.iso.xz
 call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-09.iso.xz
 call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
-# replace this with a no-coreKarg fixture when available
-call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz nolegacy
+call iso-kargs.sh ${fixtures}/iso/embed-areas-2022-02.iso.xz
 call unsupported.sh
 
 # other image tests
