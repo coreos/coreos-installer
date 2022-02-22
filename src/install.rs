@@ -12,15 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use nix::mount;
+use reqwest::Url;
+use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
+use std::collections::HashMap;
 use std::fs::{
     copy as fscopy, create_dir_all, read_dir, set_permissions, File, OpenOptions, Permissions,
 };
-use std::io::{copy, Seek, SeekFrom, Write};
+use std::io::{copy, BufReader, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::blockdev::*;
 use crate::cmdline::*;
@@ -29,6 +35,9 @@ use crate::io::*;
 #[cfg(target_arch = "s390x")]
 use crate::s390x;
 use crate::source::*;
+use crate::util::*;
+
+use crate::{runcmd, runcmd_output};
 
 pub fn install(config: InstallConfig) -> Result<()> {
     // evaluate config files
@@ -276,6 +285,373 @@ wiping them with `wipefs -a`.\n"
 
     eprintln!("Install complete.");
     Ok(())
+}
+
+pub fn reinstall(config: ReinstallConfig) -> Result<()> {
+    const OSTREE_BOOTED: &str = "/run/ostree-booted";
+    const COREOS_ALEPH: &str = "/sysroot/.coreos-aleph-version.json";
+    for path in &[OSTREE_BOOTED, COREOS_ALEPH] {
+        if !Path::new(path).exists() {
+            bail!("not booted in a CoreOS system ({} not found)", path);
+        }
+    }
+
+    // XXX: should be able to use base initrd to only have to download the tail bits of the live
+    // initrd
+    let (kernel, _base_initrd) = find_kernel_and_initrd().context("finding kernel and initrd")?;
+
+    // XXX: probably should use ImageSource API
+    let mut deferred_rootfs_url: Option<Url> = None;
+    let final_initrd = if let Some(initramfs_path) = config.initramfs_file {
+        let rootfs_path = config.rootfs_file.unwrap(); // guaranteed by clap
+        assert!(!config.defer_rootfs); // guaranteed by clap
+        let mut initrd = read_local_live_artifact(&initramfs_path, config.insecure)?;
+        let mut rootfs = read_local_live_artifact(&rootfs_path, config.insecure)?;
+        concat_initrds(&mut initrd, &mut rootfs)?;
+        initrd
+    } else {
+        let (initramfs_url, rootfs_url) = if let Some(initramfs_url) = config.initramfs_url {
+            (initramfs_url, config.rootfs_url.unwrap()) // guaranteed by clap
+        } else {
+            // auto-fetch case
+            let booted_deployment = get_booted_deployment().context("getting booted deployment")?;
+            match booted_deployment.osname.as_str() {
+                "fedora-coreos" => get_fcos_live_urls(
+                    &booted_deployment
+                        .base_metadata
+                        .fedora_coreos_stream
+                        .unwrap(),
+                    &booted_deployment.version,
+                    &booted_deployment.base_metadata.basearch,
+                    config.fetch_retries,
+                )?,
+                "rhcos" => get_rhcos_live_urls(
+                    &booted_deployment.version,
+                    &booted_deployment.base_metadata.basearch,
+                    config.fetch_retries,
+                )?,
+                x => bail!("invalid CoreOS variant {}", x),
+            }
+        };
+
+        eprintln!("Downloading {}...", &initramfs_url);
+        let mut initrd =
+            download_live_artifact(&initramfs_url, config.insecure, config.fetch_retries)?;
+        if config.defer_rootfs {
+            deferred_rootfs_url = Some(rootfs_url);
+        } else {
+            eprintln!("Downloading {}...", &rootfs_url);
+            let mut rootfs =
+                download_live_artifact(&rootfs_url, config.insecure, config.fetch_retries)?;
+            concat_initrds(&mut initrd, &mut rootfs)?;
+        }
+        initrd
+    };
+
+    // build kargs
+    let mut kargs = String::new();
+    add_karg(&mut kargs, "coreos.inst.install_dev", &config.dest_device);
+    //kargs.push_str("console=tty0 console==ttyS0");
+    add_karg(&mut kargs, "console", &config.console);
+    if let Some(stream) = config.stream {
+        add_karg(&mut kargs, "coreos.inst.stream", &stream);
+    }
+    if let Some(url) = config.image_url {
+        add_karg(&mut kargs, "coreos.inst.image_url", url.as_str());
+    }
+    if let Some(url) = config.ignition_url {
+        add_karg(&mut kargs, "coreos.inst.ignition_url", url.as_str());
+    }
+    if let Some(id) = config.platform {
+        add_karg(&mut kargs, "coreos.inst.platform_id", &id);
+    }
+    if !config.save_partlabel.is_empty() {
+        add_karg(
+            &mut kargs,
+            "coreos.inst.save_partlabel",
+            &config.save_partlabel.join(","),
+        );
+    }
+    if !config.save_partindex.is_empty() {
+        add_karg(
+            &mut kargs,
+            "coreos.inst.save_partindex",
+            &config.save_partindex.join(","),
+        );
+    }
+    if config.insecure {
+        kargs.push_str(" coreos.inst.insecure");
+    }
+    if config.skip_reboot {
+        kargs.push_str(" coreos.inst.skip_reboot");
+    }
+    if let Some(url) = deferred_rootfs_url {
+        add_karg(&mut kargs, "coreos.live.rootfs_url", url.as_str());
+    };
+
+    eprintln!("Loading kernel and initramfs with arguments: {}", &kargs);
+    runcmd!(
+        "kexec",
+        "--load",
+        &kernel,
+        "--initrd",
+        fd_path(&final_initrd),
+        "--append",
+        &kargs
+    )?;
+
+    eprintln!("Pivoting");
+    runcmd!("systemctl", "kexec")?;
+
+    Ok(())
+}
+
+fn find_kernel_and_initrd() -> Result<(PathBuf, PathBuf)> {
+    const MODULES_DIR: &str = "/usr/lib/modules";
+    let mut kver_dir: Option<PathBuf> = None;
+    for entry in
+        read_dir(MODULES_DIR).with_context(|| format!("reading directory {}", MODULES_DIR))?
+    {
+        let entry = entry.with_context(|| format!("reading entry in directory {}", MODULES_DIR))?;
+        if let Some(prev) = kver_dir.replace(entry.path()) {
+            bail!(
+                "multiple directories found in {} (at least {} and {})",
+                MODULES_DIR,
+                prev.to_string_lossy(),
+                entry.path().to_string_lossy()
+            );
+        }
+    }
+    let kver_dir = kver_dir.context("no directories found in /usr/lib/modules")?;
+
+    // XXX: look for alternate names to be nice
+    Ok((kver_dir.join("vmlinuz"), kver_dir.join("initramfs.img")))
+}
+
+fn concat_initrds(bottom_initrd: &mut File, top_initrd: &mut File) -> Result<()> {
+    bottom_initrd
+        .seek(SeekFrom::End(0))
+        .context("seeking to end of bottom initramfs")?;
+    copy(top_initrd, bottom_initrd)?;
+    bottom_initrd
+        .seek(SeekFrom::Start(0))
+        .context("rewinding concatenated initramfs")?;
+    Ok(())
+}
+
+fn download_live_artifact(url: &Url, insecure: bool, retries: FetchRetries) -> Result<File> {
+    if insecure {
+        download_to_tempfile(url, retries)
+    } else {
+        let mut sig_url = url.clone();
+        sig_url.set_path(&format!("{}.sig", url.path()));
+        download_and_verify_to_tempfile(url, &sig_url, retries)
+    }
+}
+
+fn read_local_live_artifact(path: &str, insecure: bool) -> Result<File> {
+    let mut f = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .with_context(|| format!("opening {}", path))?;
+    if insecure {
+        return Ok(f);
+    }
+
+    let sig = std::fs::read(format!("{}.sig", path))
+        .with_context(|| format!("opening signature file for {}", path))?;
+
+    let mut bf = BufReader::with_capacity(BUFFER_SIZE, &mut f);
+    let mut v = VerifyReader::new(&mut bf, Some(sig.as_slice()), VerifyKeys::Production)
+        .with_context(|| format!("creating verifier for {}", path))?;
+    copy(&mut v, &mut std::io::sink()).with_context(|| format!("reading {}", path))?;
+    v.verify_without_logging_failure()
+        .with_context(|| format!("verifying {}", path))?;
+    drop(v);
+    drop(bf);
+
+    f.seek(SeekFrom::Start(0))
+        .with_context(|| format!("seeking to start of {}", path))?;
+    Ok(f)
+}
+
+// XXX: copied from Zincati; need https://github.com/coreos/rpm-ostree/issues/2389
+/// JSON output from `rpm-ostree status --json`
+#[derive(Clone, Debug, Deserialize)]
+pub struct StatusJson {
+    deployments: Vec<DeploymentJson>,
+}
+
+/// Partial deployment object (only fields relevant to zincati).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct DeploymentJson {
+    booted: bool,
+    base_checksum: Option<String>,
+    #[serde(rename = "base-commit-meta")]
+    base_metadata: BaseCommitMetaJson,
+    checksum: String,
+    // NOTE(lucab): missing field means "not staged".
+    #[serde(default)]
+    staged: bool,
+    version: String,
+    osname: String,
+}
+
+/// Metadata from base commit (only fields relevant to zincati).
+#[derive(Clone, Debug, Deserialize)]
+struct BaseCommitMetaJson {
+    #[serde(rename = "coreos-assembler.basearch")]
+    basearch: String,
+    #[serde(rename = "fedora-coreos.stream")]
+    fedora_coreos_stream: Option<String>,
+}
+
+fn get_booted_deployment() -> Result<DeploymentJson> {
+    let status_json =
+        runcmd_output!("rpm-ostree", "status", "--json").context("querying `rpm-ostree status`")?;
+    let status: StatusJson =
+        serde_json::from_str(&status_json).context("deserializing `rpm-ostree status`")?;
+    for d in status.deployments {
+        if d.booted {
+            return Ok(d);
+        }
+    }
+    bail!("no booted deployment found");
+}
+
+// XXX: generalize and add to https://github.com/coreos/stream-metadata-rust/ ? though release
+// metadata is intended to be private
+
+#[derive(Deserialize)]
+struct ReleaseMetadata {
+    architectures: HashMap<String, ReleaseArch>,
+}
+
+#[derive(Deserialize)]
+struct ReleaseArch {
+    media: ReleaseMedia,
+}
+
+#[derive(Deserialize)]
+struct ReleaseMedia {
+    metal: ReleaseMediaMetal,
+}
+
+#[derive(Deserialize)]
+struct ReleaseMediaMetal {
+    artifacts: ReleaseMediaMetalArtifacts,
+}
+
+#[derive(Deserialize)]
+struct ReleaseMediaMetalArtifacts {
+    pxe: PxeArtifacts,
+}
+
+#[derive(Deserialize)]
+struct PxeArtifacts {
+    rootfs: Artifact,
+    initramfs: Artifact,
+}
+
+#[serde_as]
+#[derive(Deserialize)]
+struct Artifact {
+    #[serde_as(as = "DisplayFromStr")]
+    location: Url,
+}
+
+fn get_fcos_live_urls(
+    stream: &str,
+    version: &str,
+    arch: &str,
+    retries: FetchRetries,
+) -> Result<(Url, Url)> {
+    let release_meta_url = format!(
+        "https://builds.coreos.fedoraproject.org/prod/streams/{}/builds/{}/release.json",
+        stream, version
+    );
+    let release_meta_url = Url::parse(&release_meta_url)
+        .with_context(|| format!("parsing '{}' as URL", &release_meta_url))?;
+    let release_meta_raw = download_to_tempfile(&release_meta_url, retries)
+        .with_context(|| format!("downloading {}", release_meta_url))?;
+    let mut release_meta: ReleaseMetadata = serde_json::from_reader(&release_meta_raw)
+        .with_context(|| format!("parsing {}", release_meta_url))?;
+    let pxe = release_meta
+        .architectures
+        .remove(arch)
+        .with_context(|| format!("arch {} not found for release {}", arch, version))?
+        .media
+        .metal
+        .artifacts
+        .pxe;
+    let initramfs = pxe.initramfs.location;
+    let rootfs = pxe.rootfs.location;
+    Ok((initramfs, rootfs))
+}
+
+#[derive(Deserialize)]
+struct CosaMeta {
+    images: HashMap<String, CosaImage>,
+}
+
+#[derive(Deserialize)]
+struct CosaImage {
+    path: String,
+    // sha256: String, // XXX: should use this to verify download
+}
+
+// Hackily uses https://releases-art-rhcos.svc.ci.openshift.org; this is probably not kosher.
+fn get_rhcos_live_urls(version: &str, arch: &str, retries: FetchRetries) -> Result<(Url, Url)> {
+    let version_components: Vec<&str> = version.split('.').collect();
+    if version_components.len() != 3 {
+        bail!("invalid RHCOS version string {}", version);
+    }
+    let major = &version_components[0][..1];
+    let minor = &version_components[0][1..];
+    let baseurl = format!(
+        "https://releases-art-rhcos.svc.ci.openshift.org/art/storage/releases/rhcos-{}.{}/{}/{}/",
+        major, minor, version, arch
+    );
+    let meta_url = baseurl.clone() + "meta.json";
+    let meta_url =
+        Url::parse(&meta_url).with_context(|| format!("parsing '{}' as URL", &meta_url))?;
+    let meta_raw = download_to_tempfile(&meta_url, retries)
+        .with_context(|| format!("downloading {}", meta_url))?;
+    let cosa_meta: CosaMeta =
+        serde_json::from_reader(&meta_raw).with_context(|| format!("parsing {}", meta_url))?;
+    let initramfs_url = baseurl.clone()
+        + &cosa_meta
+            .images
+            .get("live-initramfs")
+            .with_context(|| format!("artifact live-initramfs not found for release {}", version))?
+            .path;
+    let initramfs_url = Url::parse(&initramfs_url)
+        .with_context(|| format!("parsing '{}' as URL", &initramfs_url))?;
+    let rootfs_url = baseurl
+        + &cosa_meta
+            .images
+            .get("live-rootfs")
+            .with_context(|| format!("artifact live-rootfs not found for release {}", version))?
+            .path;
+    let rootfs_url =
+        Url::parse(&rootfs_url).with_context(|| format!("parsing '{}' as URL", &rootfs_url))?;
+    Ok((initramfs_url, rootfs_url))
+}
+
+fn fd_path(f: &File) -> PathBuf {
+    PathBuf::from(format!(
+        "/proc/{}/fd/{}",
+        std::process::id(),
+        f.as_raw_fd().to_string()
+    ))
+}
+
+fn add_karg(s: &mut String, key: &str, val: &str) {
+    s.push(' ');
+    s.push_str(key);
+    s.push('=');
+    s.push_str(val);
 }
 
 fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<PartitionFilter>> {
@@ -563,7 +939,8 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     for entry in read_dir(&net_config_src)
         .with_context(|| format!("reading directory {}", net_config_src))?
     {
-        let entry = entry.with_context(|| format!("reading directory {}", net_config_src))?;
+        let entry =
+            entry.with_context(|| format!("reading entry in directory {}", net_config_src))?;
         let srcpath = entry.path();
         let destpath = net_config_dest.join(entry.file_name());
         if srcpath.is_file() {
