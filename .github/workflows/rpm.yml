@@ -21,6 +21,9 @@ jobs:
         run: dnf install -y git make mock
       - name: Checkout repository
         uses: actions/checkout@v2
+        # fetch tags for versioning
+        with:
+          fetch-depth: 0
       - name: Build RPM
         run: |
           mkdir rpms
