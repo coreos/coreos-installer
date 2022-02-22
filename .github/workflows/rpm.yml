@@ -1,5 +1,5 @@
 ---
-name: RPM build
+name: RPMs
 on:
   push:
     branches: [main]
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   test-rpm-build:
-    name: "RPM build"
+    name: "Build (Fedora)"
     runs-on: ubuntu-latest
     container:
       image: registry.fedoraproject.org/fedora:latest
@@ -24,7 +24,7 @@ jobs:
         # fetch tags for versioning
         with:
           fetch-depth: 0
-      - name: Build RPM
+      - name: Build RPMs
         run: |
           mkdir rpms
           make -f .copr/Makefile srpm outdir=rpms
