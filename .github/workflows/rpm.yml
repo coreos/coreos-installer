@@ -1,0 +1,34 @@
+---
+name: RPM build
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+
+jobs:
+  test-rpm-build:
+    name: "RPM build"
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:latest
+      options: --privileged
+    steps:
+      # need to install git before checkout to get a git repo
+      - name: Install packages
+        run: dnf install -y git make mock
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Build RPM
+        run: |
+          mkdir rpms
+          make -f .copr/Makefile srpm outdir=rpms
+          mock --rebuild rpms/*.src.rpm
+          find /var/lib/mock -wholename '*/result/*.rpm' | xargs mv -t rpms
+      - name: Archive RPMs
+        uses: actions/upload-artifact@v2
+        with:
+          name: rpms
+          path: rpms/
