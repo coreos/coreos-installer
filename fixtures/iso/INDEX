@@ -7,16 +7,21 @@ embed-areas-2020-09.iso.xz
 
 embed-areas-2021-01.iso.xz
     coreiso+ header pointing to ignition.img embed area
-    coreKargs header pointing to kargs areas and defaults in /.cmdline
+    coreKarg header pointing to kargs areas and defaults in /.cmdline
 
 embed-areas-2021-09.iso.xz
     coreiso+ header pointing to ignition.img embed area
-    coreKargs header pointing to kargs areas and defaults in /.cmdline
+    coreKarg header pointing to kargs areas and defaults in /.cmdline
     kargs.json pointing to kargs areas and embedding defaults
 
 embed-areas-2021-12.iso.xz
     coreiso+ header pointing to ignition.img embed area
-    coreKargs header pointing to kargs areas and defaults in /.cmdline
+    coreKarg header pointing to kargs areas and defaults in /.cmdline
+    kargs.json pointing to kargs areas and embedding defaults
+    miniso.dat version 1
+    features.json: installer-config, live-initrd-network
+
+embed-areas-2022-02.iso.xz
     kargs.json pointing to kargs areas and embedding defaults
     miniso.dat version 1
     features.json: installer-config, live-initrd-network
