@@ -940,9 +940,10 @@ pub fn find_efi_vendor_dir(efi_mount: &Mount) -> Result<PathBuf> {
     }
     if vendor_dir.len() != 1 {
         bail!(
-            "Expected one vendor dir on {}, got {}",
+            "Expected one vendor dir on {}, got {} ({:?})",
             efi_mount.device(),
-            vendor_dir.len()
+            vendor_dir.len(),
+            vendor_dir,
         );
     }
     Ok(vendor_dir.pop().unwrap())
