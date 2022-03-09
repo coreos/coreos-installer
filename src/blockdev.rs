@@ -930,13 +930,13 @@ pub fn find_efi_vendor_dir(efi_mount: &Mount) -> Result<PathBuf> {
     let mut vendor_dir: Vec<PathBuf> = Vec::new();
     for ent in p.read_dir()? {
         let ent = ent.with_context(|| format!("reading directory entry in {}", p.display()))?;
-        if ent.file_name() == "BOOT" {
-            continue;
-        }
         if !ent.file_type()?.is_dir() {
             continue;
         }
-        vendor_dir.push(ent.path());
+        let path = ent.path();
+        if path.join("grub.cfg").is_file() {
+            vendor_dir.push(path);
+        }
     }
     if vendor_dir.len() != 1 {
         bail!(
