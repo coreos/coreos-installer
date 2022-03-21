@@ -4,7 +4,7 @@ buildPod {
     checkout scm
 
     stage("Build") {
-        shwrap("make && make install DESTDIR=install")
+        shwrap("make RELEASE=1 && make install DESTDIR=install")
         stash name: 'build', includes: 'install/**'
     }
 }
