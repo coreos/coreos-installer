@@ -431,7 +431,7 @@ impl<'a, R: Read> ProgressReader<'a, R> {
         });
         // disable percentage reporting for zero-length files to avoid
         // division by zero
-        let length = length.map(NonZeroU64::new).flatten();
+        let length = length.and_then(NonZeroU64::new);
         ProgressReader {
             source,
             length: length.map(|l| (l, Self::format_bytes(l.get()))),

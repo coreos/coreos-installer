@@ -297,6 +297,7 @@ pub fn iso_kargs_reset(config: IsoKargsResetConfig) -> Result<()> {
     let mut iso_file = open_live_iso(&config.input, Some(config.output.as_ref()))?;
     let mut iso = IsoConfig::for_file(&mut iso_file)?;
 
+    #[allow(clippy::unnecessary_to_owned)]
     iso.set_kargs(&iso.kargs_default()?.to_string())?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
@@ -359,6 +360,7 @@ pub fn iso_reset(config: IsoResetConfig) -> Result<()> {
 
     *iso.initrd_mut() = Initrd::default();
     if iso.kargs_supported() {
+        #[allow(clippy::unnecessary_to_owned)]
         iso.set_kargs(&iso.kargs_default()?.to_string())?;
     };
 
