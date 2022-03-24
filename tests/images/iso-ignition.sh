@@ -12,6 +12,13 @@ digest() {
     sha256sum "${1:--}" | awk '{print $1}'
 }
 
+grepq() {
+    # Emulate grep -q without actually using it, to avoid propagating write
+    # errors to the writer after a match, which would cause problems with
+    # -o pipefail
+    grep "$@" > /dev/null
+}
+
 iso=$1; shift
 iso=$(realpath "${iso}")
 
@@ -55,12 +62,12 @@ if [ "${config}" != "$(dd if=${iso} skip=${offset} count=${length} bs=1 status=n
 fi
 
 # Test forcing
-(coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" 2>&1 ||:) | grep -q "already has an embedded Ignition config"
+(coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" 2>&1 ||:) | grepq "already has an embedded Ignition config"
 coreos-installer iso ignition embed -f -i <(echo "${config}") "${iso}"
 rm "${out_iso}"
-(coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -o "${out_iso}" 2>&1 ||:) | grep -q "already has an embedded Ignition config"
+(coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -o "${out_iso}" 2>&1 ||:) | grepq "already has an embedded Ignition config"
 coreos-installer iso ignition embed -f -i <(echo "${config}") "${iso}" -o "${out_iso}"
-(coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -o - 2>&1 ||:) | grep -q "already has an embedded Ignition config"
+(coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -o - 2>&1 ||:) | grepq "already has an embedded Ignition config"
 coreos-installer iso ignition embed -f -i <(echo "${config}") "${iso}" -o - >/dev/null
 
 # Test `remove`
@@ -92,28 +99,28 @@ large_config() {
 {"ignition": {"version": "3.0.0"}, "storage": {"files": [{"path": "/etc/foo", "contents": {"source": "data:,${random}"}}]}}
 EOF
 }
-(large_config | coreos-installer iso ignition embed -o - "${iso}" 2>&1 ||:) | grep -q "too large"
+(large_config | coreos-installer iso ignition embed -o - "${iso}" 2>&1 ||:) | grepq "too large"
 rm "${out_iso}"
-(large_config | coreos-installer iso ignition embed -o "${out_iso}" "${iso}" 2>&1 ||:) | grep -q "too large"
-(large_config | coreos-installer iso ignition embed "${iso}" 2>&1 ||:) | grep -q "too large"
+(large_config | coreos-installer iso ignition embed -o "${out_iso}" "${iso}" 2>&1 ||:) | grepq "too large"
+(large_config | coreos-installer iso ignition embed "${iso}" 2>&1 ||:) | grepq "too large"
 
 # Check that Ignition configs work independently of network configs
 echo "foo=baz" > one.nmconnection
 echo "bar=baz" > two.nmconnection
 if coreos-installer iso network embed -k one.nmconnection -k two.nmconnection "${iso}"; then
-    (coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grep -q "No embedded Ignition config"
+    (coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grepq "No embedded Ignition config"
     coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -o "${out_iso}"
     coreos-installer iso ignition show "${out_iso}" | cmp - <(echo "${config}")
-    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
-    coreos-installer iso network extract "${out_iso}" | grep -q "bar=baz"
+    coreos-installer iso network extract "${out_iso}" | grepq "foo=baz"
+    coreos-installer iso network extract "${out_iso}" | grepq "bar=baz"
     coreos-installer iso ignition embed -i <(echo "${config}") "${iso}" -f
-    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
+    coreos-installer iso network extract "${out_iso}" | grepq "foo=baz"
     rm "${out_iso}"
     coreos-installer iso ignition remove "${iso}" -o "${out_iso}"
-    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
+    coreos-installer iso network extract "${out_iso}" | grepq "foo=baz"
     coreos-installer iso ignition remove "${iso}"
-    coreos-installer iso network extract "${out_iso}" | grep -q "foo=baz"
-    (coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grep -q "No embedded Ignition config"
+    coreos-installer iso network extract "${out_iso}" | grepq "foo=baz"
+    (coreos-installer iso ignition show "${iso}" 2>&1 ||:) | grepq "No embedded Ignition config"
     coreos-installer iso network remove "${iso}"
     # verify we haven't written an empty cpio archive
     dd if="${iso}" skip="${offset}" count="${length}" bs=1 status=none | cmp -n "${length}" - /dev/zero

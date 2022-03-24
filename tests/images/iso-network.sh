@@ -20,6 +20,13 @@ check() {
     fi
 }
 
+grepq() {
+    # Emulate grep -q without actually using it, to avoid propagating write
+    # errors to the writer after a match, which would cause problems with
+    # -o pipefail
+    grep "$@" > /dev/null
+}
+
 iso=$1; shift
 iso=$(realpath "${iso}")
 
@@ -65,17 +72,17 @@ if [ "${stdout_hash}" != "${hash}" ]; then
 fi
 
 # Test forcing
-(coreos-installer iso network embed ${embed} "${iso}" 2>&1 ||:) | grep -q "already has embedded network settings"
+(coreos-installer iso network embed ${embed} "${iso}" 2>&1 ||:) | grepq "already has embedded network settings"
 coreos-installer iso network embed -f ${embed} "${iso}"
 rm "${out_iso}"
-(coreos-installer iso network embed ${embed} "${iso}" -o "${out_iso}" 2>&1 ||:) | grep -q "already has embedded network settings"
+(coreos-installer iso network embed ${embed} "${iso}" -o "${out_iso}" 2>&1 ||:) | grepq "already has embedded network settings"
 coreos-installer iso network embed -f ${embed} "${iso}" -o "${out_iso}"
-(coreos-installer iso network embed ${embed} "${iso}" -o - 2>&1 ||:) | grep -q "already has embedded network settings"
+(coreos-installer iso network embed ${embed} "${iso}" -o - 2>&1 ||:) | grepq "already has embedded network settings"
 coreos-installer iso network embed -f ${embed} "${iso}" -o - >/dev/null
 
 # Test `extract` to stdout
-coreos-installer iso network extract "${iso}" | grep -q "id=a"
-coreos-installer iso network extract "${iso}" | grep -q "id=b"
+coreos-installer iso network extract "${iso}" | grepq "id=a"
+coreos-installer iso network extract "${iso}" | grepq "id=b"
 
 # Test `remove`
 hash=$(coreos-installer iso network remove "${iso}" -o - | digest)
@@ -96,19 +103,19 @@ fi
 
 # Check that network configs work independently of Ignition configs
 echo '{"ignition": {"version": "3.0.0"}' | coreos-installer iso ignition embed "${iso}"
-(coreos-installer iso network extract "${iso}" 2>&1 ||:) | grep -q "No embedded network settings"
+(coreos-installer iso network extract "${iso}" 2>&1 ||:) | grepq "No embedded network settings"
 rm "${out_iso}"
 coreos-installer iso network embed ${embed} "${iso}" -o "${out_iso}"
 check "${out_iso}"
-coreos-installer iso ignition show "${out_iso}" | grep -q "version"
+coreos-installer iso ignition show "${out_iso}" | grepq "version"
 coreos-installer iso network embed ${embed} "${iso}"
-coreos-installer iso ignition show "${iso}" | grep -q "version"
+coreos-installer iso ignition show "${iso}" | grepq "version"
 rm "${out_iso}"
 coreos-installer iso network remove "${iso}" -o "${out_iso}"
-coreos-installer iso ignition show "${out_iso}" | grep -q "version"
+coreos-installer iso ignition show "${out_iso}" | grepq "version"
 coreos-installer iso network remove "${iso}"
-coreos-installer iso ignition show "${iso}" | grep -q "version"
-(coreos-installer iso network extract "${iso}" 2>&1 ||:) | grep -q "No embedded network settings"
+coreos-installer iso ignition show "${iso}" | grepq "version"
+(coreos-installer iso network extract "${iso}" 2>&1 ||:) | grepq "No embedded network settings"
 coreos-installer iso ignition remove "${iso}"
 # verify we haven't written an empty cpio archive
 offset=$(coreos-installer dev show iso --ignition "${iso}" | jq -r .offset)
