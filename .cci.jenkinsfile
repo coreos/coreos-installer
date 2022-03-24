@@ -48,6 +48,8 @@ cosaPod(buildroot: true, runAsUser: 0) {
             skipMultipath: true,
             skipUEFI: true
         )
+    }
+    stage("Image tests") {
         shwrap("tests/images.sh /srv/fcos/builds/latest/x86_64")
     }
 }
