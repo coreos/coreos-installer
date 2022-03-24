@@ -63,3 +63,20 @@ pub fn cmd_output(cmd: &mut Command) -> Result<String> {
     String::from_utf8(result.stdout)
         .with_context(|| format!("decoding as UTF-8 output of `{:#?}`", cmd))
 }
+
+/// Rust ignores SIGPIPE by default, which causes verbose failures when
+/// our output is piped to a program that exits.  Unignore SIGPIPE to avoid
+/// this.  This will give the program no chance to clean up, so is only
+/// appropriate for simple reporting/debugging commands.
+// https://github.com/rust-lang/rust/issues/46016
+pub fn set_die_on_sigpipe() -> Result<()> {
+    use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
+    unsafe {
+        sigaction(
+            Signal::SIGPIPE,
+            &SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::empty()),
+        )
+    }
+    .map(|_| ())
+    .context("resetting SIGPIPE handler")
+}
