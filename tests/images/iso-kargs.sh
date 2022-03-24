@@ -12,6 +12,13 @@ digest() {
     sha256sum "${1:--}" | awk '{print $1}'
 }
 
+grepq() {
+    # Emulate grep -q without actually using it, to avoid propagating write
+    # errors to the writer after a match, which would cause problems with
+    # -o pipefail
+    grep "$@" > /dev/null
+}
+
 iso=$1; shift
 iso=$(realpath "${iso}")
 
@@ -28,7 +35,7 @@ iso=test.iso
 out_iso="${iso}.out"
 
 # Sanity-check the ISO doesn't somehow already have the karg we're testing with.
-if coreos-installer iso kargs show "${iso}" | grep -q foobar; then
+if coreos-installer iso kargs show "${iso}" | grepq foobar; then
     fatal "Unexpected foobar karg in iso kargs"
 fi
 
@@ -36,9 +43,9 @@ orig_hash=$(digest "${iso}")
 
 # Stream modification to stdout.
 stdout_hash=$(coreos-installer iso kargs modify -a foobar=oldval -a dodo -o - "${iso}" | tee "${out_iso}" | digest)
-coreos-installer iso kargs show "${out_iso}" | grep -q 'foobar=oldval dodo'
+coreos-installer iso kargs show "${out_iso}" | grepq 'foobar=oldval dodo'
 coreos-installer iso kargs modify -d foobar=oldval -d dodo -o - "${out_iso}" > "${iso}"
-if coreos-installer iso kargs show "${iso}" | grep -q 'foobar'; then
+if coreos-installer iso kargs show "${iso}" | grepq 'foobar'; then
     fatal "Unexpected foobar karg in iso kargs"
 fi
 hash=$(digest "${iso}")
@@ -48,17 +55,17 @@ fi
 
 # Test all the modification operations.
 coreos-installer iso kargs modify -a foobar=oldval -a dodo "${iso}"
-coreos-installer iso kargs show "${iso}" | grep -q 'foobar=oldval dodo'
+coreos-installer iso kargs show "${iso}" | grepq 'foobar=oldval dodo'
 hash=$(digest "${iso}")
 if [ "${stdout_hash}" != "${hash}" ]; then
     fatal "Streamed hash doesn't match modified hash: ${stdout_hash} vs ${hash}"
 fi
 rm "${out_iso}"
 coreos-installer iso kargs modify -r foobar=oldval=newval "${iso}" -o "${out_iso}"
-coreos-installer iso kargs show "${out_iso}" | grep -q 'foobar=newval dodo'
+coreos-installer iso kargs show "${out_iso}" | grepq 'foobar=newval dodo'
 rm "${iso}"
 coreos-installer iso kargs modify -d foobar=newval -d dodo "${out_iso}" -o "${iso}"
-if coreos-installer iso kargs show "${iso}" | grep -q 'foobar'; then
+if coreos-installer iso kargs show "${iso}" | grepq 'foobar'; then
     fatal "Unexpected foobar karg in iso kargs"
 fi
 
@@ -75,13 +82,13 @@ embed_usable_size=$((${embed_size} - ${embed_default_kargs_size} - 1))
 
 long_karg=$(printf '%*s' $((embed_usable_size)) | tr ' ' "k")
 coreos-installer iso kargs modify -a "${long_karg}" "${iso}"
-coreos-installer iso kargs show "${iso}" | grep -q " ${long_karg}\$"
+coreos-installer iso kargs show "${iso}" | grepq " ${long_karg}\$"
 coreos-installer iso kargs reset "${iso}"
 long_karg=$(printf '%*s' $((embed_usable_size + 1)) | tr ' ' "k")
 if coreos-installer iso kargs modify -a "${long_karg}" "${iso}" 2>err.txt; then
     fatal "Was able to put karg longer than area?"
 fi
-grep -q 'kargs too large for area' err.txt
+grepq 'kargs too large for area' err.txt
 
 # Test `reset`.
 coreos-installer iso kargs modify -a foobar "${iso}"

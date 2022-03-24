@@ -33,6 +33,13 @@ check() {
     popd >/dev/null
 }
 
+grepq() {
+    # Emulate grep -q without actually using it, to avoid propagating write
+    # errors to the writer after a match, which would cause problems with
+    # -o pipefail
+    grep "$@" > /dev/null
+}
+
 # dev show initrd
 coreos-installer dev show initrd compressed.img > out
 files | diff - out
@@ -48,7 +55,7 @@ files | grep -E 'gzip|xz' | diff - out
 # dev extract initrd
 coreos-installer dev extract initrd compressed.img
 check . gzip uncompressed-1 uncompressed-2 xz
-(coreos-installer dev extract initrd compressed.img 2>&1 ||:) | grep -q exists
+(coreos-installer dev extract initrd compressed.img 2>&1 ||:) | grepq exists
 rm -r gzip uncompressed-[12] xz
 coreos-installer dev extract initrd -C d - < compressed.img
 check d gzip uncompressed-1 uncompressed-2 xz
@@ -64,9 +71,9 @@ check d gzip xz
 [ -e d/uncompressed-2 ] && exit 1
 rm -r d
 (coreos-installer dev extract initrd \
-    "${fixtures}/initrd/traversal-absolute.img" 2>&1 ||:) | grep -q traversal
+    "${fixtures}/initrd/traversal-absolute.img" 2>&1 ||:) | grepq traversal
 (coreos-installer dev extract initrd \
-    "${fixtures}/initrd/traversal-relative.img" 2>&1 ||:) | grep -q traversal
+    "${fixtures}/initrd/traversal-relative.img" 2>&1 ||:) | grepq traversal
 
 # Done
 echo "Success."

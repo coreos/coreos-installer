@@ -22,6 +22,13 @@ digest() {
     sha256sum "${1:--}" | awk '{print $1}'
 }
 
+grepq() {
+    # Emulate grep -q without actually using it, to avoid propagating write
+    # errors to the writer after a match, which would cause problems with
+    # -o pipefail
+    grep "$@" > /dev/null
+}
+
 # kargs we need on every boot
 kargs_common=(
     # make sure we get log output
@@ -186,33 +193,33 @@ found=$(coreos-installer iso customize src-iso -o - \
 # Check ISO error conditions
 (coreos-installer iso customize src-iso -o iso \
     "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
-    grep -q "File exists"
+    grepq "File exists"
 (coreos-installer iso customize iso \
     "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
-    grep -q "already customized"
+    grepq "already customized"
 (coreos-installer iso customize iso -o iso2 \
     "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
-    grep -q "already customized"
+    grepq "already customized"
 rm iso
 xz -dc "${rootdir}/fixtures/iso/embed-areas-2021-09.iso.xz" > old.iso
 (coreos-installer iso customize old.iso \
     --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
-    grep -q "does not support customizing network settings"
+    grepq "does not support customizing network settings"
 (coreos-installer iso customize old.iso --dest-device /dev/loop0 2>&1 ||:) |
-    grep -q "does not support customizing installer configuration"
+    grepq "does not support customizing installer configuration"
 coreos-installer iso customize old.iso \
     --pre-install "${fixtures}/pre-install-1" \
     --live-karg-append "foo"
 xz -dc "${rootdir}/fixtures/iso/embed-areas-2020-09.iso.xz" > old.iso
 (coreos-installer iso customize old.iso \
     --live-karg-append "foo" 2>&1 ||:) |
-    grep -q "does not support customizing live kernel arguments"
+    grepq "does not support customizing live kernel arguments"
 coreos-installer iso customize old.iso \
     --pre-install "${fixtures}/pre-install-1"
 xz -dc "${rootdir}/fixtures/iso/synthetic.iso.xz" > old.iso
 (coreos-installer iso customize old.iso \
     --pre-install "${fixtures}/pre-install-1" 2>&1 ||:) |
-    grep -q "Unrecognized CoreOS ISO image"
+    grepq "Unrecognized CoreOS ISO image"
 # no-op
 coreos-installer iso customize src-iso -o iso
 
@@ -238,14 +245,14 @@ found=$(coreos-installer pxe customize src-initrd -o - \
 # if flags weren't being read correctly
 (coreos-installer pxe customize src-initrd -o initrd \
     "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
-    grep -q "File exists"
+    grepq "File exists"
 (coreos-installer pxe customize initrd -o initrd2 \
     "${opts_common[@]}" "${opts_install[@]}" 2>&1 ||:) |
-    grep -q "already customized"
+    grepq "already customized"
 rm initrd
 coreos-installer pxe ignition wrap -i /dev/null > empty-initrd
 (coreos-installer pxe customize empty-initrd -o initrd 2>&1 ||:) |
-    grep -q "not a CoreOS live initramfs image"
+    grepq "not a CoreOS live initramfs image"
 # no-op
 coreos-installer pxe customize src-initrd -o initrd
 
@@ -253,31 +260,31 @@ coreos-installer pxe customize src-initrd -o initrd
 (iso_customize \
     --pre-install "${fixtures}/pre-install-1" \
     --pre-install "${fixtures}/pre-install-1" 2>&1 ||:) |
-    grep -q "already specifies path"
+    grepq "already specifies path"
 (iso_customize \
     --network-keyfile "${fixtures}/installer-test.nmconnection" \
     --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
-    grep -q "already specifies keyfile"
+    grepq "already specifies keyfile"
 (iso_customize \
     --live-ignition "${fixtures}/installer-test.nmconnection"  2>&1 ||:) |
-    grep -q "parsing Ignition config"
+    grepq "parsing Ignition config"
 (iso_customize \
     --dest-ignition "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
-    grep -q "parsing Ignition config"
+    grepq "parsing Ignition config"
 (iso_customize \
     --installer-config "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
-    grep -q "parsing installer config"
+    grepq "parsing installer config"
 
 # Test live kargs by reading them back out of the ISO
-coreos-installer iso kargs show src-iso | grep -q ignition.platform.id=metal
+coreos-installer iso kargs show src-iso | grepq ignition.platform.id=metal
 iso_customize \
     --live-karg-append foo \
     --live-karg-replace ignition.platform.id=metal=bar
-coreos-installer iso kargs show iso | grep -q ignition.platform.id=bar
-coreos-installer iso kargs show iso | grep -q foo
+coreos-installer iso kargs show iso | grepq ignition.platform.id=bar
+coreos-installer iso kargs show iso | grepq foo
 iso_customize \
     --live-karg-delete ignition.platform.id=metal
-! coreos-installer iso kargs show iso | grep -q ignition.platform.id
+! coreos-installer iso kargs show iso | grepq ignition.platform.id
 
 # Runtime tests
 echo "=== ISO without install ==="

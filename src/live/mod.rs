@@ -24,6 +24,7 @@ use crate::cmdline::*;
 use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 use crate::miniso;
+use crate::util::set_die_on_sigpipe;
 
 mod customize;
 mod embed;
@@ -95,6 +96,7 @@ pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
 }
 
 pub fn iso_ignition_show(config: IsoIgnitionShowConfig) -> Result<()> {
+    set_die_on_sigpipe()?;
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     if !iso.have_ignition() {
@@ -181,6 +183,7 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
 }
 
 pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
+    set_die_on_sigpipe()?;
     let stdin = io::stdin();
     let mut f: Box<dyn Read> = if let Some(path) = &config.input {
         Box::new(
@@ -265,6 +268,7 @@ fn initrd_network_extract(initrd: &Initrd, directory: Option<&String>) -> Result
             println!("{}", path.display());
         }
     } else {
+        set_die_on_sigpipe()?;
         for (i, (path, contents)) in files.iter().enumerate() {
             if i > 0 {
                 println!();
@@ -304,6 +308,7 @@ pub fn iso_kargs_reset(config: IsoKargsResetConfig) -> Result<()> {
 }
 
 pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
+    set_die_on_sigpipe()?;
     let mut iso_file = open_live_iso(&config.input, None)?;
     let iso = IsoConfig::for_file(&mut iso_file)?;
     let kargs = if config.default {
@@ -456,6 +461,7 @@ struct DevShowIsoOutput {
 }
 
 pub fn dev_show_iso(config: DevShowIsoConfig) -> Result<()> {
+    set_die_on_sigpipe()?;
     let mut iso_file = open_live_iso(&config.input, None)?;
     let stdout = io::stdout();
     let mut out = stdout.lock();
@@ -487,6 +493,7 @@ pub fn dev_show_iso(config: DevShowIsoConfig) -> Result<()> {
 }
 
 pub fn dev_show_initrd(config: DevShowInitrdConfig) -> Result<()> {
+    set_die_on_sigpipe()?;
     let initrd = read_initrd(&config.input, &config.filter)?;
     for path in initrd.find(&ALL_GLOB).keys() {
         println!("{}", path);

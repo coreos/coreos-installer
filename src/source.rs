@@ -25,6 +25,7 @@ use std::time::Duration;
 
 use crate::cmdline::*;
 use crate::osmet::*;
+use crate::util::set_die_on_sigpipe;
 
 /// Completion timeout for HTTP requests (4 hours).
 const HTTP_COMPLETION_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
@@ -420,6 +421,7 @@ pub fn list_stream(config: ListStreamConfig) -> Result<()> {
     }
 
     // report results
+    set_die_on_sigpipe()?;
     for row in &rows {
         println!(
             "{:3$}  {:4$}  {}",
