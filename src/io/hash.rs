@@ -17,7 +17,6 @@ use openssl::hash::{Hasher, MessageDigest};
 use openssl::sha;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Write};

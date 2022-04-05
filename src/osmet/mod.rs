@@ -22,7 +22,6 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
 use std::io::{copy, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileTypeExt;

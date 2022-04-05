@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fs::File;
 use std::io::{copy, Read, Seek, SeekFrom, Write};
 
