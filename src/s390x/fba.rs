@@ -14,7 +14,6 @@
 
 use anyhow::{Context, Result};
 use mbrman::{MBRPartitionEntry, CHS, MBR};
-use std::convert::TryInto;
 use std::fs::File;
 
 use crate::blockdev::get_sector_size;

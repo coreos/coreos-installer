@@ -18,7 +18,6 @@ use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount, sched};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
 use std::fs::{
     canonicalize, metadata, read_dir, read_to_string, remove_dir, symlink_metadata, File,
     OpenOptions,
