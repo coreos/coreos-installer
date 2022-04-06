@@ -410,6 +410,50 @@ pub fn download_to_tempfile(url: &Url, retries: FetchRetries) -> Result<File> {
     Ok(f)
 }
 
+// XXX: try to dedupe with write_image?
+pub fn download_and_verify_to_tempfile(
+    url: &Url,
+    sig_url: &Url,
+    retries: FetchRetries,
+) -> Result<File> {
+    let sig: Vec<u8> = {
+        let client = new_http_client()?;
+        let mut resp = http_get(client, sig_url, retries).context("fetching signature URL")?;
+        let mut sig_bytes = Vec::new();
+        resp.read_to_end(&mut sig_bytes)
+            .context("reading signature content")?;
+        sig_bytes
+    };
+
+    let client = new_http_client()?;
+    let mut resp = http_get(client, url, retries)?;
+
+    // wrap source for signature verification, if available
+    // keep the reader so we can explicitly check the result afterward
+    let mut verify_reader =
+        VerifyReader::new(&mut resp, Some(sig.as_slice()), VerifyKeys::Production)?;
+
+    // wrap in a BufReader to amortize read overhead
+    let mut reader = BufReader::with_capacity(BUFFER_SIZE, &mut verify_reader);
+
+    let mut f = tempfile::tempfile()?;
+    let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &mut f);
+    copy(&mut reader, &mut writer).with_context(|| format!("couldn't copy '{}'", url))?;
+
+    // check signature
+    drop(reader);
+    verify_reader.verify()?;
+
+    writer
+        .flush()
+        .with_context(|| format!("couldn't write '{}' to disk", url))?;
+    drop(writer);
+    f.seek(SeekFrom::Start(0))
+        .with_context(|| format!("rewinding file for '{}'", url))?;
+
+    Ok(f)
+}
+
 struct ProgressReader<'a, R: Read> {
     source: R,
     length: Option<(NonZeroU64, String)>,
