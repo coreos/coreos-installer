@@ -22,5 +22,5 @@ OPTIONS:
         --insecure                 Skip signature verification
         --stream-base-url <URL>    Base URL for Fedora CoreOS stream metadata
         --fetch-retries <N>        Fetch retries, or "infinite" [default: 0]
-    -h, --help                     Prints help information
+    -h, --help                     Print help information
 ```

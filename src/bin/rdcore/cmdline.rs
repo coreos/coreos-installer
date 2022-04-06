@@ -15,18 +15,16 @@
 // For consistency, have all parse_*() functions return Result.
 #![allow(clippy::unnecessary_wraps)]
 
-use structopt::clap::AppSettings;
-use structopt::StructOpt;
+use clap::{AppSettings, Parser};
 
 // Args are listed in --help in the order declared in these structs/enums.
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "rdcore")]
-#[structopt(global_setting(AppSettings::ArgsNegateSubcommands))]
-#[structopt(global_setting(AppSettings::DeriveDisplayOrder))]
-#[structopt(global_setting(AppSettings::DisableHelpSubcommand))]
-#[structopt(global_setting(AppSettings::UnifiedHelpMessage))]
-#[structopt(global_setting(AppSettings::VersionlessSubcommands))]
+#[derive(Debug, Parser)]
+#[clap(name = "rdcore", version)]
+#[clap(global_setting(AppSettings::DeriveDisplayOrder))]
+#[clap(args_conflicts_with_subcommands = true)]
+#[clap(disable_help_subcommand = true)]
+#[clap(help_expected = true)]
 pub enum Cmd {
     /// Generate rootmap kargs and optionally inject into BLS configs
     Rootmap(RootmapConfig),
@@ -40,7 +38,7 @@ pub enum Cmd {
     VerifyUniqueFsLabel(VerifyUniqueFsLabelConfig),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct RootmapConfig {
     // we allow mounting /boot ourselves (--boot-device) or letting our
     // caller do the mount and point us to it (--boot-mount); lots of
@@ -48,75 +46,86 @@ pub struct RootmapConfig {
     // for changing implementation details on the OS side without having to
     // respin rdcore
     /// Boot device containing BLS entries to modify
-    #[structopt(long, value_name = "DEVPATH", conflicts_with = "boot-mount")]
+    #[clap(long, value_name = "DEVPATH", conflicts_with = "boot-mount")]
     pub boot_device: Option<String>,
     /// Boot mount containing BLS entries to modify
-    #[structopt(long, value_name = "BOOT_MOUNT", conflicts_with = "boot-device")]
+    #[clap(long, value_name = "BOOT_MOUNT", conflicts_with = "boot-device")]
     pub boot_mount: Option<String>,
     /// Path to rootfs mount
-    #[structopt(value_name = "ROOT_MOUNT")]
+    #[clap(value_name = "ROOT_MOUNT")]
     pub root_mount: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct BindBootConfig {
     /// Path to rootfs mount
-    #[structopt(value_name = "ROOT_MOUNT")]
+    #[clap(value_name = "ROOT_MOUNT")]
     pub root_mount: String,
     /// Path to bootfs mount
-    #[structopt(value_name = "BOOT_MOUNT")]
+    #[clap(value_name = "BOOT_MOUNT")]
     pub boot_mount: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct KargsConfig {
     // see comment block in rootmap command above
     /// Boot device containing BLS entries to modify
-    #[structopt(long, value_name = "DEVPATH")]
-    #[structopt(conflicts_with = "boot-mount", conflicts_with = "current")]
+    #[clap(long, value_name = "DEVPATH")]
+    #[clap(conflicts_with = "boot-mount", conflicts_with = "current")]
     pub boot_device: Option<String>,
     /// Boot mount containing BLS entries to modify
-    #[structopt(long, value_name = "BOOT_MOUNT")]
-    #[structopt(conflicts_with = "boot-device", conflicts_with = "current")]
+    #[clap(long, value_name = "BOOT_MOUNT")]
+    #[clap(conflicts_with = "boot-device", conflicts_with = "current")]
     pub boot_mount: Option<String>,
     /// Dry run using kargs from this boot
-    #[structopt(long)]
-    #[structopt(conflicts_with = "boot-device", conflicts_with = "boot-mount")]
+    #[clap(long)]
+    #[clap(conflicts_with = "boot-device", conflicts_with = "boot-mount")]
     pub current: bool,
     /// Modify this option string instead of fetching from BLS entry
     // this is purely for dev testing
-    #[structopt(long, value_name = "OPTIONS", hidden = true)]
+    #[clap(long, value_name = "OPTIONS", hide = true)]
     pub override_options: Option<String>,
     /// File to create if BLS entry was modified
-    #[structopt(long, value_name = "PATH")]
+    #[clap(long, value_name = "PATH")]
     pub create_if_changed: Option<String>,
     /// Append kernel arg
-    #[structopt(long, value_name = "ARG", number_of_values = 1)]
+    #[clap(long, value_name = "ARG")]
     pub append: Vec<String>,
     /// Append kernel arg if missing
-    #[structopt(long, value_name = "ARG", number_of_values = 1)]
-    #[structopt(alias = "should-exist")]
+    #[clap(long, value_name = "ARG")]
+    #[clap(alias = "should-exist")]
     pub append_if_missing: Vec<String>,
     /// Delete kernel arg
-    #[structopt(long, value_name = "ARG", number_of_values = 1)]
-    #[structopt(alias = "should-not-exist")]
+    #[clap(long, value_name = "ARG")]
+    #[clap(alias = "should-not-exist")]
     pub delete: Vec<String>,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct StreamHashConfig {
     /// Path to the piecewise hash file
-    #[structopt(value_name = "hash-file")]
+    #[clap(value_name = "hash-file")]
     pub hash_file: String,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct VerifyUniqueFsLabelConfig {
     /// Filesystem's label
-    #[structopt(value_name = "LABEL")]
+    #[clap(value_name = "LABEL")]
     pub label: String,
 
     /// Force rereading of partition table
-    #[structopt(long)]
+    #[clap(long)]
     pub rereadpt: bool,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use clap::IntoApp;
+
+    #[test]
+    fn clap_app() {
+        Cmd::command().debug_assert()
+    }
 }

@@ -19,12 +19,12 @@ mod stream_hash;
 mod unique_fs;
 
 use anyhow::Result;
-use structopt::StructOpt;
+use clap::Parser;
 
 use crate::cmdline::*;
 
 fn main() -> Result<()> {
-    match Cmd::from_args() {
+    match Cmd::parse() {
         Cmd::Kargs(c) => kargs::kargs(c),
         Cmd::Rootmap(c) => rootmap::rootmap(c),
         Cmd::BindBoot(c) => rootmap::bind_boot(c),

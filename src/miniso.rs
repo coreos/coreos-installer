@@ -18,8 +18,8 @@ use std::io::{copy, Read, Seek, SeekFrom, Write};
 
 use anyhow::{bail, Context, Result};
 use bincode::Options;
+use clap::crate_version;
 use serde::{Deserialize, Serialize};
-use structopt::clap::crate_version;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
