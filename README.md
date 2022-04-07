@@ -1,6 +1,6 @@
 # coreos-installer
 
-[![Container image](https://quay.io/repository/coreos/coreos-installer/status)](https://quay.io/repository/coreos/coreos-installer)
+[![Container image](https://img.shields.io/badge/container-quay.io-blue)](https://quay.io/repository/coreos/coreos-installer)
 [![crates.io](https://img.shields.io/crates/v/coreos-installer.svg)](https://crates.io/crates/coreos-installer)
 
 coreos-installer is a program to assist with installing Fedora CoreOS
