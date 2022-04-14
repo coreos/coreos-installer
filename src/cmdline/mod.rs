@@ -15,24 +15,21 @@
 // We don't care about the size of enum variants and don't want to box them
 #![allow(clippy::large_enum_variant)]
 
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{Context, Result};
 use clap::{AppSettings, Parser};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use serde_with::{
-    serde_as, skip_serializing_none, DeserializeFromStr, DisplayFromStr, SerializeDisplay,
-};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 use std::default::Default;
 use std::ffi::OsStr;
-use std::fmt;
 use std::fs::OpenOptions;
-use std::marker::PhantomData;
-use std::num::NonZeroU32;
-use std::str::FromStr;
 
 use crate::io::IgnitionHash;
 
 mod serializer;
+mod types;
+
+pub use self::types::*;
 
 // Args are listed in --help in the order declared in these structs/enums.
 // Please keep the entire help text to 80 columns.
@@ -446,19 +443,6 @@ impl InstallConfig {
     fn to_args(&self) -> Result<Vec<String>> {
         serializer::to_args(self)
     }
-}
-
-#[derive(Debug, DeserializeFromStr, SerializeDisplay, Clone, Copy, PartialEq, Eq)]
-pub enum FetchRetries {
-    Infinite,
-    Finite(NonZeroU32),
-    None,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum PartitionFilter {
-    Label(glob::Pattern),
-    Index(Option<NonZeroU32>, Option<NonZeroU32>),
 }
 
 #[derive(Debug, Parser)]
@@ -943,129 +927,13 @@ pub struct DevExtractInitrdConfig {
     pub filter: Vec<String>,
 }
 
-impl FromStr for FetchRetries {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "infinite" => Ok(Self::Infinite),
-            num => num
-                .parse::<u32>()
-                .map(|num| NonZeroU32::new(num).map(Self::Finite).unwrap_or(Self::None))
-                .map_err(|e| anyhow!(e)),
-        }
-    }
-}
-
-impl fmt::Display for FetchRetries {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::None => write!(f, "0"),
-            Self::Finite(n) => write!(f, "{}", n),
-            Self::Infinite => write!(f, "infinite"),
-        }
-    }
-}
-
-impl Default for FetchRetries {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-/// A String wrapper that takes a parameterized type defining the default
-/// value of the String.
-#[derive(Debug, PartialEq, Eq)]
-pub struct DefaultedString<S: DefaultString> {
-    value: String,
-    default: PhantomData<S>,
-}
-
-impl<S: DefaultString> DefaultedString<S> {
-    pub fn as_str(&self) -> &str {
-        &self.value
-    }
-}
-
-impl<S: DefaultString> FromStr for DefaultedString<S> {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self {
-            value: s.to_string(),
-            default: PhantomData,
-        })
-    }
-}
-
-impl<S: DefaultString> fmt::Display for DefaultedString<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl<S: DefaultString> Default for DefaultedString<S> {
-    fn default() -> Self {
-        Self {
-            value: S::default(),
-            default: PhantomData,
-        }
-    }
-}
-
-// SerializeDisplay derive apparently doesn't work with parameterized types
-impl<S: DefaultString> Serialize for DefaultedString<S> {
-    fn serialize<R>(&self, serializer: R) -> Result<R::Ok, R::Error>
-    where
-        R: serde::ser::Serializer,
-    {
-        serializer.serialize_str(&self.value)
-    }
-}
-
-// DeserializeFromStr derive apparently doesn't work with parameterized types
-impl<'de, S: DefaultString> Deserialize<'de> for DefaultedString<S> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        Ok(Self {
-            value: String::deserialize(deserializer)?,
-            default: PhantomData,
-        })
-    }
-}
-
-/// A default value for a DefaultedString.
-pub trait DefaultString {
-    fn default() -> String;
-}
-
-/// A default string of `uname -m`.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Architecture {}
-impl DefaultString for Architecture {
-    fn default() -> String {
-        nix::sys::utsname::uname().machine().to_string()
-    }
-}
-
-/// The default path to NetworkManager connection files.
-#[derive(Debug, PartialEq, Eq)]
-pub struct NetworkDir {}
-impl DefaultString for NetworkDir {
-    fn default() -> String {
-        "/etc/NetworkManager/system-connections/".into()
-    }
-}
-
-fn is_default<T: Default + PartialEq>(value: &T) -> bool {
-    value == &T::default()
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use clap::IntoApp;
     use std::io::Write;
+    use std::num::NonZeroU32;
+    use std::str::FromStr;
     use tempfile::NamedTempFile;
 
     #[test]
