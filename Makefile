@@ -22,11 +22,16 @@ docs: all
 	target/${PROFILE}/coreos-installer pack man -C man
 
 .PHONY: install
-install: install-bin install-scripts install-systemd install-dracut
+install: install-bin install-man install-scripts install-systemd install-dracut
 
 .PHONY: install-bin
 install-bin: all
 	install -D -t ${DESTDIR}/usr/bin target/${PROFILE}/coreos-installer
+
+.PHONY: install-man
+install-man:
+	install -d ${DESTDIR}/usr/share/man/man8
+	$(foreach src,$(wildcard man/*.8),gzip -9c $(src) > ${DESTDIR}/usr/share/man/man8/$(notdir $(src)).gz && ) :
 
 .PHONY: install-scripts
 install-scripts:
