@@ -1,0 +1,48 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-download \- Download a CoreOS image
+.SH SYNOPSIS
+\fBcoreos\-installer\-download\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-C\fR|\fB\-\-directory\fR] [\fB\-d\fR|\fB\-\-decompress\fR] [\fB\-\-insecure\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-fetch\-retries\fR] 
+.SH DESCRIPTION
+Download a CoreOS image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-s\fR, \fB\-\-stream\fR=\fIname\fR [default: stable]
+Fedora CoreOS stream
+.TP
+\fB\-a\fR, \fB\-\-architecture\fR=\fIname\fR [default: x86_64]
+Target CPU architecture
+.TP
+\fB\-p\fR, \fB\-\-platform\fR=\fIname\fR [default: metal]
+Fedora CoreOS platform name
+.TP
+\fB\-f\fR, \fB\-\-format\fR=\fIname\fR [default: raw.xz]
+Image format
+.TP
+\fB\-u\fR, \fB\-\-image\-url\fR=\fIURL\fR
+Manually specify the image URL
+.TP
+\fB\-C\fR, \fB\-\-directory\fR=\fIpath\fR [default: .]
+Destination directory
+.TP
+\fB\-d\fR, \fB\-\-decompress\fR
+Decompress image and don\*(Aqt save signature
+.TP
+\fB\-\-insecure\fR
+Skip signature verification
+.TP
+\fB\-\-stream\-base\-url\fR=\fIURL\fR
+Base URL for Fedora CoreOS stream metadata
+.TP
+\fB\-\-fetch\-retries\fR=\fIN\fR [default: 0]
+Fetch retries, or "infinite"
+.SH VERSION
+v0.13.1

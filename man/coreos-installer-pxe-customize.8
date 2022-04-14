@@ -1,0 +1,74 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-pxe\-customize \- Create a custom live PXE boot config
+.SH SYNOPSIS
+\fBcoreos\-installer\-pxe\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] <\fB\-o\fR|\fB\-\-output\fR> <\fIpath\fR> 
+.SH DESCRIPTION
+Create a custom live PXE boot config
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-\-dest\-ignition\fR=\fIpath\fR
+Ignition config fragment for dest sys
+
+Automatically run installer and merge the specified Ignition config into the config for the destination system.
+.TP
+\fB\-\-dest\-device\fR=\fIpath\fR
+Install destination device
+
+Automatically run installer, installing to the specified destination device.  The resulting boot media will overwrite the destination device without confirmation.
+.TP
+\fB\-\-dest\-karg\-append\fR=\fIarg\fR
+Destination kernel argument to append
+
+Automatically run installer, adding the specified kernel argument for every boot of the destination system.
+.TP
+\fB\-\-dest\-karg\-delete\fR=\fIarg\fR
+Destination kernel argument to delete
+
+Automatically run installer, deleting the specified kernel argument for every boot of the destination system.
+.TP
+\fB\-\-network\-keyfile\fR=\fIpath\fR
+NetworkManager keyfile for live & dest
+
+Configure networking using the specified NetworkManager keyfile. Network settings will be applied in the live environment, including when Ignition is run.  If installer is enabled via additional options, network settings will also be applied in the destination system, including when Ignition is run.
+.TP
+\fB\-\-ignition\-ca\fR=\fIpath\fR
+Ignition PEM CA bundle for live & dest
+
+Specify additional TLS certificate authorities to be trusted by Ignition, in PEM format.  Authorities will be trusted by Ignition in the live environment and, if installer is enabled via additional options, in the destination system.
+.TP
+\fB\-\-pre\-install\fR=\fIpath\fR
+Script to run before installation
+
+If installer is run at boot, run this script before installation. If the script fails, the live environment will stop at an emergency shell.
+.TP
+\fB\-\-post\-install\fR=\fIpath\fR
+Script to run after installation
+
+If installer is run at boot, run this script after installation. If the script fails, the live environment will stop at an emergency shell.
+.TP
+\fB\-\-installer\-config\fR=\fIpath\fR
+Installer config file
+
+Automatically run coreos\-installer and apply the specified installer config file.  Config files are applied in the order that they are specified.
+.TP
+\fB\-\-live\-ignition\fR=\fIpath\fR
+Ignition config fragment for live env
+
+Merge the specified Ignition config into the config for the live environment.
+.TP
+\fB\-o\fR, \fB\-\-output\fR=\fIpath\fR
+Output file
+.TP
+<\fIpath\fR>
+CoreOS live initramfs image
+.SH VERSION
+v0.13.1

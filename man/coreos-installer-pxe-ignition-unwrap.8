@@ -1,0 +1,21 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-pxe\-ignition\-unwrap \- Show the wrapped Ignition config in an initrd image
+.SH SYNOPSIS
+\fBcoreos\-installer\-pxe\-ignition\-unwrap\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIinitrd\fR] 
+.SH DESCRIPTION
+Show the wrapped Ignition config in an initrd image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+[\fIinitrd\fR]
+initrd image [default: stdin]
+.SH VERSION
+v0.13.1
