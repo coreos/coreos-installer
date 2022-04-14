@@ -6,7 +6,7 @@ ifeq ($(RELEASE),1)
 	CARGO_ARGS = --release
 else
 	PROFILE ?= debug
-	CARGO_ARGS =
+	CARGO_ARGS = --features mangen
 endif
 ifeq ($(RDCORE),1)
 	CARGO_ARGS := $(CARGO_ARGS) --features rdcore
@@ -19,6 +19,7 @@ all:
 .PHONY: docs
 docs: all
 	PROFILE=$(PROFILE) docs/_cmd.sh
+	target/${PROFILE}/coreos-installer pack man -C man
 
 .PHONY: install
 install: install-bin install-scripts install-systemd install-dracut
