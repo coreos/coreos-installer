@@ -28,11 +28,11 @@ install-bin: all
 	install -D -t ${DESTDIR}/usr/bin target/${PROFILE}/coreos-installer
 
 .PHONY: install-scripts
-install-scripts: all
+install-scripts:
 	install -D -t $(DESTDIR)/usr/libexec scripts/coreos-installer-disable-device-auto-activation scripts/coreos-installer-service
 
 .PHONY: install-systemd
-install-systemd: all
+install-systemd:
 	install -D -m 644 -t $(DESTDIR)/usr/lib/systemd/system systemd/*.{service,target}
 	install -D -t $(DESTDIR)/usr/lib/systemd/system-generators systemd/coreos-installer-generator
 
