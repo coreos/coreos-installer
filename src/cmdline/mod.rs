@@ -28,6 +28,7 @@ pub use self::types::*;
 // Args are listed in --help in the order declared in these structs/enums.
 // Please keep the entire help text to 80 columns.
 
+/// Installer for Fedora CoreOS and RHEL CoreOS
 #[derive(Debug, Parser)]
 #[clap(version)]
 #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
