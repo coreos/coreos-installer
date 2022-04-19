@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-iso\-extract \- Commands to extract files from a CoreOS live ISO image
+.SH SYNOPSIS
+\fBcoreos\-installer\-iso\-extract\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Commands to extract files from a CoreOS live ISO image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.SH SUBCOMMANDS
+.TP
+coreos\-installer\-iso\-extract\-pxe(8)
+Extract PXE files from an ISO image
+.TP
+coreos\-installer\-iso\-extract\-minimal\-iso(8)
+Extract a minimal ISO from a CoreOS live ISO image
+.TP
+coreos\-installer\-iso\-extract\-help(8)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.13.1

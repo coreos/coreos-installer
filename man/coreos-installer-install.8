@@ -1,0 +1,116 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-install \- Install Fedora CoreOS or RHEL CoreOS
+.SH SYNOPSIS
+\fBcoreos\-installer\-install\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-f\fR|\fB\-\-image\-file\fR] [\fB\-i\fR|\fB\-\-ignition\-file\fR] [\fB\-I\fR|\fB\-\-ignition\-url\fR] [\fB\-\-ignition\-hash\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-\-append\-karg\fR] [\fB\-\-delete\-karg\fR] [\fB\-n\fR|\fB\-\-copy\-network\fR] [\fB\-\-network\-dir\fR] [\fB\-\-save\-partlabel\fR] [\fB\-\-save\-partindex\fR] [\fB\-\-offline\fR] [\fB\-\-insecure\fR] [\fB\-\-insecure\-ignition\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-preserve\-on\-error\fR] [\fB\-\-fetch\-retries\fR] [\fIDEST_DEVICE\fR] 
+.SH DESCRIPTION
+Install Fedora CoreOS or RHEL CoreOS
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-c\fR, \fB\-\-config\-file\fR=\fIpath\fR
+YAML config file with install options
+
+Load additional config options from the specified YAML config file. Later config files override earlier ones, and command\-line options override config files.
+
+Config file keys are long option names without the leading "\-\-". Values are strings for non\-repeatable options, arrays of strings for repeatable options, and "true" for flags.  The destination device can be specified with the "dest\-device" key.
+.TP
+\fB\-s\fR, \fB\-\-stream\fR=\fIname\fR
+Fedora CoreOS stream
+
+The name of the Fedora CoreOS stream to install, such as "stable", "testing", or "next".
+.TP
+\fB\-u\fR, \fB\-\-image\-url\fR=\fIURL\fR
+Manually specify the image URL
+.TP
+\fB\-f\fR, \fB\-\-image\-file\fR=\fIpath\fR
+Manually specify a local image file
+.TP
+\fB\-i\fR, \fB\-\-ignition\-file\fR=\fIpath\fR
+Embed an Ignition config from a file
+.TP
+\fB\-I\fR, \fB\-\-ignition\-url\fR=\fIURL\fR
+Embed an Ignition config from a URL
+
+Immediately fetch the Ignition config from the URL and embed it in the installed system.
+.TP
+\fB\-\-ignition\-hash\fR=\fIdigest\fR
+Digest (type\-value) of the Ignition config
+
+Verify that the Ignition config matches the specified digest, formatted as <type>\-<hexvalue>.  <type> can be sha256 or sha512.
+.TP
+\fB\-a\fR, \fB\-\-architecture\fR=\fIname\fR [default: x86_64]
+Target CPU architecture
+
+Create an install disk for a different CPU architecture than the host.
+.TP
+\fB\-p\fR, \fB\-\-platform\fR=\fIname\fR
+Override the Ignition platform ID
+
+Install a system that will run on the specified cloud or virtualization platform, such as "vmware".
+.TP
+\fB\-\-append\-karg\fR=\fIarg\fR
+Append default kernel arg
+
+Add a kernel argument to the installed system.
+.TP
+\fB\-\-delete\-karg\fR=\fIarg\fR
+Delete default kernel arg
+
+Delete a default kernel argument from the installed system.
+.TP
+\fB\-n\fR, \fB\-\-copy\-network\fR
+Copy network config from install environment
+
+Copy NetworkManager keyfiles from the install environment to the installed system.
+.TP
+\fB\-\-network\-dir\fR=\fIpath\fR [default: /etc/NetworkManager/system\-connections/]
+Override NetworkManager keyfile dir for \-n
+
+Specify the path to NetworkManager keyfiles to be copied with \-\-copy\-network.
+
+[default: /etc/NetworkManager/system\-connections/]
+.TP
+\fB\-\-save\-partlabel\fR=\fIlx\fR
+Save partitions with this label glob
+.TP
+\fB\-\-save\-partindex\fR=\fIid\fR
+Save partitions with this number or range
+.TP
+\fB\-\-offline\fR
+Force offline installation
+.TP
+\fB\-\-insecure\fR
+Skip signature verification
+.TP
+\fB\-\-insecure\-ignition\fR
+Allow Ignition URL without HTTPS or hash
+.TP
+\fB\-\-stream\-base\-url\fR=\fIURL\fR
+Base URL for CoreOS stream metadata
+
+Override the base URL for fetching CoreOS stream metadata. The default is "https://builds.coreos.fedoraproject.org/streams/".
+.TP
+\fB\-\-preserve\-on\-error\fR
+Don\*(Aqt clear partition table on error
+
+If installation fails, coreos\-installer normally clears the destination\*(Aqs partition table to prevent booting from invalid boot media.  Skip clearing the partition table as a debugging aid.
+.TP
+\fB\-\-fetch\-retries\fR=\fIN\fR [default: 0]
+Fetch retries, or "infinite"
+
+Number of times to retry network fetches, or the string "infinite" to retry indefinitely.
+.TP
+[\fIDEST_DEVICE\fR]
+Destination device
+
+Path to the device node for the destination disk.  The beginning of the device will be overwritten without further confirmation.
+.SH VERSION
+v0.13.1

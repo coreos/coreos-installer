@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-pxe\-network\-wrap \- Wrap network settings in an initrd image
+.SH SYNOPSIS
+\fBcoreos\-installer\-pxe\-network\-wrap\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fB\-k\fR|\fB\-\-keyfile\fR> [\fB\-o\fR|\fB\-\-output\fR] 
+.SH DESCRIPTION
+Wrap network settings in an initrd image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-k\fR, \fB\-\-keyfile\fR=\fIpath\fR
+NetworkManager keyfile to embed
+.TP
+\fB\-o\fR, \fB\-\-output\fR=\fIpath\fR
+Write to a file instead of stdout
+.SH VERSION
+v0.13.1

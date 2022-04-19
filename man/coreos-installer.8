@@ -1,0 +1,34 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer \- Installer for Fedora CoreOS and RHEL CoreOS
+.SH SYNOPSIS
+\fBcoreos\-installer\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Installer for Fedora CoreOS and RHEL CoreOS
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.SH SUBCOMMANDS
+.TP
+coreos\-installer\-install(8)
+Install Fedora CoreOS or RHEL CoreOS
+.TP
+coreos\-installer\-download(8)
+Download a CoreOS image
+.TP
+coreos\-installer\-list\-stream(8)
+List available images in a Fedora CoreOS stream
+.TP
+coreos\-installer\-iso(8)
+Commands to manage a CoreOS live ISO image
+.TP
+coreos\-installer\-pxe(8)
+Commands to manage a CoreOS live PXE image
+.SH VERSION
+v0.13.1

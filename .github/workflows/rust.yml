@@ -201,6 +201,7 @@ jobs:
         run: tests/docs-config-file.sh
       - name: Command-line docs
         run: |
+          rm man/*.8
           make docs
           if [ -n "$(git status --porcelain docs)" ]; then
             echo "Found local changes after regenerating docs:"

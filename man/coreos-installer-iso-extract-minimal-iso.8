@@ -1,0 +1,30 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-iso\-extract\-minimal\-iso \- Extract a minimal ISO from a CoreOS live ISO image
+.SH SYNOPSIS
+\fBcoreos\-installer\-iso\-extract\-minimal\-iso\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-output\-rootfs\fR] [\fB\-\-rootfs\-url\fR] <\fIISO\fR> [\fIOUTPUT_ISO\fR] 
+.SH DESCRIPTION
+Extract a minimal ISO from a CoreOS live ISO image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-\-output\-rootfs\fR=\fIPATH\fR
+Extract rootfs image as well
+.TP
+\fB\-\-rootfs\-url\fR=\fIURL\fR
+Inject rootfs URL karg into minimal ISO
+.TP
+<\fIISO\fR>
+ISO image
+.TP
+[\fIOUTPUT_ISO\fR] [default: \-]
+Minimal ISO output file
+.SH VERSION
+v0.13.1

@@ -1,0 +1,31 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-iso\-ignition \- Embed an Ignition config in a CoreOS live ISO image
+.SH SYNOPSIS
+\fBcoreos\-installer\-iso\-ignition\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Embed an Ignition config in a CoreOS live ISO image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.SH SUBCOMMANDS
+.TP
+coreos\-installer\-iso\-ignition\-embed(8)
+Embed an Ignition config in an ISO image
+.TP
+coreos\-installer\-iso\-ignition\-show(8)
+Show the embedded Ignition config from an ISO image
+.TP
+coreos\-installer\-iso\-ignition\-remove(8)
+Remove an existing embedded Ignition config from an ISO image
+.TP
+coreos\-installer\-iso\-ignition\-help(8)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.13.1

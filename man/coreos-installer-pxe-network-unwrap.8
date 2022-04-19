@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-pxe\-network\-unwrap \- Extract wrapped network settings from an initrd image
+.SH SYNOPSIS
+\fBcoreos\-installer\-pxe\-network\-unwrap\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-C\fR|\fB\-\-directory\fR] [\fIinitrd\fR] 
+.SH DESCRIPTION
+Extract wrapped network settings from an initrd image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-C\fR, \fB\-\-directory\fR=\fIpath\fR
+Extract to directory instead of stdout
+.TP
+[\fIinitrd\fR]
+initrd image [default: stdin]
+.SH VERSION
+v0.13.1

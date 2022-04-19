@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-list\-stream \- List available images in a Fedora CoreOS stream
+.SH SYNOPSIS
+\fBcoreos\-installer\-list\-stream\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-\-stream\-base\-url\fR] 
+.SH DESCRIPTION
+List available images in a Fedora CoreOS stream
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-s\fR, \fB\-\-stream\fR=\fIname\fR [default: stable]
+Fedora CoreOS stream
+.TP
+\fB\-\-stream\-base\-url\fR=\fIURL\fR
+Base URL for Fedora CoreOS stream metadata
+.SH VERSION
+v0.13.1

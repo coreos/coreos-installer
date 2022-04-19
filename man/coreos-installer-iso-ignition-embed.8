@@ -1,0 +1,30 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-iso\-ignition\-embed \- Embed an Ignition config in an ISO image
+.SH SYNOPSIS
+\fBcoreos\-installer\-iso\-ignition\-embed\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-f\fR|\fB\-\-force\fR] [\fB\-i\fR|\fB\-\-ignition\-file\fR] [\fB\-o\fR|\fB\-\-output\fR] <\fIISO\fR> 
+.SH DESCRIPTION
+Embed an Ignition config in an ISO image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.TP
+\fB\-f\fR, \fB\-\-force\fR
+Overwrite an existing Ignition config
+.TP
+\fB\-i\fR, \fB\-\-ignition\-file\fR=\fIpath\fR
+Ignition config to embed [default: stdin]
+.TP
+\fB\-o\fR, \fB\-\-output\fR=\fIpath\fR
+Write ISO to a new output file
+.TP
+<\fIISO\fR>
+ISO image
+.SH VERSION
+v0.13.1

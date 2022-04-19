@@ -1,0 +1,31 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH coreos-installer 8  "coreos-installer 0.13.1" 
+.SH NAME
+coreos\-installer\-iso\-kargs \- Modify kernel args in a CoreOS live ISO image
+.SH SYNOPSIS
+\fBcoreos\-installer\-iso\-kargs\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Modify kernel args in a CoreOS live ISO image
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version information
+.SH SUBCOMMANDS
+.TP
+coreos\-installer\-iso\-kargs\-modify(8)
+Modify kernel args in an ISO image
+.TP
+coreos\-installer\-iso\-kargs\-reset(8)
+Reset kernel args in an ISO image to defaults
+.TP
+coreos\-installer\-iso\-kargs\-show(8)
+Show kernel args from an ISO image
+.TP
+coreos\-installer\-iso\-kargs\-help(8)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.13.1

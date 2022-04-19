@@ -6,7 +6,7 @@ ifeq ($(RELEASE),1)
 	CARGO_ARGS = --release
 else
 	PROFILE ?= debug
-	CARGO_ARGS =
+	CARGO_ARGS = --features mangen
 endif
 ifeq ($(RDCORE),1)
 	CARGO_ARGS := $(CARGO_ARGS) --features rdcore
@@ -19,20 +19,26 @@ all:
 .PHONY: docs
 docs: all
 	PROFILE=$(PROFILE) docs/_cmd.sh
+	target/${PROFILE}/coreos-installer pack man -C man
 
 .PHONY: install
-install: install-bin install-scripts install-systemd install-dracut
+install: install-bin install-man install-scripts install-systemd install-dracut
 
 .PHONY: install-bin
 install-bin: all
 	install -D -t ${DESTDIR}/usr/bin target/${PROFILE}/coreos-installer
 
+.PHONY: install-man
+install-man:
+	install -d ${DESTDIR}/usr/share/man/man8
+	$(foreach src,$(wildcard man/*.8),gzip -9c $(src) > ${DESTDIR}/usr/share/man/man8/$(notdir $(src)).gz && ) :
+
 .PHONY: install-scripts
-install-scripts: all
+install-scripts:
 	install -D -t $(DESTDIR)/usr/libexec scripts/coreos-installer-disable-device-auto-activation scripts/coreos-installer-service
 
 .PHONY: install-systemd
-install-systemd: all
+install-systemd:
 	install -D -m 644 -t $(DESTDIR)/usr/lib/systemd/system systemd/*.{service,target}
 	install -D -t $(DESTDIR)/usr/lib/systemd/system-generators systemd/coreos-installer-generator
 
