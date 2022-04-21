@@ -138,7 +138,7 @@ pub fn pack_osmet(config: PackOsmetConfig) -> Result<()> {
     }
 
     let sector_size = get_sector_size_for_path(Path::new(&config.device))?.get();
-    let header = OsmetFileHeader::new(sector_size, &config.description);
+    let header = OsmetFileHeader::new(sector_size, &config.description)?;
 
     // create final Osmet object to serialize
     let osmet = Osmet {

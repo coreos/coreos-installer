@@ -180,7 +180,7 @@ dependencies = [
  "libc",
  "maplit",
  "mbrman",
- "nix",
+ "nix 0.24.1",
  "openssl",
  "pipe",
  "rand",
@@ -422,7 +422,7 @@ checksum = "7fca3510cacd300e25926363b16080115211c043a9b7bf8919d2152c22b56005"
 dependencies = [
  "bincode",
  "crc",
- "nix",
+ "nix 0.22.3",
  "serde",
  "thiserror",
 ]
@@ -761,6 +761,18 @@ checksum = "e4916f159ed8e5de0082076562152a76b7a1f64a01fd9d1e0fea002c37624faf"
 dependencies = [
  "bitflags",
  "cc",
+ "cfg-if",
+ "libc",
+ "memoffset",
+]
+
+[[package]]
+name = "nix"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f17df307904acd05aa8e32e97bb20f2a0df1728bbc2d771ae8f9a90463441e9"
+dependencies = [
+ "bitflags",
  "cfg-if",
  "libc",
  "memoffset",

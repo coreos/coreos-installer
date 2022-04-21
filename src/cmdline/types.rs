@@ -137,7 +137,12 @@ pub trait DefaultString {
 pub struct Architecture {}
 impl DefaultString for Architecture {
     fn default() -> String {
-        nix::sys::utsname::uname().machine().to_string()
+        // We're not allowed to fail, and uname() probably won't.  Return a
+        // fake architecture if it does.
+        match nix::sys::utsname::uname() {
+            Ok(uts) => uts.machine().to_str().unwrap_or("unknown").into(),
+            Err(_) => "unknown".into(),
+        }
     }
 }
 
