@@ -785,16 +785,16 @@ pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
 /// rereadpt mitigates possible issue with outdated UUIDs on different
 /// paths to the same disk: after 'ignition-ostree-firstboot-uuid'
 /// '/dev/sdaX' path gets new UUID, but '/dev/sdbX/' path has an old one
-fn lsblk_all(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
-    let mut cmd = Command::new("lsblk");
-    cmd.arg("--noheadings")
-        .arg("--nodeps")
-        .arg("--list")
-        .arg("--paths")
-        .arg("--output")
-        .arg("NAME");
-    let output = cmd_output(&mut cmd)?;
+fn get_all_filesystems(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
     if rereadpt {
+        let mut cmd = Command::new("lsblk");
+        cmd.arg("--noheadings")
+            .arg("--nodeps")
+            .arg("--list")
+            .arg("--paths")
+            .arg("--output")
+            .arg("NAME");
+        let output = cmd_output(&mut cmd)?;
         for dev in output.lines() {
             if let Ok(mut fd) = std::fs::File::open(dev) {
                 // best-effort reread of disk that may have busy partitions; don't retry
@@ -803,19 +803,14 @@ fn lsblk_all(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
         }
         udev_settle()?;
     }
-    let mut result: Vec<HashMap<String, String>> = Vec::new();
-    for dev in output.lines() {
-        let mut info = lsblk(Path::new(dev), true)?;
-        result.append(&mut info);
-    }
-    Ok(result)
+    blkid()
 }
 
 /// Returns filesystems with given label.
 /// If multiple filesystems with the label have the same UUID, we only return one of them.
 pub fn get_filesystems_with_label(label: &str, rereadpt: bool) -> Result<Vec<String>> {
     let mut uuids = HashSet::new();
-    let result = lsblk_all(rereadpt)?
+    let result = get_all_filesystems(rereadpt)?
         .iter()
         .filter(|v| v.get("LABEL").map(|l| l.as_str()) == Some(label))
         .filter(|v| match v.get("UUID") {
@@ -849,6 +844,34 @@ pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>
     for line in output.lines() {
         // parse key-value pairs
         result.push(split_lsblk_line(line));
+    }
+    Ok(result)
+}
+
+/// Parse key-value pairs from blkid.
+fn split_blkid_line(line: &str) -> HashMap<String, String> {
+    let (name, data) = match line.find(':') {
+        Some(n) => line.split_at(n),
+        None => return HashMap::new(),
+    };
+
+    let (name, data) = (name.trim(), data[1..].trim());
+    if name.is_empty() {
+        return HashMap::new();
+    }
+
+    let mut fields = split_lsblk_line(data);
+    fields.insert("NAME".to_string(), name.to_string());
+    fields
+}
+
+fn blkid() -> Result<Vec<HashMap<String, String>>> {
+    let mut cmd = Command::new("blkid");
+    let output = cmd_output(&mut cmd)?;
+
+    let mut result: Vec<HashMap<String, String>> = Vec::new();
+    for line in output.lines() {
+        result.push(split_blkid_line(line));
     }
     Ok(result)
 }
@@ -951,7 +974,7 @@ pub fn find_efi_vendor_dir(efi_mount: &Mount) -> Result<PathBuf> {
 /// Parse key-value pairs from lsblk --pairs.
 /// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
 fn split_lsblk_line(line: &str) -> HashMap<String, String> {
-    let re = Regex::new(r#"([A-Z-]+)="([^"]+)""#).unwrap();
+    let re = Regex::new(r#"([A-Z-_]+)="([^"]+)""#).unwrap();
     let mut fields: HashMap<String, String> = HashMap::new();
     for cap in re.captures_iter(line) {
         fields.insert(cap[1].to_string(), cap[2].to_string());
@@ -1184,6 +1207,50 @@ mod tests {
                 // so we just pass them through
                 String::from("LABEL") => String::from(r#"foo=\x22bar\x22 baz"#),
                 String::from("FSTYPE") => String::from("ext4"),
+            }
+        );
+    }
+
+    #[test]
+    fn blkid_split() {
+        assert_eq!(split_blkid_line(r#""#), std::collections::HashMap::new());
+        assert_eq!(split_blkid_line(r#" : "#), std::collections::HashMap::new());
+
+        assert_eq!(
+            split_blkid_line(r#": UUID="0000""#),
+            std::collections::HashMap::new()
+        );
+
+        assert_eq!(
+            split_blkid_line(r#"/dev/empty:"#),
+            hashmap! {
+                String::from("NAME") => String::from("/dev/empty")
+            }
+        );
+
+        assert_eq!(
+            split_blkid_line(
+                r#"/dev/mapper/luks-f022921b-0100-4d48-9812-cfa6c225060a: UUID="2ff16ac3-103f-41d4-8e02-03686e255270" BLOCK_SIZE="4096" TYPE="ext4""#
+            ),
+            hashmap! {
+                String::from("NAME") => String::from("/dev/mapper/luks-f022921b-0100-4d48-9812-cfa6c225060a"),
+                String::from("UUID") => String::from("2ff16ac3-103f-41d4-8e02-03686e255270"),
+                String::from("TYPE") => String::from("ext4"),
+                String::from("BLOCK_SIZE") => String::from("4096")
+            }
+        );
+
+        assert_eq!(
+            split_blkid_line(
+                r#"/dev/vdb4: UUID="fdc69fb1-d7f3-4696-846e-b2275504f63c" LABEL="crypt_rootfs" TYPE="crypto_LUKS" PARTLABEL="root" PARTUUID="835753cb-d7f0-465e-84db-07860d3da2f6""#
+            ),
+            hashmap! {
+                String::from("NAME") => String::from("/dev/vdb4"),
+                String::from("LABEL") => String::from("crypt_rootfs"),
+                String::from("UUID") => String::from("fdc69fb1-d7f3-4696-846e-b2275504f63c"),
+                String::from("TYPE") => String::from("crypto_LUKS"),
+                String::from("PARTLABEL") => String::from("root"),
+                String::from("PARTUUID") => String::from("835753cb-d7f0-465e-84db-07860d3da2f6"),
             }
         );
     }
