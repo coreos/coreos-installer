@@ -19,6 +19,9 @@ use libcoreinst::io::*;
 #[cfg(target_arch = "s390x")]
 use libcoreinst::s390x;
 
+#[cfg(target_arch = "s390x")]
+use libcoreinst::blockdev::*;
+
 use crate::cmdline::*;
 use crate::rootmap::get_boot_mount_from_cmdline_args;
 
@@ -50,7 +53,13 @@ pub fn kargs(config: KargsConfig) -> Result<()> {
 
         #[cfg(target_arch = "s390x")]
         if _changed {
-            s390x::zipl(mount.mountpoint())?;
+            s390x::zipl(
+                mount.mountpoint(),
+                None,
+                None,
+                None,
+                s390x::ZiplSecexMode::Auto,
+            )?;
         }
     }
 
@@ -81,4 +90,16 @@ fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<S
     }
 
     Ok(new_options)
+}
+
+#[cfg(target_arch = "s390x")]
+pub fn zipl(config: ZiplConfig) -> Result<()> {
+    let boot = Mount::from_existing(&config.boot_mount)?;
+    s390x::zipl(
+        boot.mountpoint(),
+        config.hostkey,
+        config.rootfs,
+        config.kargs,
+        config.secex_mode,
+    )
 }

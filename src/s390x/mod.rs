@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use clap::ArgEnum;
+
 pub mod dasd;
 pub mod zipl;
 
@@ -20,3 +22,10 @@ pub use zipl::chreipl;
 pub use zipl::zipl;
 mod eckd;
 mod fba;
+
+#[derive(ArgEnum, Clone, Debug)]
+pub enum ZiplSecexMode {
+    Auto,
+    Enforce,
+    Disable,
+}

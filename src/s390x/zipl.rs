@@ -15,6 +15,7 @@
 use crate::blockdev::Mount;
 use crate::io::{visit_bls_entry, visit_bls_entry_options, Initrd, KargsEditor};
 use crate::runcmd;
+use crate::s390x::ZiplSecexMode;
 use crate::util::cmd_output;
 use anyhow::{anyhow, Context, Result};
 use nix::mount::MsFlags;
@@ -59,7 +60,11 @@ fn find_files<P: AsRef<Path>>(
         .collect::<Result<Vec<_>>>()
 }
 
-fn regenerate_initrd<P: AsRef<Path>>(source: P, files: &[PathBuf]) -> Result<NamedTempFile> {
+fn generate_initrd<P: AsRef<Path>>(
+    source: P,
+    files: &[PathBuf],
+    rootfs: Option<String>,
+) -> Result<NamedTempFile> {
     let source = source.as_ref();
     let mut dest = Builder::new()
         .prefix("initrd")
@@ -77,9 +82,13 @@ fn regenerate_initrd<P: AsRef<Path>>(source: P, files: &[PathBuf]) -> Result<Nam
     for path in files {
         let contents =
             std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-        let path = path
+        let mut path = path
             .to_str()
             .with_context(|| format!("path {} is not UTF-8", path.display()))?;
+        if let Some(ref rootfs) = rootfs {
+            // during cosa-build rootfs includes ostree commit path
+            path = path.trim_start_matches(rootfs);
+        }
         initrd.add(path, contents);
     }
 
@@ -116,13 +125,23 @@ fn get_info_from_bls(boot: &Path) -> Result<(String, String, String)> {
     Ok((kernel, initrd, options))
 }
 
-fn generate_sdboot(mountpoint: &Path, boot: &Path) -> Result<PathBuf> {
-    let (kernel, initrd, options) = get_info_from_bls(boot)?;
+fn generate_sdboot(
+    mountpoint: &Path,
+    boot: &Path,
+    hostkey: Option<String>,
+    rootfs: Option<String>,
+    kargs: Option<String>,
+) -> Result<PathBuf> {
+    let (kernel, initrd, mut options) = get_info_from_bls(boot)?;
 
     // we need a full path to kernel and initrd
     let kernel = boot.join(&kernel[1..]);
     let initrd = boot.join(&initrd[1..]);
 
+    // write all kargs to a tmpfile, so genprotimg can append them to sd-boot
+    if let Some(kargs) = kargs {
+        options = format!("{} {}", options, kargs);
+    }
     let mut cmdline = Builder::new()
         .prefix("se-cmdline.")
         .tempfile()
@@ -131,19 +150,34 @@ fn generate_sdboot(mountpoint: &Path, boot: &Path) -> Result<PathBuf> {
         .write_all(options.as_bytes())
         .context("writing zipl se cmdline")?;
 
-    let hostkeys = find_files("/etc/se-hostkeys", |e: &DirEntry| {
-        Ok(e.file_name()
-            .to_str()
-            .map(|p| p.starts_with("ibm-z-hostkey-"))
-            .unwrap_or_default())
-    })?;
+    let mut lukskeys_path = "/etc/luks/".to_string();
+    let mut crypttab_path = "/etc/crypttab".to_string();
+    let mut hostkeys_path = "/etc/se-hostkeys/".to_string();
 
-    let initrd = {
-        let mut extra = find_files("/etc/luks/", |e: &DirEntry| Ok(e.metadata()?.is_file()))?;
-        extra.push(PathBuf::from("/etc/crypttab"));
-        regenerate_initrd(&initrd, &extra)?
+    // during cosa-build rootfs includes ostree commit path
+    if let Some(ref rootfs) = rootfs {
+        lukskeys_path.insert_str(0, rootfs);
+        crypttab_path.insert_str(0, rootfs);
+        hostkeys_path.insert_str(0, rootfs);
+    }
+    // new initrd with LUKS keys & config
+    let mut luks_files = find_files(&lukskeys_path, |e: &DirEntry| Ok(e.metadata()?.is_file()))?;
+    luks_files.push(PathBuf::from(crypttab_path));
+    let initrd = generate_initrd(&initrd, &luks_files, rootfs)?;
+
+    // during cosa-build we override hostkey(s) with a universal one
+    let hostkeys = if let Some(hostkey) = hostkey {
+        vec![PathBuf::from(hostkey)]
+    } else {
+        find_files(&hostkeys_path, |e: &DirEntry| {
+            Ok(e.file_name()
+                .to_str()
+                .map(|p| p.starts_with("ibm-z-hostkey-"))
+                .unwrap_or_default())
+        })?
     };
 
+    // finally, Secure Execution sd-boot image
     let sdboot = mountpoint.join("sdboot");
     let mut cmd = Command::new("genprotimg");
     cmd.arg("-V")
@@ -164,13 +198,25 @@ fn generate_sdboot(mountpoint: &Path, boot: &Path) -> Result<PathBuf> {
 }
 
 /// Runs `zipl` based on Ignition and BLS configuration in `boot`.
-pub fn zipl<P: AsRef<Path>>(boot: P) -> Result<()> {
+pub fn zipl<P: AsRef<Path>>(
+    boot: P,
+    hostkey: Option<String>,
+    rootfs: Option<String>,
+    kargs: Option<String>,
+    mode: ZiplSecexMode,
+) -> Result<()> {
     let boot = boot.as_ref();
 
-    if secure_execution_is_enabled()? {
+    let secex = match mode {
+        ZiplSecexMode::Auto => secure_execution_is_enabled()?,
+        ZiplSecexMode::Enforce => true,
+        ZiplSecexMode::Disable => false,
+    };
+
+    if secex {
         // Secure Execution is only supported with pre-built qemu-secex image
         let target = Mount::try_mount("/dev/disk/by-label/se", "ext4", MsFlags::empty())?;
-        let sdboot = generate_sdboot(target.mountpoint(), boot)?;
+        let sdboot = generate_sdboot(target.mountpoint(), boot, hostkey, rootfs, kargs)?;
 
         runcmd!(
             "zipl",
@@ -189,7 +235,7 @@ pub fn zipl<P: AsRef<Path>>(boot: P) -> Result<()> {
             .tempdir()
             .context("creating temporary directory")?;
         let firstboot_file = boot.join("ignition.firstboot");
-        let blsdir = if firstboot_file.exists() {
+        let blsdir = if kargs.is_some() || firstboot_file.exists() {
             let blsdir = tempdir.path().join("loader/entries");
             create_dir_all(&blsdir).with_context(|| format!("creating {}", blsdir.display()))?;
             read_dir(boot.join("loader/entries"))
@@ -200,17 +246,30 @@ pub fn zipl<P: AsRef<Path>>(boot: P) -> Result<()> {
                 .for_each(|src| {
                     copy(src.path(), blsdir.join(src.file_name())).unwrap();
                 });
-            let mut extra = vec!["ignition.firstboot".to_string()];
-            let firstboot_contents = std::fs::read_to_string(&firstboot_file)
-                .with_context(|| format!("reading \"{}\"", firstboot_file.display()))?;
-            if let Some(firstboot_kargs) = extract_firstboot_kargs(&firstboot_contents)? {
+
+            let mut extra = Vec::new();
+            if firstboot_file.exists() {
+                extra.push("ignition.firstboot".to_string());
+                let firstboot_contents = std::fs::read_to_string(&firstboot_file)
+                    .with_context(|| format!("reading \"{}\"", firstboot_file.display()))?;
+                if let Some(firstboot_kargs) = extract_firstboot_kargs(&firstboot_contents)? {
+                    extra.extend_from_slice(
+                        &firstboot_kargs
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect::<Vec<String>>(),
+                    );
+                }
+            }
+            if let Some(kargs) = kargs {
                 extra.extend_from_slice(
-                    &firstboot_kargs
+                    &kargs
                         .split_whitespace()
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>(),
                 );
             }
+
             visit_bls_entry_options(tempdir.path(), |orig_options: &str| {
                 KargsEditor::new()
                     .append_if_missing(extra.as_slice())
