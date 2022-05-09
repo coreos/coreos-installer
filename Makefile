@@ -15,6 +15,9 @@ endif
 .PHONY: all
 all:
 	cargo build ${CARGO_ARGS}
+ifneq ($(RDCORE),1)
+	rm -f target/$(PROFILE)/rdcore
+endif
 
 .PHONY: docs
 docs: all
