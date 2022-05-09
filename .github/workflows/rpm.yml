@@ -24,6 +24,9 @@ jobs:
         # fetch tags for versioning
         with:
           fetch-depth: 0
+      # https://github.com/actions/checkout/issues/760
+      - name: Mark git checkout as safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build RPMs
         run: |
           mkdir rpms
