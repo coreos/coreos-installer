@@ -21,6 +21,10 @@ docs: all
 	PROFILE=$(PROFILE) docs/_cmd.sh
 	target/${PROFILE}/coreos-installer pack man -C man
 
+.PHONY: clean
+clean:
+	cargo clean
+
 .PHONY: install
 install: install-bin install-man install-scripts install-systemd install-dracut
 

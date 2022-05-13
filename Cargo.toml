@@ -15,6 +15,7 @@ sign-tag = true
 push = false
 publish = false
 pre-release-commit-message = "cargo: coreos-installer release {{version}}"
+pre-release-hook = ["make", "docs", "clean"]
 tag-message = "coreos-installer v{{version}}"
 
 [features]
