@@ -538,10 +538,10 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 /// bootloader configs will always set ignition.platform.id.  Fail if those assumptions change.
 /// This is deliberately simplistic.
 fn bls_entry_options_write_platform(orig_options: &str, platform: &str) -> Result<Option<String>> {
-    let new_options = orig_options.replace(
-        "ignition.platform.id=metal",
-        &format!("ignition.platform.id={}", platform),
-    );
+    let new_options = KargsEditor::new()
+        .replace(&[format!("ignition.platform.id=metal={}", platform)])
+        .apply_to(orig_options)
+        .context("updating platform ID")?;
     if orig_options == new_options {
         bail!("Couldn't locate platform ID");
     }
