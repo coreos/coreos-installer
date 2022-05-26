@@ -281,6 +281,15 @@ pub struct CommonCustomizeConfig {
     /// including when Ignition is run.
     #[clap(long, value_name = "path")]
     pub network_keyfile: Vec<String>,
+    /// Nmstate file for live & dest
+    ///
+    /// Configure networking using NetworkManager keyfiles generated from the
+    /// specified Nmstate files. Network settings will be applied in the live
+    /// environment, including when Ignition is run.  If installer is enabled
+    /// via additional options, network settings will also be applied in the
+    /// destination system, including when Ignition is run.
+    #[clap(long, value_name = "path")]
+    pub network_nmstate: Vec<String>,
     /// Ignition PEM CA bundle for live & dest
     ///
     /// Specify additional TLS certificate authorities to be trusted by

@@ -1,0 +1,6 @@
+[connection]
+id=nmstate-yaml-eth2
+type=ethernet
+
+[ipv4]
+method=auto

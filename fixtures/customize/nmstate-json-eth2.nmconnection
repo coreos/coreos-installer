@@ -1,0 +1,6 @@
+[connection]
+id=nmstate-json-eth2
+type=ethernet
+
+[ipv4]
+method=auto

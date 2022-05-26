@@ -54,6 +54,15 @@ OPTIONS:
             installer is enabled via additional options, network settings will also be applied
             in the destination system, including when Ignition is run.
 
+        --network-nmstate <path>
+            Nmstate file for live & dest
+
+            Configure networking using NetworkManager keyfiles generated from the specified
+            Nmstate files. Network settings will be applied in the live environment, including
+            when Ignition is run.  If installer is enabled via additional options, network
+            settings will also be applied in the destination system, including when Ignition is
+            run.
+
         --ignition-ca <path>
             Ignition PEM CA bundle for live & dest
 

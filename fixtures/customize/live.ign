@@ -5,7 +5,7 @@
   "systemd": {
     "units": [
       {
-        "contents": "[Unit]\nDescription=Live Ignition Applied\nBefore=coreos-installer.target\nBefore=multi-user.target\nConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/bin/echo @applied-live-ign@\nStandardOutput=tty\n\n[Install]\nRequiredBy=coreos-installer.target\nRequiredBy=multi-user.target\n",
+        "contents": "[Unit]\nDescription=Live Ignition Applied\nBefore=coreos-installer.target\nBefore=multi-user.target\nConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection\nConditionPathExists=/etc/NetworkManager/system-connections/nmstate-json-eth1.nmconnection\nConditionPathExists=/etc/NetworkManager/system-connections/nmstate-json-eth2.nmconnection\nConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yaml-eth1.nmconnection\nConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yaml-eth2.nmconnection\n\n[Service]\nType=oneshot\nRemainAfterExit=true\nExecStart=/bin/echo @applied-live-ign@\nStandardOutput=tty\n\n[Install]\nRequiredBy=coreos-installer.target\nRequiredBy=multi-user.target\n",
         "enabled": true,
         "name": "live-ignition-applied.service"
       },

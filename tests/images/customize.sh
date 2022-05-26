@@ -58,6 +58,8 @@ opts_common=(
     --ignition-ca "${fixtures}/cert.pem"
     # Condition of @applied-live-ign@ and @applied-dest-ign@
     --network-keyfile "${fixtures}/installer-test.nmconnection"
+    --network-nmstate "${fixtures}/installer-test-nmstate-json.json"
+    --network-nmstate "${fixtures}/installer-test-nmstate-yaml.yaml"
 )
 
 # options that do initiate an install
@@ -205,6 +207,9 @@ xz -dc "${rootdir}/fixtures/iso/embed-areas-2021-09.iso.xz" > old.iso
 (coreos-installer iso customize old.iso \
     --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
     grepq "does not support customizing network settings"
+(coreos-installer iso customize old.iso \
+    --network-nmstate "${fixtures}/installer-test-nmstate.json" 2>&1 ||:) |
+    grepq "does not support customizing network settings"
 (coreos-installer iso customize old.iso --dest-device /dev/loop0 2>&1 ||:) |
     grepq "does not support customizing installer configuration"
 coreos-installer iso customize old.iso \
@@ -264,6 +269,22 @@ coreos-installer pxe customize src-initrd -o initrd
 (iso_customize \
     --network-keyfile "${fixtures}/installer-test.nmconnection" \
     --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
+    grepq "already specifies keyfile"
+(iso_customize \
+    --network-keyfile "${fixtures}/nmstate-json-eth1.nmconnection" \
+    --network-nmstate "${fixtures}/installer-test-nmstate-json.json" 2>&1 ||:) |
+    grepq "already specifies keyfile"
+(iso_customize \
+    --network-keyfile "${fixtures}/nmstate-json-eth2.nmconnection" \
+    --network-nmstate "${fixtures}/installer-test-nmstate-json.json" 2>&1 ||:) |
+    grepq "already specifies keyfile"
+(iso_customize \
+    --network-keyfile "${fixtures}/nmstate-yaml-eth1.nmconnection" \
+    --network-nmstate "${fixtures}/installer-test-nmstate-yaml.yaml" 2>&1 ||:) |
+    grepq "already specifies keyfile"
+(iso_customize \
+    --network-keyfile "${fixtures}/nmstate-yaml-eth2.nmconnection" \
+    --network-nmstate "${fixtures}/installer-test-nmstate-yaml.yaml" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
     --live-ignition "${fixtures}/installer-test.nmconnection"  2>&1 ||:) |
