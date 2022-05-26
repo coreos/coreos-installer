@@ -1,6 +1,8 @@
 .PHONY: srpm
 srpm:
 	dnf install -y git rust-packaging rpm-build rpmdevtools
+	# similar to https://github.com/actions/checkout/issues/760, but for COPR
+	git config --global --add safe.directory '*'
 	curl -LOf https://src.fedoraproject.org/rpms/rust-coreos-installer/raw/rawhide/f/rust-coreos-installer.spec
 	version=$$(git describe --always --tags | sed -e 's,-,\.,g' -e 's,^v,,'); \
 	git archive --format=tar --prefix=coreos-installer-$$version/ HEAD | gzip > coreos-installer-$$version.crate; \
