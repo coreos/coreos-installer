@@ -72,12 +72,12 @@ uuid = { version = ">= 0.8, < 2.0", features = ["v4"] }
 walkdir = "^2.3"
 xz2 = "^0.1"
 
-[dev-dependencies]
-maplit = "^1.0"
-
 [target.'cfg(target_arch = "s390x")'.dependencies]
 mbrman = { version = ">= 0.3, < 0.5", default-features = false }
 rand = ">= 0.7, < 0.9"
+
+[dev-dependencies]
+maplit = "^1.0"
 
 # In CoreOS CI we test installation from a compressed image created with
 # `cosa compress --fast`.  This is unacceptably slow if the gunzip inner
