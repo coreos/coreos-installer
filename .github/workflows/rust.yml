@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  CONTAINER: registry.fedoraproject.org/fedora:latest
+  CONTAINER: registry.fedoraproject.org/fedora:35
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   # Pinned toolchain for linting
