@@ -49,8 +49,8 @@ pub(super) struct OsmetFileHeader {
 }
 
 impl OsmetFileHeader {
-    pub(super) fn new(sector_size: u32, os_description: &str) -> Self {
-        Self {
+    pub(super) fn new(sector_size: u32, os_description: &str) -> Result<Self> {
+        Ok(Self {
             magic: OSMET_FILE_HEADER_MAGIC,
             version: OSMET_FILE_VERSION,
             app_version: crate_version!().into(),
@@ -62,8 +62,13 @@ impl OsmetFileHeader {
             // itself actually doesn't care about the target architecture. In the future, a more
             // correct approach is to read this directly from the e.g. coreos-assembler.basearch
             // in the commit metadata on the source disk.
-            os_architecture: nix::sys::utsname::uname().machine().into(),
-        }
+            os_architecture: nix::sys::utsname::uname()
+                .context("uname(2)")?
+                .machine()
+                .to_str()
+                .context("OS architecture is invalid Unicode")?
+                .into(),
+        })
     }
 }
 
