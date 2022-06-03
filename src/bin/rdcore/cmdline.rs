@@ -17,6 +17,9 @@
 
 use clap::{AppSettings, Parser};
 
+#[cfg(target_arch = "s390x")]
+use libcoreinst::s390x;
+
 // Args are listed in --help in the order declared in these structs/enums.
 
 #[derive(Debug, Parser)]
@@ -36,6 +39,9 @@ pub enum Cmd {
     StreamHash(StreamHashConfig),
     /// Checks there is only one filesystem with given label
     VerifyUniqueFsLabel(VerifyUniqueFsLabelConfig),
+    #[cfg(target_arch = "s390x")]
+    /// Runs zipl
+    Zipl(ZiplConfig),
 }
 
 #[derive(Debug, Parser)]
@@ -117,6 +123,31 @@ pub struct VerifyUniqueFsLabelConfig {
     /// Force rereading of partition table
     #[clap(long)]
     pub rereadpt: bool,
+}
+
+#[cfg(target_arch = "s390x")]
+#[derive(Debug, Parser)]
+pub struct ZiplConfig {
+    /// Boot device containing BLS entries to use
+    #[clap(long, value_name = "BOOT_MOUNT")]
+    pub boot_mount: String,
+
+    /// Zipl mode for Secure Execution
+    #[clap(arg_enum)]
+    #[clap(long, default_value = "auto")]
+    pub secex_mode: s390x::ZiplSecexMode,
+
+    /// Path to rootfs
+    #[clap(long, value_name = "ROOTFS")]
+    pub rootfs: Option<String>,
+
+    /// Path to hostkey
+    #[clap(long, value_name = "HOSTKEY")]
+    pub hostkey: Option<String>,
+
+    /// Extra kargs
+    #[clap(long, value_name = "KARGS")]
+    pub kargs: Option<String>,
 }
 
 #[cfg(test)]

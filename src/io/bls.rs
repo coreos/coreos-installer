@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 /// Returns `true` if BLS content was modified.
 pub fn visit_bls_entry(
     mountpoint: &Path,
-    f: impl Fn(&str) -> Result<Option<String>>,
+    mut f: impl FnMut(&str) -> Result<Option<String>>,
 ) -> Result<bool> {
     // walk /boot/loader/entries/*.conf
     let mut config_path = mountpoint.to_path_buf();

@@ -420,7 +420,13 @@ fn write_disk(
         }
         #[cfg(target_arch = "s390x")]
         {
-            s390x::zipl(mount.mountpoint())?;
+            s390x::zipl(
+                mount.mountpoint(),
+                None,
+                None,
+                None,
+                s390x::ZiplSecexMode::Disable,
+            )?;
             s390x::chreipl(device)?;
         }
     }

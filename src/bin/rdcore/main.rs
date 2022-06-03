@@ -30,5 +30,7 @@ fn main() -> Result<()> {
         Cmd::BindBoot(c) => rootmap::bind_boot(c),
         Cmd::StreamHash(c) => stream_hash::stream_hash(c),
         Cmd::VerifyUniqueFsLabel(c) => unique_fs::verify_unique_fs(c),
+        #[cfg(target_arch = "s390x")]
+        Cmd::Zipl(c) => kargs::zipl(c),
     }
 }
