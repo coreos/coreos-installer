@@ -18,18 +18,11 @@ The ISO-embedding mechanism works by modifying some raw data directly on the ima
 The technical specifications are described below to help third-party logic.
 
 CoreOS ISO images come with some reserved empty space, the "embed area", which can be used to inject the Ignition configuration.
-The embed area is a block of zero-filled padding concatenated to the end of the initrd file.
-
-The location and size of the embed area depends on each image, and can be read from a header in the disk's ISO9660 System Area (i.e. the first 32KiB of the disk).
-The last 24 bytes of this 32 KiB area will contains the following fields, in this order and without special padding/alignment:
-
- * magic value (8 bytes): the ASCII value "coreiso+" as a marker to identify CoreOS ISO images.
- * location (8 bytes): little-endian unsigned 64-bits integer with the offset for the starting byte of the embed area.
- * length (8 bytes): little-endian unsigned 64-bits integer with the total length of the embed area.
-
+The embed area is a block of padding stored at `/images/ignition.img` in the ISO image.
+The bootloader is configured to load this file as an additional initrd image.
 The embed area is zeroed by default, meaning that the image is a pristine one without any user customization.
 
-User customization is performed by writing a gzip-compressed `newc` cpio archive (i.e. the equivalent of a `.cpio.gz` file) to the embed area.
-Such an archive must at least contain a regular file named `config.ign`, which can hold any custom Ignition configuration.
+User customization is performed by parsing the ISO9660 filesystem to determine the offset and length of the embed area file, and writing an xz-compressed `newc` cpio archive (i.e. the equivalent of a `.cpio.xz` file) directly into it.
+Such an archive may contain a regular file named `config.ign`, which can hold any custom Ignition configuration.
 
-This archive is then detected and mounted in the initrd for Ignition consumption.
+This archive is then detected and unpacked in the initrd for Ignition consumption.
