@@ -14,10 +14,11 @@
 
 use anyhow::{bail, Context, Result};
 use nix::mount;
-use std::fs::{
-    copy as fscopy, create_dir_all, read_dir, set_permissions, File, OpenOptions, Permissions,
-};
-use std::io::{copy, Seek, SeekFrom, Write};
+use regex::{Captures, Regex};
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::fs::{self, File, OpenOptions, Permissions};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -29,6 +30,10 @@ use crate::io::*;
 #[cfg(target_arch = "s390x")]
 use crate::s390x;
 use crate::source::*;
+
+// Match the grub.cfg console settings commands in
+// https://github.com/coreos/coreos-assembler/blob/main/src/grub.cfg
+const GRUB_CFG_CONSOLE_SETTINGS_RE: &str = r"(?P<prefix>\n# CONSOLE-SETTINGS-START\n)(?P<commands>([^\n]*\n)*)(?P<suffix># CONSOLE-SETTINGS-END\n)";
 
 pub fn install(config: InstallConfig) -> Result<()> {
     // evaluate config files
@@ -253,7 +258,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     match get_filesystems_with_label("boot", true) {
         Ok(pts) => {
             if pts.len() > 1 {
-                let rootdev = std::fs::canonicalize(device)
+                let rootdev = fs::canonicalize(device)
                     .unwrap_or_else(|_| PathBuf::from(device))
                     .to_string_lossy()
                     .to_string();
@@ -397,6 +402,9 @@ fn write_disk(
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .context("writing Ignition configuration")?;
         }
+        if let Some(platform) = config.platform.as_ref() {
+            write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
+        }
         if let Some(firstboot_args) = config.firstboot_args.as_ref() {
             write_firstboot_kargs(mount.mountpoint(), firstboot_args)
                 .context("writing firstboot kargs")?;
@@ -411,9 +419,6 @@ fn write_disk(
                     .maybe_apply_to(orig_options)
             })
             .context("deleting and appending kargs")?;
-        }
-        if let Some(platform) = config.platform.as_ref() {
-            write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
         }
         if let Some(network_config) = network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
@@ -459,14 +464,14 @@ fn write_ignition(
     let mut config_dest = mountpoint.to_path_buf();
     config_dest.push("ignition");
     if !config_dest.is_dir() {
-        create_dir_all(&config_dest).with_context(|| {
+        fs::create_dir_all(&config_dest).with_context(|| {
             format!(
                 "creating Ignition config directory {}",
                 config_dest.display()
             )
         })?;
         // Ignition data may contain secrets; restrict to root
-        set_permissions(&config_dest, Permissions::from_mode(0o700)).with_context(|| {
+        fs::set_permissions(&config_dest, Permissions::from_mode(0o700)).with_context(|| {
             format!(
                 "setting file mode for Ignition directory {}",
                 config_dest.display()
@@ -487,13 +492,13 @@ fn write_ignition(
             )
         })?;
     // Ignition config may contain secrets; restrict to root
-    set_permissions(&config_dest, Permissions::from_mode(0o600)).with_context(|| {
+    fs::set_permissions(&config_dest, Permissions::from_mode(0o600)).with_context(|| {
         format!(
             "setting file mode for destination Ignition config {}",
             config_dest.display()
         )
     })?;
-    copy(&mut config_in, &mut config_out).context("writing Ignition config")?;
+    io::copy(&mut config_in, &mut config_out).context("writing Ignition config")?;
 
     Ok(())
 }
@@ -519,7 +524,16 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
-/// Override the platform ID.
+#[derive(Clone, Default, Deserialize)]
+struct PlatformSpec {
+    #[serde(default)]
+    grub_commands: Vec<String>,
+    #[serde(default)]
+    kernel_arguments: Vec<String>,
+}
+
+/// Override the platform ID.  Add any kernel arguments and grub.cfg
+/// directives specified for this platform in platforms.json.
 fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     // early return if setting the platform to the default value, since
     // otherwise we'll think we failed to set it
@@ -527,27 +541,93 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
         return Ok(());
     }
 
+    // read platforms table
+    let (spec, metal_spec) = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
+        Ok(json) => {
+            let mut table: HashMap<String, PlatformSpec> =
+                serde_json::from_str(&json).context("parsing platform table")?;
+            // no spec for this platform, or for metal?
+            (
+                table.remove(platform).unwrap_or_default(),
+                table.remove("metal").unwrap_or_default(),
+            )
+        }
+        // no table for this image?
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+        Err(e) => return Err(e).context("reading platform table"),
+    };
+
+    // set kargs, removing any metal-specific ones
     eprintln!("Setting platform to {}", platform);
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
-        bls_entry_options_write_platform(orig_options, platform)
+        bls_entry_options_write_platform(
+            orig_options,
+            platform,
+            &spec.kernel_arguments,
+            &metal_spec.kernel_arguments,
+        )
     })?;
 
+    // set grub commands
+    if spec.grub_commands != metal_spec.grub_commands {
+        let path = mountpoint.join("grub2/grub.cfg");
+        let grub_cfg = fs::read_to_string(&path).context("reading grub.cfg")?;
+        let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &spec.grub_commands)
+            .context("updating grub.cfg")?;
+        fs::write(&path, new_grub_cfg).context("writing grub.cfg")?;
+    }
     Ok(())
 }
 
-/// To be used with `visit_bls_entry_options()`. Modifies the BLS config, only changing the
-/// `ignition.platform.id`. This assumes that we will only install from metal images and that the
-/// bootloader configs will always set ignition.platform.id.  Fail if those assumptions change.
-/// This is deliberately simplistic.
-fn bls_entry_options_write_platform(orig_options: &str, platform: &str) -> Result<Option<String>> {
-    let new_options = orig_options.replace(
-        "ignition.platform.id=metal",
-        &format!("ignition.platform.id={}", platform),
-    );
+/// To be used with `visit_bls_entry_options()`.  Modifies the BLS config,
+/// changing the `ignition.platform.id` and then appending/deleting any
+/// specified kargs.  This assumes that we will only install from metal
+/// images and that the bootloader configs will always set
+/// ignition.platform.id.  Fail if those assumptions change.  This is
+/// deliberately simplistic.
+fn bls_entry_options_write_platform(
+    orig_options: &str,
+    platform: &str,
+    append_kargs: &[String],
+    delete_kargs: &[String],
+) -> Result<Option<String>> {
+    let new_options = KargsEditor::new()
+        .replace(&[format!("ignition.platform.id=metal={}", platform)])
+        .apply_to(orig_options)
+        .context("updating platform ID")?;
     if orig_options == new_options {
         bail!("Couldn't locate platform ID");
     }
-    Ok(Some(new_options))
+    Ok(Some(
+        KargsEditor::new()
+            .append(append_kargs)
+            .delete(delete_kargs)
+            .apply_to(&new_options)
+            .context("adding platform-specific kernel arguments")?,
+    ))
+}
+
+/// Rewrite the grub.cfg CONSOLE-SETTINGS block to use the specified GRUB
+/// commands, and return the result.
+fn update_grub_cfg_console_settings(grub_cfg: &str, commands: &[String]) -> Result<String> {
+    let mut new_commands = commands.join("\n");
+    if !new_commands.is_empty() {
+        new_commands.push('\n');
+    }
+    let re = Regex::new(GRUB_CFG_CONSOLE_SETTINGS_RE).unwrap();
+    if !re.is_match(grub_cfg) {
+        bail!("missing substitution marker in grub.cfg");
+    }
+    Ok(re
+        .replace(grub_cfg, |caps: &Captures| {
+            format!(
+                "{}{}{}",
+                caps.name("prefix").expect("didn't match prefix").as_str(),
+                new_commands,
+                caps.name("suffix").expect("didn't match suffix").as_str()
+            )
+        })
+        .into_owned())
 }
 
 /// Copy networking config if asked to do so
@@ -558,7 +638,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     let net_config_dest = mountpoint.join("coreos-firstboot-network");
 
     // make the directory if it doesn't exist
-    create_dir_all(&net_config_dest).with_context(|| {
+    fs::create_dir_all(&net_config_dest).with_context(|| {
         format!(
             "creating destination networking config directory {}",
             net_config_dest.display()
@@ -566,7 +646,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     })?;
 
     // copy files from source to destination directories
-    for entry in read_dir(&net_config_src)
+    for entry in fs::read_dir(&net_config_src)
         .with_context(|| format!("reading directory {}", net_config_src))?
     {
         let entry = entry.with_context(|| format!("reading directory {}", net_config_src))?;
@@ -574,7 +654,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
         let destpath = net_config_dest.join(entry.file_name());
         if srcpath.is_file() {
             eprintln!("Copying {} to installed system", srcpath.display());
-            fscopy(&srcpath, &destpath).context("Copying networking config")?;
+            fs::copy(&srcpath, &destpath).context("Copying networking config")?;
         }
     }
 
@@ -701,24 +781,82 @@ mod tests {
     #[test]
     fn test_platform_id() {
         let orig_content = "ignition.platform.id=metal foo bar";
-        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
+        let new_content = bls_entry_options_write_platform(
+            orig_content,
+            "openstack",
+            &vec!["baz".to_string(), "blah".to_string()],
+            &[],
+        )
+        .unwrap();
         assert_eq!(
             new_content.unwrap(),
-            "ignition.platform.id=openstack foo bar"
+            "ignition.platform.id=openstack foo bar baz blah"
         );
 
         let orig_content = "foo ignition.platform.id=metal bar";
-        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
+        let new_content = bls_entry_options_write_platform(
+            orig_content,
+            "openstack",
+            &vec!["baz".to_string(), "blah".to_string()],
+            &vec!["foo".to_string()],
+        )
+        .unwrap();
         assert_eq!(
             new_content.unwrap(),
-            "foo ignition.platform.id=openstack bar"
+            "ignition.platform.id=openstack bar baz blah"
         );
 
         let orig_content = "foo bar ignition.platform.id=metal";
-        let new_content = bls_entry_options_write_platform(orig_content, "openstack").unwrap();
+        let new_content = bls_entry_options_write_platform(
+            orig_content,
+            "openstack",
+            &vec!["baz".to_string(), "blah".to_string()],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            new_content.unwrap(),
+            "foo bar ignition.platform.id=openstack baz blah"
+        );
+
+        let orig_content = "foo bar ignition.platform.id=metal";
+        let new_content =
+            bls_entry_options_write_platform(orig_content, "openstack", &[], &[]).unwrap();
         assert_eq!(
             new_content.unwrap(),
             "foo bar ignition.platform.id=openstack"
         );
+    }
+
+    #[test]
+    fn test_update_grub_cfg() {
+        let base_cfgs = vec![
+            // no existing commands
+            "a\nb\n# CONSOLE-SETTINGS-START\n# CONSOLE-SETTINGS-END\nc\nd",
+            // one existing command
+            "a\nb\n# CONSOLE-SETTINGS-START\nas df\n# CONSOLE-SETTINGS-END\nc\nd",
+            // multiple existing commands
+            "a\nb\n# CONSOLE-SETTINGS-START\nas df\nghjkl\n# CONSOLE-SETTINGS-END\nc\nd",
+        ];
+        for cfg in base_cfgs {
+            // no new commands
+            assert_eq!(
+                update_grub_cfg_console_settings(cfg, &[]).unwrap(),
+                "a\nb\n# CONSOLE-SETTINGS-START\n# CONSOLE-SETTINGS-END\nc\nd"
+            );
+            // one new command
+            assert_eq!(
+                update_grub_cfg_console_settings(cfg, &["first".into()]).unwrap(),
+                "a\nb\n# CONSOLE-SETTINGS-START\nfirst\n# CONSOLE-SETTINGS-END\nc\nd"
+            );
+            // multiple new commands
+            assert_eq!(
+                update_grub_cfg_console_settings(cfg, &["first".into(), "sec ond".into(), "third".into()]).unwrap(),
+                "a\nb\n# CONSOLE-SETTINGS-START\nfirst\nsec ond\nthird\n# CONSOLE-SETTINGS-END\nc\nd"
+            );
+        }
+
+        // missing substitution marker
+        update_grub_cfg_console_settings("a\nb\nc\nd", &[]).unwrap_err();
     }
 }
