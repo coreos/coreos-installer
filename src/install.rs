@@ -14,10 +14,8 @@
 
 use anyhow::{bail, Context, Result};
 use nix::mount;
-use std::fs::{
-    copy as fscopy, create_dir_all, read_dir, set_permissions, File, OpenOptions, Permissions,
-};
-use std::io::{copy, Seek, SeekFrom, Write};
+use std::fs::{self, File, OpenOptions, Permissions};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -253,7 +251,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     match get_filesystems_with_label("boot", true) {
         Ok(pts) => {
             if pts.len() > 1 {
-                let rootdev = std::fs::canonicalize(device)
+                let rootdev = fs::canonicalize(device)
                     .unwrap_or_else(|_| PathBuf::from(device))
                     .to_string_lossy()
                     .to_string();
@@ -459,14 +457,14 @@ fn write_ignition(
     let mut config_dest = mountpoint.to_path_buf();
     config_dest.push("ignition");
     if !config_dest.is_dir() {
-        create_dir_all(&config_dest).with_context(|| {
+        fs::create_dir_all(&config_dest).with_context(|| {
             format!(
                 "creating Ignition config directory {}",
                 config_dest.display()
             )
         })?;
         // Ignition data may contain secrets; restrict to root
-        set_permissions(&config_dest, Permissions::from_mode(0o700)).with_context(|| {
+        fs::set_permissions(&config_dest, Permissions::from_mode(0o700)).with_context(|| {
             format!(
                 "setting file mode for Ignition directory {}",
                 config_dest.display()
@@ -487,13 +485,13 @@ fn write_ignition(
             )
         })?;
     // Ignition config may contain secrets; restrict to root
-    set_permissions(&config_dest, Permissions::from_mode(0o600)).with_context(|| {
+    fs::set_permissions(&config_dest, Permissions::from_mode(0o600)).with_context(|| {
         format!(
             "setting file mode for destination Ignition config {}",
             config_dest.display()
         )
     })?;
-    copy(&mut config_in, &mut config_out).context("writing Ignition config")?;
+    io::copy(&mut config_in, &mut config_out).context("writing Ignition config")?;
 
     Ok(())
 }
@@ -558,7 +556,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     let net_config_dest = mountpoint.join("coreos-firstboot-network");
 
     // make the directory if it doesn't exist
-    create_dir_all(&net_config_dest).with_context(|| {
+    fs::create_dir_all(&net_config_dest).with_context(|| {
         format!(
             "creating destination networking config directory {}",
             net_config_dest.display()
@@ -566,7 +564,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     })?;
 
     // copy files from source to destination directories
-    for entry in read_dir(&net_config_src)
+    for entry in fs::read_dir(&net_config_src)
         .with_context(|| format!("reading directory {}", net_config_src))?
     {
         let entry = entry.with_context(|| format!("reading directory {}", net_config_src))?;
@@ -574,7 +572,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
         let destpath = net_config_dest.join(entry.file_name());
         if srcpath.is_file() {
             eprintln!("Copying {} to installed system", srcpath.display());
-            fscopy(&srcpath, &destpath).context("Copying networking config")?;
+            fs::copy(&srcpath, &destpath).context("Copying networking config")?;
         }
     }
 
