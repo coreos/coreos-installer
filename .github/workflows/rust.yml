@@ -25,8 +25,6 @@ jobs:
     name: "Tests, stable toolchain"
     runs-on: ubuntu-latest
     strategy:
-      # Keep x86_64 jobs alive if s390x jobs fail
-      fail-fast: false
       matrix:
         arch:
           - x86_64
@@ -74,8 +72,6 @@ jobs:
     name: "Tests, minimum supported toolchain"
     runs-on: ubuntu-latest
     strategy:
-      # Keep x86_64 jobs alive if s390x jobs fail
-      fail-fast: false
       matrix:
         arch:
           - x86_64
@@ -130,8 +126,6 @@ jobs:
     name: "Lints, pinned toolchain"
     runs-on: ubuntu-latest
     strategy:
-      # Keep x86_64 jobs alive if s390x jobs fail
-      fail-fast: false
       matrix:
         arch:
           - x86_64
