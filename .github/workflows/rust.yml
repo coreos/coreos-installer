@@ -47,7 +47,16 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
-        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core openssl-devel cpio diffutils jq xz
+      - name: Configure cargo
+        run: |
+          # Avoid OOM on emulated s390x
+          # https://github.com/rust-lang/cargo/issues/10583
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<EOF
+          [net]
+          git-fetch-with-cli = true
+          EOF
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -94,7 +103,16 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
-        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core openssl-devel cpio diffutils jq xz
+      - name: Configure cargo
+        run: |
+          # Avoid OOM on emulated s390x
+          # https://github.com/rust-lang/cargo/issues/10583
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<EOF
+          [net]
+          git-fetch-with-cli = true
+          EOF
       - name: cargo build
         run: cargo build
       - name: cargo test
@@ -135,7 +153,16 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}-lints
       - name: Install dependencies
-        run: dnf install -y gcc openssl-devel
+        run: dnf install -y gcc git-core openssl-devel
+      - name: Configure cargo
+        run: |
+          # Avoid OOM on emulated s390x
+          # https://github.com/rust-lang/cargo/issues/10583
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<EOF
+          [net]
+          git-fetch-with-cli = true
+          EOF
       - name: cargo fmt (check)
         run: cargo fmt -- --check -l
       - name: cargo clippy (warnings)
@@ -171,7 +198,16 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
-        run: dnf install -y gcc openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core openssl-devel cpio diffutils jq xz
+      - name: Configure cargo
+        run: |
+          # Avoid OOM on emulated s390x
+          # https://github.com/rust-lang/cargo/issues/10583
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<EOF
+          [net]
+          git-fetch-with-cli = true
+          EOF
       - name: cargo build
         run: cargo build
       - name: cargo test
