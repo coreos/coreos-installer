@@ -18,6 +18,15 @@ pre-release-commit-message = "cargo: coreos-installer release {{version}}"
 pre-release-hook = ["make", "docs", "clean"]
 tag-message = "coreos-installer v{{version}}"
 
+# See https://github.com/cgwalters/cargo-vendor-filterer
+[package.metadata.vendor-filter]
+# Right now the vendor filter doesn't support wildcards, so use this as a stand-in.
+# xref https://github.com/cgwalters/cargo-vendor-filterer/issues/23
+# Note that architecture-specific crate dependencies (apart from wasm32) are uncommon
+# in the ecosystem, but this project actually does have s390x-specific dependencies (below).
+platforms = ["x86_64-unknown-linux-gnu", "s390x-unknown-linux-gnu"]
+all-features = true
+
 [features]
 # rdcore is only useful inside the initrd of a CoreOS system
 rdcore = []
