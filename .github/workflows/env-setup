@@ -11,7 +11,7 @@ x86_64)
     # causes segfaults in rustup-init.  Luckily it's statically linked, so
     # extract the working Fedora package.
     podman run --rm -v $HOME:/pwd -w /pwd "${CONTAINER}" \
-        sh -c "dnf install -y python3-dnf-plugins-core && dnf download qemu-user-static.x86_64"
+        sh -c "dnf install -y python3-dnf-plugins-core && dnf download qemu-user-static-s390x.x86_64"
     rpm2cpio ~/qemu-user-static-*.x86_64.rpm |
         sudo cpio -D / -i --make-directories
     sudo systemctl restart systemd-binfmt
