@@ -126,12 +126,7 @@ fn get_raid_kargs(device: &Path) -> Result<Vec<String>> {
 
 fn mdadm_detail(device: &Path) -> Result<HashMap<String, String>> {
     let output = runcmd_output!("mdadm", "--detail", "--export", device)?;
-    let mut result: HashMap<String, String> = HashMap::new();
-    for line in output.lines() {
-        let (key, val) = split_mdadm_line(line)?;
-        result.insert(key, val);
-    }
-    Ok(result)
+    output.lines().map(split_mdadm_line).collect()
 }
 
 fn split_mdadm_line(line: &str) -> Result<(String, String)> {
