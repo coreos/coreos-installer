@@ -48,8 +48,15 @@ pub struct IsoFs {
 
 impl IsoFs {
     pub fn from_file(mut file: fs::File) -> Result<Self> {
+        let length = file.metadata()?.len();
         let descriptors = get_volume_descriptors(&mut file)?;
-        Ok(Self { descriptors, file })
+        let iso_fs = Self { descriptors, file };
+        let primary = iso_fs.get_primary_volume_descriptor()?;
+        if primary.volume_space_size * ISO9660_SECTOR_SIZE as u64 > length {
+            bail!("ISO image is incomplete");
+        }
+
+        Ok(iso_fs)
     }
 
     pub fn as_file(&mut self) -> Result<&mut fs::File> {
@@ -181,6 +188,7 @@ struct BootVolumeDescriptor {
 struct PrimaryVolumeDescriptor {
     system_id: String,
     volume_id: String,
+    volume_space_size: u64,
     root: Directory,
 }
 
@@ -298,13 +306,16 @@ impl PrimaryVolumeDescriptor {
             parse_iso9660_string(eat(buf, 1), 32, IsoString::StrA).context("parsing system id")?;
         let volume_id = // technically should be StrD, but non-compliance is common
             parse_iso9660_string(buf, 32, IsoString::StrA).context("parsing volume id")?;
-        let root = match get_next_directory_record(eat(buf, 156 - 72), 34, true)? {
+        eat(buf, 8); // Unused field always 0x00
+        let volume_space_size = buf.get_u32_le() as u64;
+        let root = match get_next_directory_record(eat(buf, 156 - 84), 34, true)? {
             Some(DirectoryRecord::Directory(d)) => d,
             _ => bail!("failed to parse root directory record from primary descriptor"),
         };
         Ok(Self {
             system_id,
             volume_id,
+            volume_space_size,
             root,
         })
     }
@@ -568,12 +579,28 @@ mod tests {
     }
 
     #[test]
+    fn open_truncated_iso() {
+        let iso_bytes: &[u8] = include_bytes!("../fixtures/iso/synthetic.iso.xz");
+        let mut decoder = XzDecoder::new(iso_bytes);
+        let mut iso_file = tempfile().unwrap();
+        copy(&mut decoder, &mut iso_file).unwrap();
+        iso_file
+            .set_len(iso_file.metadata().unwrap().len() / 2)
+            .unwrap();
+        assert_eq!(
+            IsoFs::from_file(iso_file).unwrap_err().to_string(),
+            "ISO image is incomplete"
+        );
+    }
+
+    #[test]
     fn test_primary_volume_descriptor() {
         let iso = open_iso();
         let desc = iso.get_primary_volume_descriptor().unwrap();
         assert_eq!(desc.system_id, "system-ID-string");
         assert_eq!(desc.volume_id, "volume-ID-string");
         assert_eq!(desc.root.name, ".");
+        assert_eq!(desc.volume_space_size, 338);
     }
 
     #[test]
