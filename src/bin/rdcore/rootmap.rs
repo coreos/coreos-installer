@@ -135,11 +135,9 @@ fn mdadm_detail(device: &Path) -> Result<HashMap<String, String>> {
 }
 
 fn split_mdadm_line(line: &str) -> Result<(String, String)> {
-    let v: Vec<&str> = line.splitn(2, '=').collect();
-    if v.len() != 2 {
-        bail!("invalid mdadm line: {}", line);
-    }
-    Ok((v[0].into(), v[1].into()))
+    line.split_once('=')
+        .ok_or_else(|| anyhow::anyhow!("invalid mdadm line: {}", line))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
 }
 
 fn get_luks_kargs(root: &Mount, device: &Path) -> Result<Vec<String>> {
