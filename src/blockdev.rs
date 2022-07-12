@@ -466,7 +466,7 @@ impl Mount {
     }
 
     pub fn get_filesystem_uuid(&self) -> Result<String> {
-        let devinfo = lsblk_single(Path::new(&self.device))?;
+        let devinfo = blkid_single(Path::new(&self.device))?;
         devinfo
             .get("UUID")
             .map(String::from)
@@ -874,6 +874,17 @@ fn blkid() -> Result<Vec<HashMap<String, String>>> {
         result.push(split_blkid_line(line));
     }
     Ok(result)
+}
+
+pub fn blkid_single(dev: &Path) -> Result<HashMap<String, String>> {
+    let mut cmd = Command::new("blkid");
+    cmd.arg(dev);
+    let output = cmd_output(&mut cmd)?;
+    if output.is_empty() {
+        // this should never happen because `blkid` itself would've failed
+        bail!("no blkid results for {}", dev.display());
+    }
+    Ok(split_blkid_line(&output))
 }
 
 /// This is a bit fuzzy, but... this function will return every block device in the parent
