@@ -772,13 +772,16 @@ fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String>
     Ok(read_to_string(&path)?.trim_end().into())
 }
 
-pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
+pub fn get_block_device_type(dev: &Path) -> Result<String> {
     let mut devinfos = lsblk(Path::new(dev), false)?;
     if devinfos.is_empty() {
         // this should never happen because `lsblk` itself would've failed
         bail!("no lsblk results for {}", dev.display());
     }
-    Ok(devinfos.remove(0))
+    devinfos
+        .remove(0)
+        .remove("TYPE")
+        .with_context(|| format!("missing TYPE for {}", dev.display()))
 }
 
 /// Returns all available filesystems.
