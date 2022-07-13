@@ -255,16 +255,16 @@ where
         &source.artifact_type,
     ));
 
-    // Wrap in a BufReader so DecompressReader can peek at the first few
+    // Wrap in a PeekReader so DecompressReader can peek at the first few
     // bytes for format sniffing, and to amortize read overhead.  Don't
     // trust the content-type since the server may not be configured
     // correctly, or the file might be local.  Then wrap in a
     // DecompressReader for decompression.
-    let buf_reader = BufReader::with_capacity(BUFFER_SIZE, reader);
+    let peek_reader = PeekReader::with_capacity(BUFFER_SIZE, reader);
     if decompress {
-        reader = Box::new(DecompressReader::new(buf_reader)?);
+        reader = Box::new(DecompressReader::new(peek_reader)?);
     } else {
-        reader = Box::new(buf_reader);
+        reader = Box::new(peek_reader);
     }
 
     // Wrap again for limit checking.

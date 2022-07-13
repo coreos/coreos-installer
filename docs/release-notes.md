@@ -11,6 +11,7 @@ Major changes:
 
 Minor changes:
 
+- Fix unlikely decompression error reading initrd
 - Add release notes to documentation
 
 Internal changes:
