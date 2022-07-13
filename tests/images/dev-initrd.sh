@@ -20,6 +20,8 @@ uncompressed-2/hello
 uncompressed-2/world
 xz/hello
 xz/world
+zstd/hello
+zstd/world
 EOF
 }
 
@@ -54,15 +56,15 @@ files | grep -E 'gzip|xz' | diff - out
 
 # dev extract initrd
 coreos-installer dev extract initrd compressed.img
-check . gzip uncompressed-1 uncompressed-2 xz
+check . gzip uncompressed-1 uncompressed-2 xz zstd
 (coreos-installer dev extract initrd compressed.img 2>&1 ||:) | grepq exists
-rm -r gzip uncompressed-[12] xz
+rm -r gzip uncompressed-[12] xz zstd
 coreos-installer dev extract initrd -C d - < compressed.img
-check d gzip uncompressed-1 uncompressed-2 xz
+check d gzip uncompressed-1 uncompressed-2 xz zstd
 rm -r d
 coreos-installer dev extract initrd -C d -v compressed.img > out
 files | sed s:^:d/: | diff - out
-check d gzip uncompressed-1 uncompressed-2 xz
+check d gzip uncompressed-1 uncompressed-2 xz zstd
 rm -r d
 coreos-installer dev extract initrd -C d -v compressed.img 'gzip/*' 'xz/*' > out
 files | sed s:^:d/: | grep -E 'gzip|xz' | diff - out

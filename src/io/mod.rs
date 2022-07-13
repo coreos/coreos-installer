@@ -26,6 +26,7 @@ mod peek;
 mod tee;
 mod verify;
 mod xz;
+mod zstd;
 
 pub use self::bls::*;
 pub use self::compress::*;
@@ -37,6 +38,7 @@ pub use self::peek::*;
 pub use self::tee::*;
 pub use self::verify::*;
 pub use self::xz::*;
+pub use self::zstd::*;
 
 // The default BufReader/BufWriter buffer size is 8 KiB, which isn't large
 // enough to fully amortize system call overhead.

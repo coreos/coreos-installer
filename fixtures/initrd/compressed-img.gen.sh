@@ -20,7 +20,10 @@ gzip -9 gzip.cpio
 make xz
 xz -9 xz.cpio
 
-cat uncompressed-1.cpio gzip.cpio.gz xz.cpio.xz uncompressed-2.cpio > compressed.img
+make zstd
+zstd -19 zstd.cpio
+
+cat uncompressed-1.cpio gzip.cpio.gz xz.cpio.xz zstd.cpio.zst uncompressed-2.cpio > compressed.img
 xz -9 compressed.img
 popd
 mv $dir/compressed.img.xz .
