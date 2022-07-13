@@ -133,6 +133,12 @@ mod tests {
             .read_to_end(&mut output)
             .unwrap();
 
+        // drop last byte, make sure we notice
+        DecompressReader::new(PeekReader::with_capacity(32, &input[0..input.len() - 1]))
+            .unwrap()
+            .read_to_end(&mut output)
+            .unwrap_err();
+
         // add trailing garbage, make sure we notice
         input.push(0);
         DecompressReader::new(PeekReader::with_capacity(32, &*input))

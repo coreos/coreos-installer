@@ -64,6 +64,7 @@ impl<R: BufRead> Read for XzStreamDecoder<R> {
             let in_ = self.source.fill_buf()?;
             if in_.is_empty() {
                 // EOF
+                self.decompressor.finish()?;
                 return Ok(0);
             }
             let count = self.decompressor.write(in_)?;
