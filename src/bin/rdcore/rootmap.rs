@@ -108,7 +108,11 @@ fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>>
     if blktype.starts_with("raid") || blktype == "linear" {
         Ok(Some(get_raid_kargs(&device)?))
     } else if blktype == "crypt" {
-        Ok(Some(get_luks_kargs(root, &device)?))
+        if Disk::new(&device)?.is_luks_integrity()? {
+            Ok(None)
+        } else {
+            Ok(Some(get_luks_kargs(root, &device)?))
+        }
     } else if blktype == "part" || blktype == "disk" || blktype == "mpath" {
         Ok(None)
     } else {
@@ -136,27 +140,14 @@ fn split_mdadm_line(line: &str) -> Result<(String, String)> {
 }
 
 fn get_luks_kargs(root: &Mount, device: &Path) -> Result<Vec<String>> {
-    // The LUKS UUID is a property of the backing block device of *this* block device, so we have
-    // to get its parent. This is a bit awkward because we're already iterating through parents, so
-    // theoretically we could re-use the same state here. But meh... this is easier to understand.
-    let deps = get_blkdev_deps(device)?;
-    match deps.len() {
-        0 => bail!("missing parent device for {}", device.display()),
-        1 => {
-            let uuid = get_luks_uuid(&deps[0])?;
-            let name = get_luks_name(device)?;
-            let mut kargs = vec![format!("rd.luks.name={}={}", uuid, name)];
-            if crypttab_device_has_netdev(root, &name)? {
-                kargs.push("rd.neednet=1".into());
-                kargs.push("rd.luks.options=_netdev".into());
-            }
-            Ok(kargs)
-        }
-        _ => bail!(
-            "found multiple parent devices for crypt device {}",
-            device.display()
-        ),
+    let uuid = get_luks_uuid(device)?;
+    let name = get_luks_name(device)?;
+    let mut kargs = vec![format!("rd.luks.name={}={}", uuid, name)];
+    if crypttab_device_has_netdev(root, &name)? {
+        kargs.push("rd.neednet=1".into());
+        kargs.push("rd.luks.options=_netdev".into());
     }
+    Ok(kargs)
 }
 
 // crypttab is the source of truth for whether an encrypted block device requires networking.
@@ -209,9 +200,26 @@ fn get_luks_name(device: &Path) -> Result<String> {
 }
 
 fn get_luks_uuid(device: &Path) -> Result<String> {
-    Ok(runcmd_output!("cryptsetup", "luksUUID", device)?
-        .trim()
-        .into())
+    // The LUKS UUID is a property of the backing block device of *this* block device, so we have
+    // to get its parent. This is a bit awkward because we're already iterating through parents, so
+    // theoretically we could re-use the same state here. But meh... this is easier to understand and
+    // handle crypt-integrity case
+    let deps = get_blkdev_deps(device)?;
+    match deps.as_slice() {
+        [] => bail!("missing parent device for {}", device.display()),
+        [device] => {
+            if Disk::new(&device)?.is_dm_device() {
+                return get_luks_uuid(device);
+            }
+            Ok(runcmd_output!("cryptsetup", "luksUUID", device)?
+                .trim()
+                .into())
+        }
+        _ => bail!(
+            "found multiple parent devices for crypt device {}",
+            device.display()
+        ),
+    }
 }
 
 pub fn bind_boot(config: BindBootConfig) -> Result<()> {
