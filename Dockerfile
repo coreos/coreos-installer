@@ -1,5 +1,5 @@
 FROM registry.fedoraproject.org/fedora:36 AS builder
-RUN dnf install -y cargo git-core openssl-devel xz-devel
+RUN dnf install -y cargo git-core libzstd-devel openssl-devel xz-devel
 WORKDIR /build
 COPY Cargo.* ./
 COPY src src/

@@ -234,6 +234,8 @@ mod tests {
                 "gzip/world".into() => b"WORLD\n".to_vec(),
                 "xz/hello".into() => b"HELLO\n".to_vec(),
                 "xz/world".into() => b"WORLD\n".to_vec(),
+                "zstd/hello".into() => b"HELLO\n".to_vec(),
+                "zstd/world".into() => b"WORLD\n".to_vec(),
             }
         );
     }
@@ -268,8 +270,8 @@ mod tests {
         let initrd = Initrd::from_reader(&*archive).unwrap();
         assert_eq!(initrd.find(&matcher("gzip/hello")).len(), 1);
         assert_eq!(initrd.find(&matcher("gzip/*")).len(), 2);
-        assert_eq!(initrd.find(&matcher("*/hello")).len(), 4);
-        assert_eq!(initrd.find(&matcher("*")).len(), 8);
+        assert_eq!(initrd.find(&matcher("*/hello")).len(), 5);
+        assert_eq!(initrd.find(&matcher("*")).len(), 10);
         assert_eq!(initrd.find(&matcher("z")).len(), 0);
 
         // filtered initrd

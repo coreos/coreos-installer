@@ -531,6 +531,11 @@ mod tests {
             &include_bytes!("../fixtures/verify/1M.xz.sig")[..],
             &[0; 1 << 20][..],
         );
+        test_one_signed_file(
+            &include_bytes!("../fixtures/verify/1M.zst")[..],
+            &include_bytes!("../fixtures/verify/1M.zst.sig")[..],
+            &[0; 1 << 20][..],
+        );
     }
 
     fn test_one_signed_file(data: &[u8], sig: &[u8], decompressed_data: &[u8]) {

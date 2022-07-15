@@ -47,7 +47,7 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
-        run: dnf install -y gcc git-core openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
       - name: Configure cargo
         run: |
           # Avoid OOM on emulated s390x
@@ -103,7 +103,7 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
-        run: dnf install -y gcc git-core openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
       - name: Configure cargo
         run: |
           # Avoid OOM on emulated s390x
@@ -153,7 +153,7 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}-lints
       - name: Install dependencies
-        run: dnf install -y gcc git-core openssl-devel
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel
       - name: Configure cargo
         run: |
           # Avoid OOM on emulated s390x
@@ -198,7 +198,7 @@ jobs:
           path: target/debug
           key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
       - name: Install dependencies
-        run: dnf install -y gcc git-core openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
       - name: Configure cargo
         run: |
           # Avoid OOM on emulated s390x
@@ -234,7 +234,7 @@ jobs:
           ARCH: x86_64
           TOOLCHAIN: stable
       - name: Install dependencies
-        run: dnf install -y gcc git-core openssl-devel util-linux
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel util-linux
       - name: cargo build
         run: cargo build
       - name: Help text line length

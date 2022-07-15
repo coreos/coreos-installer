@@ -16,21 +16,22 @@ use anyhow::{Context, Result};
 use flate2::bufread::GzDecoder;
 use std::io::{self, ErrorKind, Read};
 
-use crate::io::{PeekReader, XzStreamDecoder};
+use crate::io::{is_zstd_magic, PeekReader, XzStreamDecoder, ZstdStreamDecoder};
 
-enum CompressDecoder<R: Read> {
+enum CompressDecoder<'a, R: Read> {
     Uncompressed(PeekReader<R>),
     Gzip(GzDecoder<PeekReader<R>>),
     Xz(XzStreamDecoder<PeekReader<R>>),
+    Zstd(ZstdStreamDecoder<'a, R>),
 }
 
-pub struct DecompressReader<R: Read> {
-    decoder: CompressDecoder<R>,
+pub struct DecompressReader<'a, R: Read> {
+    decoder: CompressDecoder<'a, R>,
     allow_trailing: bool,
 }
 
 /// Format-sniffing decompressor
-impl<R: Read> DecompressReader<R> {
+impl<R: Read> DecompressReader<'_, R> {
     pub fn new(source: PeekReader<R>) -> Result<Self> {
         Self::new_full(source, false)
     }
@@ -46,6 +47,8 @@ impl<R: Read> DecompressReader<R> {
             Gzip(GzDecoder::new(source))
         } else if sniff.len() >= 6 && &sniff[0..6] == b"\xfd7zXZ\x00" {
             Xz(XzStreamDecoder::new(source))
+        } else if sniff.len() > 4 && is_zstd_magic(sniff[0..4].try_into().unwrap()) {
+            Zstd(ZstdStreamDecoder::new(source)?)
         } else {
             Uncompressed(source)
         };
@@ -61,6 +64,7 @@ impl<R: Read> DecompressReader<R> {
             Uncompressed(d) => d,
             Gzip(d) => d.into_inner(),
             Xz(d) => d.into_inner(),
+            Zstd(d) => d.into_inner(),
         }
     }
 
@@ -70,6 +74,7 @@ impl<R: Read> DecompressReader<R> {
             Uncompressed(d) => d,
             Gzip(d) => d.get_mut(),
             Xz(d) => d.get_mut(),
+            Zstd(d) => d.get_mut(),
         }
     }
 
@@ -79,17 +84,19 @@ impl<R: Read> DecompressReader<R> {
             Uncompressed(_) => false,
             Gzip(_) => true,
             Xz(_) => true,
+            Zstd(_) => true,
         }
     }
 }
 
-impl<R: Read> Read for DecompressReader<R> {
+impl<R: Read> Read for DecompressReader<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         use CompressDecoder::*;
         let count = match &mut self.decoder {
             Uncompressed(d) => d.read(buf)?,
             Gzip(d) => d.read(buf)?,
             Xz(d) => d.read(buf)?,
+            Zstd(d) => d.read(buf)?,
         };
         if count == 0 && !buf.is_empty() && self.compressed() && !self.allow_trailing {
             // Decompressors stop reading as soon as they encounter the
@@ -120,6 +127,9 @@ mod tests {
         );
         test_decompress_reader_trailing_data_one(
             &include_bytes!("../../fixtures/verify/1M.xz")[..],
+        );
+        test_decompress_reader_trailing_data_one(
+            &include_bytes!("../../fixtures/verify/1M.zst")[..],
         );
     }
 

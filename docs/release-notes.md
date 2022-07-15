@@ -8,6 +8,7 @@ nav_order: 8
 
 Major changes:
 
+- Support reading initrd images compressed with zstd
 
 Minor changes:
 
@@ -20,6 +21,7 @@ Internal changes:
 
 Packaging changes:
 
+- Add dependency on `zstd` crate and `libzstd` shared library
 - Remove non-Linux dependencies from vendor archive
 
 

@@ -105,7 +105,7 @@ mod tests {
     fn make_peek() -> PeekReader<Cursor<&'static [u8]>> {
         // use BufReader capacity larger than input; we're not testing
         // BufReader's buffering behavior
-        PeekReader::with_capacity(64, Cursor::new("abcdefghijklmnopqrstuvwxyz".as_bytes()))
+        PeekReader::with_capacity(64, Cursor::new(b"abcdefghijklmnopqrstuvwxyz"))
     }
 
     fn read_bytes<R: Read>(peek: &mut PeekReader<R>, amt: usize) -> Vec<u8> {
