@@ -21,6 +21,7 @@
 //
 // https://github.com/alexcrichton/xz2-rs/pull/86
 
+use bytes::{Buf, BufMut, BytesMut};
 use std::io::{self, BufRead, Read};
 use xz2::write::XzDecoder;
 
@@ -28,14 +29,14 @@ use crate::io::*;
 
 pub struct XzStreamDecoder<R: BufRead> {
     source: R,
-    decompressor: XzDecoder<Vec<u8>>,
+    decompressor: XzDecoder<bytes::buf::Writer<BytesMut>>,
 }
 
 impl<R: BufRead> XzStreamDecoder<R> {
     pub fn new(source: R) -> Self {
         Self {
             source,
-            decompressor: XzDecoder::new(Vec::with_capacity(BUFFER_SIZE)),
+            decompressor: XzDecoder::new(BytesMut::new().writer()),
         }
     }
 
@@ -54,18 +55,16 @@ impl<R: BufRead> Read for XzStreamDecoder<R> {
             return Ok(0);
         }
         loop {
-            let buf = self.decompressor.get_mut();
+            let buf = self.decompressor.get_mut().get_mut();
             if !buf.is_empty() {
                 let count = buf.len().min(out.len());
-                out[..count].copy_from_slice(&buf[..count]);
-                let buflen = buf.len();
-                buf.copy_within(count..buflen, 0);
-                buf.truncate(buflen - count);
+                buf.copy_to_slice(&mut out[..count]);
                 return Ok(count);
             }
             let in_ = self.source.fill_buf()?;
             if in_.is_empty() {
                 // EOF
+                self.decompressor.finish()?;
                 return Ok(0);
             }
             let count = self.decompressor.write(in_)?;

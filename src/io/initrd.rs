@@ -16,7 +16,7 @@ use anyhow::{anyhow, Context, Result};
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Cursor, Read};
+use std::io::{BufRead, Cursor, Read};
 use xz2::stream::{Check, Stream};
 use xz2::write::XzEncoder;
 
@@ -86,7 +86,7 @@ impl Initrd {
     /// Read an initrd containing compressed and/or uncompressed archives,
     /// ignoring paths not matching the specified glob patterns.
     pub fn from_reader_filtered<R: Read>(source: R, filter: &GlobMatcher) -> Result<Self> {
-        let mut source = BufReader::with_capacity(BUFFER_SIZE, source);
+        let mut source = PeekReader::with_capacity(BUFFER_SIZE, source);
         let mut result = Self::default();
         // loop until EOF
         while !source
