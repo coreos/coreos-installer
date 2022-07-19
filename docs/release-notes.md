@@ -21,6 +21,7 @@ Internal changes:
 
 Packaging changes:
 
+- Require Rust ≥ 1.58.0
 - Add dependency on `zstd` crate and `libzstd` shared library
 - Remove non-Linux dependencies from vendor archive
 
