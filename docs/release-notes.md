@@ -15,6 +15,7 @@ Minor changes:
 - Detect truncated xz archives
 - Fix unlikely decompression error reading initrd
 - Add release notes to documentation
+- iso: Detect incomplete ISO files
 
 Internal changes:
 
