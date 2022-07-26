@@ -4,9 +4,16 @@ RDCORE ?= 1
 ifeq ($(RELEASE),1)
 	PROFILE ?= release
 	CARGO_ARGS = --release
+	STRIP_RDCORE ?= 0
 else
 	PROFILE ?= debug
 	CARGO_ARGS = --features mangen
+	# In debug mode (most often used by devs/CI), we default to stripping
+	# `rdcore` because it's otherwise huge and in kola's default 1G VMs can
+	# cause ENOSPC. In release mode (most often used by Koji/Brew), we don't do
+	# this because the debuginfo gets split out anyway. In either profile,
+	# we allow overriding the default.
+	STRIP_RDCORE ?= 1
 endif
 ifeq ($(RDCORE),1)
 	CARGO_ARGS := $(CARGO_ARGS) --features rdcore
@@ -56,5 +63,12 @@ install-dracut:
 			bn=$$(basename $$x); \
 			install -D -t $(DESTDIR)/usr/lib/dracut/modules.d/$${bn} $$x/*; \
 		done; \
-		install -D -t ${DESTDIR}/usr/lib/dracut/modules.d/50rdcore target/${PROFILE}/rdcore; \
+		if [ $(STRIP_RDCORE) -eq 1 ]; then \
+			cp target/${PROFILE}/rdcore target/${PROFILE}/rdcore.stripped; \
+			strip -g target/${PROFILE}/rdcore.stripped; \
+			install -D target/${PROFILE}/rdcore.stripped ${DESTDIR}/usr/lib/dracut/modules.d/50rdcore/rdcore; \
+			rm target/${PROFILE}/rdcore.stripped; \
+		else \
+			install -D -t ${DESTDIR}/usr/lib/dracut/modules.d/50rdcore target/${PROFILE}/rdcore; \
+		fi; \
 	fi
