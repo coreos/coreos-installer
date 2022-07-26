@@ -15,8 +15,11 @@
 //! Infrastructure for high-level ISO/PXE customizations
 
 use anyhow::{bail, Context, Result};
+use nmstate::NetworkState;
 use serde::Deserialize;
+use serde_json;
 use std::fs::read;
+use std::path::Path;
 
 use crate::cmdline::*;
 use crate::io::*;
@@ -103,6 +106,9 @@ impl LiveInitrd {
         for path in &common.network_keyfile {
             conf.network_keyfile(path)?;
         }
+        for path in &common.network_nmstate {
+            conf.network_nmstate(path)?;
+        }
         for path in &common.ignition_ca {
             conf.ignition_ca(path)?;
         }
@@ -165,6 +171,35 @@ impl LiveInitrd {
             bail!("config already specifies keyfile {}", name);
         }
         self.initrd.add(&path, data);
+        self.installer_copy_network = true;
+        Ok(())
+    }
+
+    pub fn network_nmstate(&mut self, path: &str) -> Result<()> {
+        if !self.features.live_initrd_network {
+            bail!("This OS image does not support customizing network settings.");
+        }
+        let net_state_reader = std::fs::File::open(path).context("opening nmstate file")?;
+        // Despite of the name the serde_yaml is able to parse JSON too.
+        let net_state: NetworkState =
+            serde_yaml::from_reader(net_state_reader).context("parsing nmstate")?;
+        let generated_conf = net_state
+            .gen_conf()
+            .context("generating configuration from nmstate")?;
+        let nm_connections = generated_conf
+            .get("NetworkManager")
+            .context("extracting NetworkManager generated config")?;
+        for (nm_con_file_name, nm_con_content) in nm_connections {
+            let nm_con_path = Path::new(INITRD_NETWORK_DIR).join(nm_con_file_name);
+            let nm_con_path_str = nm_con_path
+                .to_str()
+                .context("converting generated NetworkManager keyfile path to UTF-8")?;
+            if self.initrd.get(nm_con_path_str).is_some() {
+                bail!("config already specifies keyfile {}", nm_con_path_str);
+            }
+            self.initrd
+                .add(nm_con_path_str, nm_con_content.as_bytes().to_vec());
+        }
         self.installer_copy_network = true;
         Ok(())
     }

@@ -1,0 +1,13 @@
+interfaces:
+  - name: nmstate-yaml-eth1
+    type: ethernet
+    state: up
+    ipv4:
+      enabled: true
+      dhcp: true
+  - name: nmstate-yaml-eth2
+    type: ethernet
+    state: up
+    ipv4:
+      enabled: true
+      dhcp: true

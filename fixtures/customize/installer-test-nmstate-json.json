@@ -1,0 +1,22 @@
+{
+  "interfaces": [
+    {
+      "name": "nmstate-json-eth1",
+      "type": "ethernet",
+      "state": "up",
+      "ipv4": {
+        "enabled": "true",
+        "dhcp": "true"
+      }
+    },
+    {
+      "name": "nmstate-json-eth2",
+      "type": "ethernet",
+      "state": "up",
+      "ipv4": {
+        "enabled": "true",
+        "dhcp": "true"
+      }
+    }
+  ]
+}

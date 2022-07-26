@@ -4,7 +4,7 @@
 .SH NAME
 coreos\-installer\-pxe\-customize \- Create a custom live PXE boot config
 .SH SYNOPSIS
-\fBcoreos\-installer\-pxe\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] <\fB\-o\fR|\fB\-\-output\fR> <\fIpath\fR> 
+\fBcoreos\-installer\-pxe\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] <\fB\-o\fR|\fB\-\-output\fR> <\fIpath\fR> 
 .SH DESCRIPTION
 Create a custom live PXE boot config
 .SH OPTIONS
@@ -39,6 +39,11 @@ Automatically run installer, deleting the specified kernel argument for every bo
 NetworkManager keyfile for live & dest
 
 Configure networking using the specified NetworkManager keyfile. Network settings will be applied in the live environment, including when Ignition is run.  If installer is enabled via additional options, network settings will also be applied in the destination system, including when Ignition is run.
+.TP
+\fB\-\-network\-nmstate\fR=\fIpath\fR
+Nmstate file for live & dest
+
+Configure networking using NetworkManager keyfiles generated from the specified Nmstate files. Network settings will be applied in the live environment, including when Ignition is run.  If installer is enabled via additional options, network settings will also be applied in the destination system, including when Ignition is run.
 .TP
 \fB\-\-ignition\-ca\fR=\fIpath\fR
 Ignition PEM CA bundle for live & dest
