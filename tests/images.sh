@@ -32,6 +32,7 @@ if [ -n "${1:-}" ]; then
     call iso-network.sh "${basedir}"/*.iso
     call iso-kargs.sh "${basedir}"/*.iso
     call dev-show-iso.sh "${basedir}"/*.iso
+    call iso-extract-minimal-iso.sh "${basedir}"/*.iso
     call iso-extract-pxe.sh "${basedir}"
     call customize.sh "${basedir}"
 fi
@@ -46,6 +47,8 @@ call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-01.iso.xz
 call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-09.iso.xz
 call iso-kargs.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
 call iso-kargs.sh ${fixtures}/iso/embed-areas-2022-02.iso.xz
+call iso-extract-minimal-iso.sh ${fixtures}/iso/embed-areas-2021-12.iso.xz
+call iso-extract-minimal-iso.sh ${fixtures}/iso/embed-areas-2022-02.iso.xz
 call unsupported.sh
 
 # other image tests
