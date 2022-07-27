@@ -13,6 +13,7 @@ Major changes:
 Minor changes:
 
 - Detect truncated xz archives
+- iso: Fix corrupt `extract minimal-iso` output when writing to stdout
 - Fix unlikely decompression error reading initrd
 - Add release notes to documentation
 - iso: Detect incomplete ISO files
