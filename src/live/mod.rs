@@ -634,13 +634,13 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
         .context("creating temporary file")?;
     data.unxzpack(full_iso.as_file()?, &mut outf)
         .context("unpacking miniso")?;
-    outf.seek(SeekFrom::Start(0))
-        .context("seeking back to start of miniso tempfile")?;
 
     modify_miniso_kargs(outf.as_file_mut(), config.rootfs_url.as_ref())
         .context("modifying miniso kernel args")?;
 
     if &config.output == "-" {
+        outf.seek(SeekFrom::Start(0))
+            .context("seeking back to start of miniso tempfile")?;
         copy(&mut outf, &mut io::stdout().lock()).context("writing output")?;
     } else {
         outf.persist_noclobber(&config.output)
