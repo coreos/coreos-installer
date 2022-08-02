@@ -363,7 +363,9 @@ RequiredBy={install_target}",
             // Embed installer config in live config
             self.installer_config_bytes(
                 "customize.yaml",
-                &serde_yaml::to_vec(&conf).context("serializing installer config")?,
+                &serde_yaml::to_string(&conf)
+                    .context("serializing installer config")?
+                    .into_bytes(),
             )?;
         }
 
