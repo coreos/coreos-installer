@@ -25,6 +25,7 @@ Packaging changes:
 
 - Require Rust ≥ 1.58.0
 - Add dependency on `zstd` crate and `libzstd` shared library
+- Support `serde_yaml` 0.9
 - Remove non-Linux dependencies from vendor archive
 
 

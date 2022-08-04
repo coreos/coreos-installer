@@ -453,7 +453,11 @@ dest-device: u
     #[test]
     fn serialize_default_install_config_yaml() {
         let config = InstallConfig::default();
-        assert_eq!(serde_yaml::to_string(&config).unwrap(), "---\n{}\n");
+        assert_eq!(
+            // serde_yaml 0.8 prefixes output with "---\n"; 0.9 doesn't
+            serde_yaml::to_string(&config).unwrap().replace("---\n", ""),
+            "{}\n"
+        );
     }
 
     /// Check that minimal install config file serializes to minimal arg list
