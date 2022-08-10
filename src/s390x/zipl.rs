@@ -150,20 +150,29 @@ fn generate_sdboot(
         .write_all(options.as_bytes())
         .context("writing zipl se cmdline")?;
 
-    let mut lukskeys_path = "/etc/luks/".to_string();
-    let mut crypttab_path = "/etc/crypttab".to_string();
-    let mut hostkeys_path = "/etc/se-hostkeys/".to_string();
-
     // during cosa-build rootfs includes ostree commit path
-    if let Some(ref rootfs) = rootfs {
-        lukskeys_path.insert_str(0, rootfs);
-        crypttab_path.insert_str(0, rootfs);
-        hostkeys_path.insert_str(0, rootfs);
-    }
+    let ostree_commit = if let Some(ref rootfs) = rootfs {
+        Path::new(rootfs)
+    } else {
+        Path::new("/")
+    };
+    let lukskeys_path = ostree_commit.join("etc/luks");
+    let crypttab_path = ostree_commit.join("etc/crypttab");
+    let hostkeys_path = ostree_commit.join("etc/se-hostkeys");
+
     // new initrd with LUKS keys & config
-    let mut luks_files = find_files(&lukskeys_path, |e: &DirEntry| Ok(e.metadata()?.is_file()))?;
-    luks_files.push(PathBuf::from(crypttab_path));
-    let initrd = generate_initrd(&initrd, &luks_files, rootfs)?;
+    let new_initrd = if lukskeys_path.exists() {
+        let mut luks = find_files(&lukskeys_path, |e: &DirEntry| Ok(e.metadata()?.is_file()))?;
+        luks.push(crypttab_path);
+        Some(generate_initrd(&initrd, &luks, rootfs)?)
+    } else {
+        None
+    };
+
+    let initrd = match new_initrd {
+        Some(ref v) => v.path(),
+        _ => &initrd,
+    };
 
     // during cosa-build we override hostkey(s) with a universal one
     let hostkeys = if let Some(hostkey) = hostkey {
@@ -184,7 +193,7 @@ fn generate_sdboot(
         .arg("-i")
         .arg(kernel)
         .arg("-r")
-        .arg(initrd.path())
+        .arg(initrd)
         .arg("-p")
         .arg(cmdline.path())
         .arg("--no-verify")
