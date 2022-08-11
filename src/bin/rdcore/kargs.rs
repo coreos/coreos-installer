@@ -99,7 +99,7 @@ pub fn zipl(config: ZiplConfig) -> Result<()> {
         boot.mountpoint(),
         config.hostkey,
         config.rootfs,
-        config.kargs,
+        config.append_karg.as_ref().map(|v| v.join(" ")),
         config.secex_mode,
     )
 }

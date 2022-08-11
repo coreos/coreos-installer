@@ -145,9 +145,9 @@ pub struct ZiplConfig {
     #[clap(long, value_name = "HOSTKEY")]
     pub hostkey: Option<String>,
 
-    /// Extra kargs
-    #[clap(long, value_name = "KARGS")]
-    pub kargs: Option<String>,
+    /// Append kernel argument
+    #[clap(long, value_name = "KARG")]
+    pub append_karg: Option<Vec<String>>,
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@ Minor changes:
 - iso: Detect incomplete ISO files
 
 Internal changes:
+- rdcore: Rename `--kargs` to `--append-karg` in `zipl` subcommand and support passing it multiple times
 
 
 Packaging changes:
@@ -243,18 +244,18 @@ Major changes:
 Minor changes:
 
 - blockdev: Fix RHEL `lsblk` ordering [bug](https://bugzilla.redhat.com/show_bug.cgi?id=1916502) by using `--nodeps` option
-- blockdev: Strengthen device mapper path detection 
+- blockdev: Strengthen device mapper path detection
 
 Internal changes:
 
-- osmet: Drop support for `--real-rootdev` option 
+- osmet: Drop support for `--real-rootdev` option
 - Add `--override-options` to `rdcore kargs` to make it easier to test kernel argument changes
 - Optionally create a file if kernel arguments are modified
 - Add declarative semantics for kernel argument modification
 
 Packaging changes:
 
-- Switch from `error-chain` to `anyhow` library 
+- Switch from `error-chain` to `anyhow` library
 
 
 ## coreos-installer 0.8.0 (2021-01-12)
