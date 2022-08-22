@@ -588,7 +588,7 @@ checksum = "6db844b8efc35d17ae7929747118d9e4450a448e662437db9751e3627fe2675c"
 dependencies = [
  "bincode",
  "crc",
- "nix 0.22.3",
+ "nix 0.24.2",
  "serde",
  "thiserror",
 ]
@@ -798,9 +798,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.131"
+version = "0.2.132"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04c3b4822ccebfa39c02fc03d1534441b22ead323fa0f48bb7ddd8e6ba076a40"
+checksum = "8371e4e5341c3a96db127eb2465ac681ced4c433e01dd0e938adbef26ba93ba5"
 
 [[package]]
 name = "log"
