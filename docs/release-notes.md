@@ -9,6 +9,7 @@ nav_order: 8
 Major changes:
 
 - Support reading initrd images compressed with zstd
+- Add Fedora 38 signing key
 
 Minor changes:
 
