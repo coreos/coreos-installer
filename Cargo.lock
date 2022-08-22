@@ -588,7 +588,7 @@ checksum = "6db844b8efc35d17ae7929747118d9e4450a448e662437db9751e3627fe2675c"
 dependencies = [
  "bincode",
  "crc",
- "nix 0.22.3",
+ "nix 0.24.2",
  "serde",
  "thiserror",
 ]
@@ -1559,9 +1559,9 @@ dependencies = [
 
 [[package]]
 name = "serde_yaml"
-version = "0.9.9"
+version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f50845f68d5c693aac7d72a25415ddd21cb8182c04eafe447b73af55a05f9e1b"
+checksum = "7a09f551ccc8210268ef848f0bab37b306e87b85b2e017b899e7fb815f5aed62"
 dependencies = [
  "indexmap",
  "itoa",
