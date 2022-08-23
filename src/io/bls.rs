@@ -17,8 +17,7 @@
 use anyhow::{bail, Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::fs::{read_dir, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::read_dir;
 use std::path::{Path, PathBuf};
 
 /// Calls a function on the latest (default) BLS entry and optionally updates it if the function
@@ -58,32 +57,13 @@ pub fn visit_bls_entry(
 
     let mut changed = false;
     if let Some(path) = entries.pop() {
-        // slurp in the file
-        let mut config = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&path)
-            .with_context(|| format!("opening bootloader config {}", path.display()))?;
-        let orig_contents = {
-            let mut s = String::new();
-            config
-                .read_to_string(&mut s)
-                .with_context(|| format!("reading {}", path.display()))?;
-            s
-        };
-
+        let orig_contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("reading {}", path.display()))?;
         let r = f(&orig_contents).with_context(|| format!("visiting {}", path.display()))?;
 
         if let Some(new_contents) = r {
             // write out the modified data
-            config
-                .seek(SeekFrom::Start(0))
-                .with_context(|| format!("seeking {}", path.display()))?;
-            config
-                .set_len(0)
-                .with_context(|| format!("truncating {}", path.display()))?;
-            config
-                .write(new_contents.as_bytes())
+            std::fs::write(&path, new_contents.as_bytes())
                 .with_context(|| format!("writing {}", path.display()))?;
             changed = true;
         }
