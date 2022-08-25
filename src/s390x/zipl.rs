@@ -151,11 +151,7 @@ fn generate_sdboot(
         .context("writing zipl se cmdline")?;
 
     // during cosa-build rootfs includes ostree commit path
-    let ostree_commit = if let Some(ref rootfs) = rootfs {
-        Path::new(rootfs)
-    } else {
-        Path::new("/")
-    };
+    let ostree_commit = Path::new(rootfs.as_deref().unwrap_or("/"));
     let lukskeys_path = ostree_commit.join("etc/luks");
     let crypttab_path = ostree_commit.join("etc/crypttab");
     let hostkeys_path = ostree_commit.join("etc/se-hostkeys");
@@ -169,10 +165,7 @@ fn generate_sdboot(
         None
     };
 
-    let initrd = match new_initrd {
-        Some(ref v) => v.path(),
-        _ => &initrd,
-    };
+    let initrd = new_initrd.as_ref().map(|v| v.path()).unwrap_or(&initrd);
 
     // during cosa-build we override hostkey(s) with a universal one
     let hostkeys = if let Some(hostkey) = hostkey {
