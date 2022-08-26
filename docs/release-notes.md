@@ -20,9 +20,10 @@ Minor changes:
 - iso: Detect incomplete ISO files
 
 Internal changes:
+
 - rdcore: Rename `--kargs` to `--append-karg` in `zipl` subcommand and support passing it multiple times
 - Only open BLS configs in write mode when modifying
-- s390x: Don't fail and skip initrd update when there is no LUKS2 keys and config
+- zipl: Support Secure Execution systems without LUKS for coreos-assembler
 
 Packaging changes:
 
