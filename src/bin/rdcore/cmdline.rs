@@ -147,6 +147,7 @@ pub struct ZiplConfig {
 
     /// Append kernel argument
     #[clap(long, value_name = "KARG")]
+    #[clap(alias = "kargs")]
     pub append_karg: Option<Vec<String>>,
 }
 

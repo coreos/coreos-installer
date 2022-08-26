@@ -21,7 +21,7 @@ Minor changes:
 
 Internal changes:
 
-- rdcore: Rename `--kargs` to `--append-karg` in `zipl` subcommand and support passing it multiple times
+- zipl: Deprecate `--kargs` in favor of new `--append-karg`, which supports multiple instances
 - Only open BLS configs in write mode when modifying
 - zipl: Support Secure Execution systems without LUKS for coreos-assembler
 
