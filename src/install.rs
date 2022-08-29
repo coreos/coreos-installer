@@ -440,6 +440,7 @@ fn write_disk(
                 None,
                 None,
                 s390x::ZiplSecexMode::Disable,
+                None,
             )?;
             s390x::chreipl(device)?;
         }

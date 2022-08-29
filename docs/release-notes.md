@@ -28,6 +28,7 @@ Internal changes:
 - Only open BLS configs in write mode when modifying
 - zipl: Support Secure Execution systems without LUKS for coreos-assembler
 - zipl: Remove obsolete `--rootfs`
+- zipl: Add new `--append-file`, which supports multiple instances
 
 Packaging changes:
 

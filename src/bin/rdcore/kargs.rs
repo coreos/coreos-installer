@@ -58,6 +58,7 @@ pub fn kargs(config: KargsConfig) -> Result<()> {
                 None,
                 None,
                 s390x::ZiplSecexMode::Auto,
+                None,
             )?;
         }
     }
@@ -99,5 +100,6 @@ pub fn zipl(config: ZiplConfig) -> Result<()> {
         config.hostkey,
         config.append_karg.as_ref().map(|v| v.join(" ")),
         config.secex_mode,
+        config.append_file,
     )
 }

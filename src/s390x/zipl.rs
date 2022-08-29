@@ -122,6 +122,7 @@ fn generate_sdboot(
     boot: &Path,
     hostkey: Option<String>,
     kargs: Option<String>,
+    files: Option<Vec<String>>,
 ) -> Result<PathBuf> {
     let (kernel, initrd, mut options) = get_info_from_bls(boot)?;
 
@@ -141,17 +142,21 @@ fn generate_sdboot(
         .write_all(options.as_bytes())
         .context("writing zipl se cmdline")?;
 
+    let mut appendies = files.map_or_else(Vec::new, |v| v.iter().map(PathBuf::from).collect());
+
     let lukskeys_path = PathBuf::from("/etc/luks");
     let crypttab_path = PathBuf::from("/etc/crypttab");
-    let hostkeys_path = PathBuf::from("/etc/se-hostkeys");
+    if lukskeys_path.exists() && crypttab_path.exists() {
+        let mut keys = find_files(&lukskeys_path, |e: &DirEntry| Ok(e.metadata()?.is_file()))?;
+        appendies.append(&mut keys);
+        appendies.push(crypttab_path);
+    };
 
-    // new initrd with LUKS keys & config
-    let new_initrd = if lukskeys_path.exists() {
-        let mut luks = find_files(&lukskeys_path, |e: &DirEntry| Ok(e.metadata()?.is_file()))?;
-        luks.push(crypttab_path);
-        Some(generate_initrd(&initrd, &luks)?)
-    } else {
+    // Generate new initrd only when we append smth
+    let new_initrd = if appendies.is_empty() {
         None
+    } else {
+        Some(generate_initrd(&initrd, &appendies)?)
     };
 
     let initrd = new_initrd.as_ref().map(|v| v.path()).unwrap_or(&initrd);
@@ -160,7 +165,7 @@ fn generate_sdboot(
     let hostkeys = if let Some(hostkey) = hostkey {
         vec![PathBuf::from(hostkey)]
     } else {
-        find_files(&hostkeys_path, |e: &DirEntry| {
+        find_files("/etc/se-hostkeys", |e: &DirEntry| {
             Ok(e.file_name()
                 .to_str()
                 .map(|p| p.starts_with("ibm-z-hostkey-"))
@@ -194,6 +199,7 @@ pub fn zipl<P: AsRef<Path>>(
     hostkey: Option<String>,
     kargs: Option<String>,
     mode: ZiplSecexMode,
+    files: Option<Vec<String>>,
 ) -> Result<()> {
     let boot = boot.as_ref();
 
@@ -206,7 +212,7 @@ pub fn zipl<P: AsRef<Path>>(
     if secex {
         // Secure Execution is only supported with pre-built qemu-secex image
         let target = Mount::try_mount("/dev/disk/by-label/se", "ext4", MsFlags::empty())?;
-        let sdboot = generate_sdboot(target.mountpoint(), boot, hostkey, kargs)?;
+        let sdboot = generate_sdboot(target.mountpoint(), boot, hostkey, kargs, files)?;
 
         runcmd!(
             "zipl",
