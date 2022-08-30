@@ -137,10 +137,6 @@ pub struct ZiplConfig {
     #[clap(long, default_value = "auto")]
     pub secex_mode: s390x::ZiplSecexMode,
 
-    /// Path to rootfs
-    #[clap(long, value_name = "ROOTFS")]
-    pub rootfs: Option<String>,
-
     /// Path to hostkey
     #[clap(long, value_name = "HOSTKEY")]
     pub hostkey: Option<String>,

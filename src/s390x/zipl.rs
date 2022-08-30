@@ -60,11 +60,7 @@ fn find_files<P: AsRef<Path>>(
         .collect::<Result<Vec<_>>>()
 }
 
-fn generate_initrd<P: AsRef<Path>>(
-    source: P,
-    files: &[PathBuf],
-    rootfs: Option<String>,
-) -> Result<NamedTempFile> {
+fn generate_initrd<P: AsRef<Path>>(source: P, files: &[PathBuf]) -> Result<NamedTempFile> {
     let source = source.as_ref();
     let mut dest = Builder::new()
         .prefix("initrd")
@@ -82,13 +78,9 @@ fn generate_initrd<P: AsRef<Path>>(
     for path in files {
         let contents =
             std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-        let mut path = path
+        let path = path
             .to_str()
             .with_context(|| format!("path {} is not UTF-8", path.display()))?;
-        if let Some(ref rootfs) = rootfs {
-            // during cosa-build rootfs includes ostree commit path
-            path = path.trim_start_matches(rootfs);
-        }
         initrd.add(path, contents);
     }
 
@@ -129,7 +121,6 @@ fn generate_sdboot(
     mountpoint: &Path,
     boot: &Path,
     hostkey: Option<String>,
-    rootfs: Option<String>,
     kargs: Option<String>,
 ) -> Result<PathBuf> {
     let (kernel, initrd, mut options) = get_info_from_bls(boot)?;
@@ -150,17 +141,15 @@ fn generate_sdboot(
         .write_all(options.as_bytes())
         .context("writing zipl se cmdline")?;
 
-    // during cosa-build rootfs includes ostree commit path
-    let ostree_commit = Path::new(rootfs.as_deref().unwrap_or("/"));
-    let lukskeys_path = ostree_commit.join("etc/luks");
-    let crypttab_path = ostree_commit.join("etc/crypttab");
-    let hostkeys_path = ostree_commit.join("etc/se-hostkeys");
+    let lukskeys_path = PathBuf::from("/etc/luks");
+    let crypttab_path = PathBuf::from("/etc/crypttab");
+    let hostkeys_path = PathBuf::from("/etc/se-hostkeys");
 
     // new initrd with LUKS keys & config
     let new_initrd = if lukskeys_path.exists() {
         let mut luks = find_files(&lukskeys_path, |e: &DirEntry| Ok(e.metadata()?.is_file()))?;
         luks.push(crypttab_path);
-        Some(generate_initrd(&initrd, &luks, rootfs)?)
+        Some(generate_initrd(&initrd, &luks)?)
     } else {
         None
     };
@@ -203,7 +192,6 @@ fn generate_sdboot(
 pub fn zipl<P: AsRef<Path>>(
     boot: P,
     hostkey: Option<String>,
-    rootfs: Option<String>,
     kargs: Option<String>,
     mode: ZiplSecexMode,
 ) -> Result<()> {
@@ -218,7 +206,7 @@ pub fn zipl<P: AsRef<Path>>(
     if secex {
         // Secure Execution is only supported with pre-built qemu-secex image
         let target = Mount::try_mount("/dev/disk/by-label/se", "ext4", MsFlags::empty())?;
-        let sdboot = generate_sdboot(target.mountpoint(), boot, hostkey, rootfs, kargs)?;
+        let sdboot = generate_sdboot(target.mountpoint(), boot, hostkey, kargs)?;
 
         runcmd!(
             "zipl",
