@@ -112,7 +112,7 @@ pub fn visit_bls_entry_options(
     })
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Eq)]
 pub struct KargsEditor {
     append: Vec<String>,
     append_if_missing: Vec<String>,

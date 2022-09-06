@@ -54,7 +54,7 @@ const ADVANCED: &str = "ADVANCED OPTIONS";
 //   files.
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Debug, Default, Parser, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Parser, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 #[clap(args_override_self = true)]
 pub struct InstallConfig {
