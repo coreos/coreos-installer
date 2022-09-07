@@ -27,21 +27,29 @@ ifneq ($(RDCORE),1)
 endif
 
 .PHONY: docs
-docs: all
+docs: all data/example-config.yaml
 	PROFILE=$(PROFILE) docs/_cmd.sh
 	PROFILE=$(PROFILE) docs/_config-file.sh
 	target/${PROFILE}/coreos-installer pack man -C man
+
+data/example-config.yaml: target/$(PROFILE)/coreos-installer Makefile
+	echo -e "# Sample installer config file\n# Automatically generated; do not edit\n" > $@
+	$< pack example-config >> $@
 
 .PHONY: clean
 clean:
 	cargo clean
 
 .PHONY: install
-install: install-bin install-man install-scripts install-systemd install-dracut
+install: install-bin install-data install-man install-scripts install-systemd install-dracut
 
 .PHONY: install-bin
 install-bin:
 	install -D -t ${DESTDIR}/usr/bin target/${PROFILE}/coreos-installer
+
+.PHONY: install-data
+install-data:
+	install -D -m 644 -t ${DESTDIR}/usr/share/coreos-installer data/example-config.yaml
 
 .PHONY: install-man
 install-man:

@@ -245,7 +245,7 @@ jobs:
         run: |
           rm man/*.8
           make docs
-          if [ -n "$(git status --porcelain docs man)" ]; then
+          if [ -n "$(git status --porcelain data docs man)" ]; then
             echo "Found local changes after regenerating docs:"
             git --no-pager diff --color=always docs man
             echo "Rerun 'make docs'."
