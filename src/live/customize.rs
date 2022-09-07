@@ -36,7 +36,7 @@ const COREOS_ISO_FEATURES_PATH: &str = "COREOS/FEATURES.JSO";
 /// and /coreos/features.json in the live ISO.  Written by
 /// cosa buildextend-live.
 #[derive(Default, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(default, rename_all = "kebab-case")]
 pub(super) struct OsFeatures {
     /// Installer reads config files from /etc/coreos/installer.d
     pub installer_config: bool,
