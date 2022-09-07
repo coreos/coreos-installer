@@ -29,6 +29,7 @@ endif
 .PHONY: docs
 docs: all
 	PROFILE=$(PROFILE) docs/_cmd.sh
+	PROFILE=$(PROFILE) docs/_config-file.sh
 	target/${PROFILE}/coreos-installer pack man -C man
 
 .PHONY: clean

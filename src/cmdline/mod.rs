@@ -169,6 +169,9 @@ pub enum PackCmd {
     /// Generate man pages for coreos-installer
     #[cfg(feature = "docgen")]
     Man(PackManConfig),
+    /// Generate example config file for install subcommand
+    #[cfg(feature = "docgen")]
+    ExampleConfig(PackExampleConfigConfig),
 }
 
 #[derive(Debug, Parser)]
@@ -699,6 +702,10 @@ pub struct PackManConfig {
     #[clap(short = 'C', long, value_name = "path", default_value = ".")]
     pub directory: String,
 }
+
+#[cfg(feature = "docgen")]
+#[derive(Debug, Parser)]
+pub struct PackExampleConfigConfig {}
 
 #[cfg(test)]
 mod test {
