@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Support for generating man pages.
+//! Support for generating docs.
 
 use anyhow::{Context, Result};
 use clap::{crate_version, Command, CommandFactory};
@@ -25,10 +25,10 @@ use crate::io::BUFFER_SIZE;
 use super::{Cmd, PackManConfig};
 
 pub fn pack_man(config: PackManConfig) -> Result<()> {
-    pack_one(&config, Cmd::command())
+    pack_one_man(&config, Cmd::command())
 }
 
-fn pack_one(config: &PackManConfig, cmd: Command) -> Result<()> {
+fn pack_one_man(config: &PackManConfig, cmd: Command) -> Result<()> {
     let name = cmd.get_name();
     let path = Path::new(&config.directory).join(format!("{}.8", name));
     println!("Generating {}...", path.display());
@@ -51,7 +51,7 @@ fn pack_one(config: &PackManConfig, cmd: Command) -> Result<()> {
 
     for subcmd in cmd.get_subcommands().filter(|c| !c.is_hide_set()) {
         let subname = format!("{}-{}", name, subcmd.get_name());
-        pack_one(
+        pack_one_man(
             config,
             subcmd.clone().name(subname).version(crate_version!()),
         )?;

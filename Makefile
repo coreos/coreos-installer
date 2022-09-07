@@ -7,7 +7,7 @@ ifeq ($(RELEASE),1)
 	STRIP_RDCORE ?= 0
 else
 	PROFILE ?= debug
-	CARGO_ARGS = --features mangen
+	CARGO_ARGS = --features docgen
 	# In debug mode (most often used by devs/CI), we default to stripping
 	# `rdcore` because it's otherwise huge and in kola's default 1G VMs can
 	# cause ENOSPC. In release mode (most often used by Koji/Brew), we don't do

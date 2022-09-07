@@ -18,15 +18,15 @@
 use clap::{AppSettings, Parser};
 use reqwest::Url;
 
+#[cfg(feature = "docgen")]
+mod doc;
 mod install;
-#[cfg(feature = "mangen")]
-mod man;
 mod serializer;
 mod types;
 
+#[cfg(feature = "docgen")]
+pub use self::doc::*;
 pub use self::install::InstallConfig;
-#[cfg(feature = "mangen")]
-pub use self::man::*;
 pub use self::types::*;
 
 // Args are listed in --help in the order declared in these structs/enums.
@@ -167,7 +167,7 @@ pub enum PackCmd {
     /// Pack a minimal ISO into a CoreOS live ISO image
     MinimalIso(PackMinimalIsoConfig),
     /// Generate man pages for coreos-installer
-    #[cfg(feature = "mangen")]
+    #[cfg(feature = "docgen")]
     Man(PackManConfig),
 }
 
@@ -692,7 +692,7 @@ pub struct DevExtractInitrdConfig {
     pub filter: Vec<String>,
 }
 
-#[cfg(feature = "mangen")]
+#[cfg(feature = "docgen")]
 #[derive(Debug, Parser)]
 pub struct PackManConfig {
     /// Output directory
