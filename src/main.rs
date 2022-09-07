@@ -64,8 +64,10 @@ fn main() -> Result<()> {
         Cmd::Pack(c) => match c {
             PackCmd::Osmet(c) => osmet::pack_osmet(c),
             PackCmd::MinimalIso(c) => live::pack_minimal_iso(c),
-            #[cfg(feature = "mangen")]
+            #[cfg(feature = "docgen")]
             PackCmd::Man(c) => cmdline::pack_man(c),
+            #[cfg(feature = "docgen")]
+            PackCmd::ExampleConfig(c) => cmdline::pack_example_config(c),
         },
         Cmd::Dev(c) => match c {
             DevCmd::Show(c) => match c {

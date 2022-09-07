@@ -112,6 +112,7 @@ is parsed in order, and other command-line arguments are parsed afterward.
 
 All parameters are optional.
 
+<!-- begin example config -->
 ```yaml
 # Fedora CoreOS stream
 stream: name
@@ -125,12 +126,14 @@ ignition-file: path
 ignition-url: URL
 # Digest (type-value) of the Ignition config
 ignition-hash: digest
+# Target CPU architecture
+architecture: name
 # Override the Ignition platform ID
 platform: name
 # Append default kernel arguments
-append-karg: [arg1, arg2]
+append-karg: [arg, arg]
 # Delete default kernel arguments
-delete-karg: [arg1, arg2]
+delete-karg: [arg, arg]
 # Copy network config from install environment
 copy-network: true
 # Source directory for copy-network
@@ -145,10 +148,8 @@ offline: true
 insecure: true
 # Allow Ignition URL without HTTPS or hash
 insecure-ignition: true
-# Base URL for Fedora CoreOS stream metadata
+# Base URL for CoreOS stream metadata
 stream-base-url: URL
-# Target CPU architecture
-architecture: name
 # Don't clear partition table on error
 preserve-on-error: true
 # Fetch retries, or string "infinite"
@@ -156,6 +157,7 @@ fetch-retries: N
 # Destination device
 dest-device: path
 ```
+<!-- end example config -->
 
 ### Example manual customization via `installer.d`
 

@@ -1,0 +1,45 @@
+# Sample installer config file
+# Automatically generated; do not edit
+
+# Fedora CoreOS stream
+stream: name
+# Manually specify the image URL
+image-url: URL
+# Manually specify a local image file
+image-file: path
+# Embed an Ignition config from a file
+ignition-file: path
+# Embed an Ignition config from a URL
+ignition-url: URL
+# Digest (type-value) of the Ignition config
+ignition-hash: digest
+# Target CPU architecture
+architecture: name
+# Override the Ignition platform ID
+platform: name
+# Append default kernel arguments
+append-karg: [arg, arg]
+# Delete default kernel arguments
+delete-karg: [arg, arg]
+# Copy network config from install environment
+copy-network: true
+# Source directory for copy-network
+network-dir: path
+# Save partitions with this label glob
+save-partlabel: [glob, glob]
+# Save partitions with this number or range
+save-partindex: [id-or-range, id-or-range]
+# Force offline installation
+offline: true
+# Skip signature verification
+insecure: true
+# Allow Ignition URL without HTTPS or hash
+insecure-ignition: true
+# Base URL for CoreOS stream metadata
+stream-base-url: URL
+# Don't clear partition table on error
+preserve-on-error: true
+# Fetch retries, or string "infinite"
+fetch-retries: N
+# Destination device
+dest-device: path
