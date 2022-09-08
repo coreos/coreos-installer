@@ -4,7 +4,7 @@
 .SH NAME
 coreos\-installer\-iso\-customize \- Customize a CoreOS live ISO image
 .SH SYNOPSIS
-\fBcoreos\-installer\-iso\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] [\fB\-\-live\-karg\-append\fR] [\fB\-\-live\-karg\-delete\fR] [\fB\-\-live\-karg\-replace\fR] [\fB\-f\fR|\fB\-\-force\fR] [\fB\-o\fR|\fB\-\-output\fR] <\fIISO\fR> 
+\fBcoreos\-installer\-iso\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-console\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] [\fB\-\-live\-karg\-append\fR] [\fB\-\-live\-karg\-delete\fR] [\fB\-\-live\-karg\-replace\fR] [\fB\-f\fR|\fB\-\-force\fR] [\fB\-o\fR|\fB\-\-output\fR] <\fIISO\fR> 
 .SH DESCRIPTION
 Customize a CoreOS live ISO image
 .SH OPTIONS
@@ -24,6 +24,11 @@ Automatically run installer and merge the specified Ignition config into the con
 Install destination device
 
 Automatically run installer, installing to the specified destination device.  The resulting boot media will overwrite the destination device without confirmation.
+.TP
+\fB\-\-dest\-console\fR=\fIspec\fR
+Kernel and bootloader console for dest
+
+Automatically run installer, configuring the specified kernel and bootloader console for the destination system.  The argument uses the same syntax as the parameter to the "console=" kernel argument.
 .TP
 \fB\-\-dest\-karg\-append\fR=\fIarg\fR
 Destination kernel argument to append

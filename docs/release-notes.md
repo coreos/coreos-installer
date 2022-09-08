@@ -9,6 +9,7 @@ nav_order: 8
 Major changes:
 
 - install: Add `--console` for configuring kernel and bootloader console
+- customize: Add `--dest-console` for configuring kernel and bootloader console
 - Support reading initrd images compressed with zstd
 - Add Fedora 38 signing key; drop Fedora 35 signing key
 
