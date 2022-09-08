@@ -18,12 +18,14 @@
 use clap::{AppSettings, Parser};
 use reqwest::Url;
 
+mod console;
 #[cfg(feature = "docgen")]
 mod doc;
 mod install;
 mod serializer;
 mod types;
 
+pub use self::console::*;
 #[cfg(feature = "docgen")]
 pub use self::doc::*;
 pub use self::install::InstallConfig;

@@ -394,6 +394,7 @@ fn write_disk(
         || !config.append_karg.is_empty()
         || !config.delete_karg.is_empty()
         || config.platform.is_some()
+        || !config.console.is_empty()
         || network_config.is_some()
         || cfg!(target_arch = "s390x")
     {
@@ -404,7 +405,14 @@ fn write_disk(
         }
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
-            write_console(mount.mountpoint(), platform).context("configuring console")?;
+        }
+        if config.platform.is_some() || !config.console.is_empty() {
+            write_console(
+                mount.mountpoint(),
+                config.platform.as_deref(),
+                &config.console,
+            )
+            .context("configuring console")?;
         }
         if let Some(firstboot_args) = config.firstboot_args.as_ref() {
             write_firstboot_kargs(mount.mountpoint(), firstboot_args)
@@ -558,42 +566,64 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 }
 
 /// Configure console kernel arguments and GRUB commands.
-fn write_console(mountpoint: &Path, platform: &str) -> Result<()> {
-    // anything to do?
-    if platform == "metal" {
-        return Ok(());
-    }
-
+fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]) -> Result<()> {
     // read platforms table
-    let (spec, metal_spec) = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
-        Ok(json) => {
-            let mut table: HashMap<String, PlatformSpec> =
-                serde_json::from_str(&json).context("parsing platform table")?;
-            // no spec for this platform, or for metal?
-            (
-                table.remove(platform).unwrap_or_default(),
-                table.remove("metal").unwrap_or_default(),
-            )
-        }
+    let platforms = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
+        Ok(json) => serde_json::from_str::<HashMap<String, PlatformSpec>>(&json)
+            .context("parsing platform table")?,
         // no table for this image?
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
         Err(e) => return Err(e).context("reading platform table"),
     };
 
+    let mut kargs = Vec::new();
+    let mut grub_commands = Vec::new();
+    if !consoles.is_empty() {
+        // custom console settings completely override platform-specific
+        // defaults
+        let mut grub_terminals = Vec::new();
+        for console in consoles {
+            kargs.push(console.karg());
+            if let Some(cmd) = console.grub_command() {
+                grub_commands.push(cmd);
+            }
+            grub_terminals.push(console.grub_terminal());
+        }
+        grub_terminals.sort_unstable();
+        grub_terminals.dedup();
+        for direction in ["input", "output"] {
+            grub_commands.push(format!("terminal_{direction} {}", grub_terminals.join(" ")));
+        }
+    } else if let Some(platform) = platform {
+        // platform-specific defaults
+        if platform == "metal" {
+            // we're just being asked to apply the defaults which are already
+            // applied
+            return Ok(());
+        }
+        let spec = platforms.get(platform).cloned().unwrap_or_default();
+        kargs.extend(spec.kernel_arguments);
+        grub_commands.extend(spec.grub_commands);
+    } else {
+        // nothing to do and the caller shouldn't have called us
+        unreachable!();
+    }
+
     // set kargs, removing any metal-specific ones
+    let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
         KargsEditor::new()
-            .append(&spec.kernel_arguments)
+            .append(&kargs)
             .delete(&metal_spec.kernel_arguments)
             .maybe_apply_to(orig_options)
             .context("setting platform kernel arguments")
     })?;
 
     // set grub commands
-    if spec.grub_commands != metal_spec.grub_commands {
+    if grub_commands != metal_spec.grub_commands {
         let path = mountpoint.join("grub2/grub.cfg");
         let grub_cfg = fs::read_to_string(&path).context("reading grub.cfg")?;
-        let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &spec.grub_commands)
+        let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &grub_commands)
             .context("updating grub.cfg")?;
         fs::write(&path, new_grub_cfg).context("writing grub.cfg")?;
     }

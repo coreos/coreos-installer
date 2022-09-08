@@ -69,6 +69,12 @@ OPTIONS:
             Install a system that will run on the specified cloud or virtualization platform,
             such as "vmware".
 
+        --console <spec>
+            Kernel and bootloader console
+
+            Set the kernel and bootloader console, using the same syntax as the parameter to
+            the "console=" kernel argument.
+
         --append-karg <arg>
             Append default kernel arg
 

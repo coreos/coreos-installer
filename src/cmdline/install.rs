@@ -25,6 +25,7 @@ use std::fs::OpenOptions;
 
 use crate::io::IgnitionHash;
 
+use super::console::Console;
 use super::serializer;
 use super::types::*;
 use super::Cmd;
@@ -123,6 +124,13 @@ pub struct InstallConfig {
     /// virtualization platform, such as "vmware".
     #[clap(short, long, value_name = "name")]
     pub platform: Option<String>,
+    /// Kernel and bootloader console
+    ///
+    /// Set the kernel and bootloader console, using the same syntax as the
+    /// parameter to the "console=" kernel argument.
+    #[serde(skip_serializing_if = "is_default")]
+    #[clap(long, value_name = "spec")]
+    pub console: Vec<Console>,
     /// Additional kernel args for the first boot
     // This used to be for configuring networking from the cmdline, but it has
     // been obsoleted by the nicer `--copy-network` approach. We still need it
@@ -305,6 +313,10 @@ mod test {
             ),
             architecture: DefaultedString::<Architecture>::from_str("h").unwrap(),
             platform: Some("i".into()),
+            console: vec![
+                Console::from_str("ttyS0").unwrap(),
+                Console::from_str("ttyS1,115200n8").unwrap(),
+            ],
             // skipped
             firstboot_args: Some("j".into()),
             append_karg: vec!["k".into(), "l".into()],
@@ -338,6 +350,11 @@ mod test {
             "h",
             "--platform",
             "i",
+            "--console",
+            // we round-trip to an equivalent but not identical value
+            "ttyS0,9600n8",
+            "--console",
+            "ttyS1,115200n8",
             "--append-karg",
             "k",
             "--append-karg",
@@ -382,6 +399,7 @@ ignition-url: http://example.com/g
 ignition-hash: sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 architecture: h
 platform: i
+console: [ttyS0, "ttyS1,115200n8"]
 append-karg: [k, l]
 delete-karg: [m, n]
 copy-network: true
@@ -418,6 +436,10 @@ dest-device: u
             ),
             architecture: DefaultedString::<Architecture>::from_str("h").unwrap(),
             platform: Some("i".into()),
+            console: vec![
+                Console::from_str("ttyS0").unwrap(),
+                Console::from_str("ttyS1,115200n8").unwrap(),
+            ],
             // skipped
             firstboot_args: None,
             append_karg: vec!["k".into(), "l".into()],

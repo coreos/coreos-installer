@@ -130,6 +130,8 @@ ignition-hash: digest
 architecture: name
 # Override the Ignition platform ID
 platform: name
+# Kernel and bootloader console
+console: [spec, spec]
 # Append default kernel arguments
 append-karg: [arg, arg]
 # Delete default kernel arguments
