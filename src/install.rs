@@ -404,6 +404,7 @@ fn write_disk(
         }
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
+            write_console(mount.mountpoint(), platform).context("configuring console")?;
         }
         if let Some(firstboot_args) = config.firstboot_args.as_ref() {
             write_firstboot_kargs(mount.mountpoint(), firstboot_args)
@@ -532,8 +533,7 @@ struct PlatformSpec {
     kernel_arguments: Vec<String>,
 }
 
-/// Override the platform ID.  Add any kernel arguments and grub.cfg
-/// directives specified for this platform in platforms.json.
+/// Override the platform ID.
 fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     // early return if setting the platform to the default value, since
     // otherwise we'll think we failed to set it
@@ -542,19 +542,27 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     }
     eprintln!("Setting platform to {}", platform);
 
-    // Early check that we can find the expected platform ID.  We assume
-    // that we will only install from metal images and that the bootloader
-    // configs will always set ignition.platform.id.
+    // We assume that we will only install from metal images and that the
+    // bootloader configs will always set ignition.platform.id.
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
         let new_options = KargsEditor::new()
             .replace(&[format!("ignition.platform.id=metal={}", platform)])
             .apply_to(orig_options)
-            .context("searching for platform ID")?;
+            .context("setting platform ID argument")?;
         if orig_options == new_options {
             bail!("couldn't locate platform ID");
         }
-        Ok(None)
+        Ok(Some(new_options))
     })?;
+    Ok(())
+}
+
+/// Configure console kernel arguments and GRUB commands.
+fn write_console(mountpoint: &Path, platform: &str) -> Result<()> {
+    // anything to do?
+    if platform == "metal" {
+        return Ok(());
+    }
 
     // read platforms table
     let (spec, metal_spec) = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
@@ -575,7 +583,6 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     // set kargs, removing any metal-specific ones
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
         KargsEditor::new()
-            .replace(&[format!("ignition.platform.id=metal={}", platform)])
             .append(&spec.kernel_arguments)
             .delete(&metal_spec.kernel_arguments)
             .maybe_apply_to(orig_options)
