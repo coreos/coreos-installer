@@ -11,6 +11,7 @@ fixtures=(
     embed-areas-2021-09.iso.xz
     embed-areas-2021-12.iso.xz
     embed-areas-2022-02.iso.xz
+    embed-areas-2022-09.iso.xz
 )
 
 msg() {
