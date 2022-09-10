@@ -235,6 +235,7 @@ dependencies = [
  "serde_with",
  "serde_yaml",
  "tempfile",
+ "textwrap",
  "thiserror",
  "url",
  "uuid 1.1.2",

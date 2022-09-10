@@ -421,6 +421,7 @@ fn write_disk(
         if !config.append_karg.is_empty() || !config.delete_karg.is_empty() {
             eprintln!("Modifying kernel arguments");
 
+            Console::maybe_warn_on_kargs(&config.append_karg, "--append-karg", "--console");
             visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
                 KargsEditor::new()
                     .append(config.append_karg.as_slice())

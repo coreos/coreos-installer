@@ -108,6 +108,11 @@ impl LiveInitrd {
         for arg in &common.dest_console {
             conf.dest_console(arg)?;
         }
+        Console::maybe_warn_on_kargs(
+            &common.dest_karg_append,
+            "--dest-karg-append",
+            "--dest-console",
+        );
         for arg in &common.dest_karg_append {
             conf.dest_karg_append(arg);
         }

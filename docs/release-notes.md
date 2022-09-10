@@ -20,6 +20,7 @@ Minor changes:
 - Fix unlikely decompression error reading initrd
 - Add release notes to documentation
 - iso: Detect incomplete ISO files
+- Warn if console kargs could have used `--console`/`--dest-console` instead
 
 Internal changes:
 
@@ -30,7 +31,8 @@ Internal changes:
 Packaging changes:
 
 - Require Rust ≥ 1.58.0
-- Add dependency on `zstd` crate and `libzstd` shared library
+- Add dependencies on `textwrap` and `zstd` crates
+- Add dependency on `libzstd` shared library
 - Support `serde_yaml` 0.9
 - Remove non-Linux dependencies from vendor archive
 - Install example installer config file in `/usr/share/coreos-installer`

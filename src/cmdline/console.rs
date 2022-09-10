@@ -94,6 +94,55 @@ impl Console {
     pub fn karg(&self) -> String {
         format!("{KARG_PREFIX}{}", self)
     }
+
+    /// Write a warning message to stdout if kargs contains "console="
+    /// arguments we can parse and no "console=" arguments we can't.  The
+    /// warning suggests that users use console_option instead of
+    /// karg_option to specify the desired console.
+    pub fn maybe_warn_on_kargs(kargs: &[String], karg_option: &str, console_option: &str) {
+        use textwrap::{fill, Options, WordSplitter};
+        if let Some(args) = Self::maybe_console_args_from_kargs(kargs) {
+            // automatically wrap the message, but use Unicode non-breaking
+            // spaces to avoid wrapping in the middle of the argument
+            // strings, and then replace the non-breaking spaces afterward
+            const NBSP: &str = "\u{a0}";
+            let msg = format!(
+                "Note: consider using \"{}\" instead of \"{}\" to configure both kernel and bootloader consoles.",
+                args.iter()
+                    .map(|a| format!("{console_option}{NBSP}{a}"))
+                    .collect::<Vec<String>>()
+                    .join(NBSP),
+                args.iter()
+                    .map(|a| format!("{karg_option}{NBSP}console={a}"))
+                    .collect::<Vec<String>>()
+                    .join(NBSP),
+            );
+            let wrapped = fill(
+                &msg,
+                Options::new(80)
+                    .break_words(false)
+                    .word_splitter(WordSplitter::NoHyphenation),
+            )
+            .replace(NBSP, " ");
+            eprintln!("\n{}\n", wrapped);
+        }
+    }
+
+    /// If kargs contains at least one console argument and all console
+    /// arguments are parseable as consoles, return a vector of verbatim
+    /// (unparsed) console arguments with the console= prefixes removed.
+    fn maybe_console_args_from_kargs(kargs: &[String]) -> Option<Vec<&str>> {
+        let (parseable, unparseable): (Vec<&str>, Vec<&str>) = kargs
+            .iter()
+            .filter(|a| a.starts_with(KARG_PREFIX))
+            .map(|a| &a[KARG_PREFIX.len()..])
+            .partition(|a| Console::from_str(a).is_ok());
+        if !parseable.is_empty() && unparseable.is_empty() {
+            Some(parseable)
+        } else {
+            None
+        }
+    }
 }
 
 impl FromStr for Console {
@@ -256,5 +305,43 @@ mod tests {
         for input in cases {
             Console::from_str(input).unwrap_err();
         }
+    }
+
+    #[test]
+    fn maybe_console_args_from_kargs() {
+        assert_eq!(
+            Console::maybe_console_args_from_kargs(&[
+                "foo".into(),
+                "console=ttyS0".into(),
+                "bar".into()
+            ]),
+            Some(vec!["ttyS0"])
+        );
+        assert_eq!(
+            Console::maybe_console_args_from_kargs(&[
+                "foo".into(),
+                "console=ttyS0".into(),
+                "console=tty0".into(),
+                "console=tty0".into(),
+                "console=ttyAMA1,115200n8".into(),
+                "bar".into()
+            ]),
+            Some(vec!["ttyS0", "tty0", "tty0", "ttyAMA1,115200n8"])
+        );
+        assert_eq!(
+            Console::maybe_console_args_from_kargs(&[
+                "foo".into(),
+                "console=ttyS0".into(),
+                "console=ttyS1z".into(),
+                "console=tty0".into(),
+                "bar".into()
+            ]),
+            None
+        );
+        assert_eq!(
+            Console::maybe_console_args_from_kargs(&["foo".into(), "bar".into()]),
+            None
+        );
+        assert_eq!(Console::maybe_console_args_from_kargs(&[]), None);
     }
 }
