@@ -25,3 +25,10 @@ embed-areas-2022-02.iso.xz
     kargs.json pointing to kargs areas and embedding defaults
     miniso.dat version 1
     features.json: installer-config, live-initrd-network
+
+embed-areas-2022-09.iso.xz
+    kargs.json pointing to kargs areas and embedding defaults
+    miniso.dat version 1
+    features.json: installer-config, installer-config-directives,
+        live-initrd-network
+    installer-config-directives from 0.16.0

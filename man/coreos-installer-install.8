@@ -4,7 +4,7 @@
 .SH NAME
 coreos\-installer\-install \- Install Fedora CoreOS or RHEL CoreOS
 .SH SYNOPSIS
-\fBcoreos\-installer\-install\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-f\fR|\fB\-\-image\-file\fR] [\fB\-i\fR|\fB\-\-ignition\-file\fR] [\fB\-I\fR|\fB\-\-ignition\-url\fR] [\fB\-\-ignition\-hash\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-\-append\-karg\fR] [\fB\-\-delete\-karg\fR] [\fB\-n\fR|\fB\-\-copy\-network\fR] [\fB\-\-network\-dir\fR] [\fB\-\-save\-partlabel\fR] [\fB\-\-save\-partindex\fR] [\fB\-\-offline\fR] [\fB\-\-insecure\fR] [\fB\-\-insecure\-ignition\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-preserve\-on\-error\fR] [\fB\-\-fetch\-retries\fR] [\fIDEST_DEVICE\fR] 
+\fBcoreos\-installer\-install\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-f\fR|\fB\-\-image\-file\fR] [\fB\-i\fR|\fB\-\-ignition\-file\fR] [\fB\-I\fR|\fB\-\-ignition\-url\fR] [\fB\-\-ignition\-hash\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-\-console\fR] [\fB\-\-append\-karg\fR] [\fB\-\-delete\-karg\fR] [\fB\-n\fR|\fB\-\-copy\-network\fR] [\fB\-\-network\-dir\fR] [\fB\-\-save\-partlabel\fR] [\fB\-\-save\-partindex\fR] [\fB\-\-offline\fR] [\fB\-\-insecure\fR] [\fB\-\-insecure\-ignition\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-preserve\-on\-error\fR] [\fB\-\-fetch\-retries\fR] [\fIDEST_DEVICE\fR] 
 .SH DESCRIPTION
 Install Fedora CoreOS or RHEL CoreOS
 .SH OPTIONS
@@ -55,6 +55,11 @@ Create an install disk for a different CPU architecture than the host.
 Override the Ignition platform ID
 
 Install a system that will run on the specified cloud or virtualization platform, such as "vmware".
+.TP
+\fB\-\-console\fR=\fIspec\fR
+Kernel and bootloader console
+
+Set the kernel and bootloader console, using the same syntax as the parameter to the "console=" kernel argument.
 .TP
 \fB\-\-append\-karg\fR=\fIarg\fR
 Append default kernel arg

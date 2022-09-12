@@ -36,12 +36,20 @@ const COREOS_ISO_FEATURES_PATH: &str = "COREOS/FEATURES.JSO";
 /// and /coreos/features.json in the live ISO.  Written by
 /// cosa buildextend-live.
 #[derive(Default, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(default, rename_all = "kebab-case")]
 pub(super) struct OsFeatures {
     /// Installer reads config files from /etc/coreos/installer.d
     pub installer_config: bool,
+    /// Directives supported in installer config files
+    pub installer_config_directives: InstallerDirectives,
     /// Live initrd reads NM keyfiles from /etc/coreos-firstboot-network
     pub live_initrd_network: bool,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub(super) struct InstallerDirectives {
+    pub console: bool,
 }
 
 impl OsFeatures {
@@ -97,6 +105,14 @@ impl LiveInitrd {
         if let Some(path) = &common.dest_device {
             conf.dest_device(path)?;
         }
+        for arg in &common.dest_console {
+            conf.dest_console(arg)?;
+        }
+        Console::maybe_warn_on_kargs(
+            &common.dest_karg_append,
+            "--dest-karg-append",
+            "--dest-console",
+        );
         for arg in &common.dest_karg_append {
             conf.dest_karg_append(arg);
         }
@@ -143,6 +159,17 @@ impl LiveInitrd {
         self.installer
             .get_or_insert_with(Default::default)
             .dest_device = Some(device.into());
+        Ok(())
+    }
+
+    pub fn dest_console(&mut self, console: &Console) -> Result<()> {
+        if !self.features.installer_config_directives.console {
+            bail!("This OS image does not support customizing the destination console.");
+        }
+        self.installer
+            .get_or_insert_with(Default::default)
+            .console
+            .push(console.clone());
         Ok(())
     }
 

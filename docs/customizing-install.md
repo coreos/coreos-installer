@@ -62,6 +62,18 @@ Available customizations include:
   for Ignition to fetch remote resources.
 - Specifying HTTPS certificate authorities to be trusted by Ignition, in
   both the installed system and the live environment (`--ignition-ca`).
+- Specifying consoles to be used by the installed system (`--dest-console`),
+  using the syntax of the `console`
+  [kernel argument](https://www.kernel.org/doc/html/latest/admin-guide/serial-console.html).
+  Consoles are configured for both the bootloader (GRUB) and the booted OS
+  (kernel).  Consoles are subject to the Linux kernel rules: the first
+  specified console of each type is used, and the last specified console
+  is the primary console.
+  Supported graphical consoles are `tty0`, `hvc0`, and `ttysclp0`.
+  Supported serial consoles are `ttyS<n>` and `ttyAMA<n>`, with optional
+  baud rate, parity, and number of data bits.
+  Examples: `--console tty0`, `--console ttyAMA0,115200`,
+  `--console ttyS1,115200n8`.
 - Modifying kernel arguments of the installed system (`--dest-karg-append`,
   `--dest-karg-delete`) or the live ISO environment (`--live-karg-append`,
   `--live-karg-replace`, `--live-karg-delete`).  These options are useful if
@@ -130,6 +142,8 @@ ignition-hash: digest
 architecture: name
 # Override the Ignition platform ID
 platform: name
+# Kernel and bootloader console
+console: [spec, spec]
 # Append default kernel arguments
 append-karg: [arg, arg]
 # Delete default kernel arguments

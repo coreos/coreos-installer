@@ -4,7 +4,7 @@
 .SH NAME
 coreos\-installer\-pxe\-customize \- Create a custom live PXE boot config
 .SH SYNOPSIS
-\fBcoreos\-installer\-pxe\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] <\fB\-o\fR|\fB\-\-output\fR> <\fIpath\fR> 
+\fBcoreos\-installer\-pxe\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-console\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] <\fB\-o\fR|\fB\-\-output\fR> <\fIpath\fR> 
 .SH DESCRIPTION
 Create a custom live PXE boot config
 .SH OPTIONS
@@ -24,6 +24,11 @@ Automatically run installer and merge the specified Ignition config into the con
 Install destination device
 
 Automatically run installer, installing to the specified destination device.  The resulting boot media will overwrite the destination device without confirmation.
+.TP
+\fB\-\-dest\-console\fR=\fIspec\fR
+Kernel and bootloader console for dest
+
+Automatically run installer, configuring the specified kernel and bootloader console for the destination system.  The argument uses the same syntax as the parameter to the "console=" kernel argument.
 .TP
 \fB\-\-dest\-karg\-append\fR=\fIarg\fR
 Destination kernel argument to append

@@ -34,6 +34,13 @@ OPTIONS:
             Automatically run installer, installing to the specified destination device.  The
             resulting boot media will overwrite the destination device without confirmation.
 
+        --dest-console <spec>
+            Kernel and bootloader console for dest
+
+            Automatically run installer, configuring the specified kernel and bootloader
+            console for the destination system.  The argument uses the same syntax as the
+            parameter to the "console=" kernel argument.
+
         --dest-karg-append <arg>
             Destination kernel argument to append
 

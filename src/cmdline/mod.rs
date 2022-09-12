@@ -18,12 +18,14 @@
 use clap::{AppSettings, Parser};
 use reqwest::Url;
 
+mod console;
 #[cfg(feature = "docgen")]
 mod doc;
 mod install;
 mod serializer;
 mod types;
 
+pub use self::console::*;
 #[cfg(feature = "docgen")]
 pub use self::doc::*;
 pub use self::install::InstallConfig;
@@ -263,6 +265,13 @@ pub struct CommonCustomizeConfig {
     /// device without confirmation.
     #[clap(long, value_name = "path")]
     pub dest_device: Option<String>,
+    /// Kernel and bootloader console for dest
+    ///
+    /// Automatically run installer, configuring the specified kernel and
+    /// bootloader console for the destination system.  The argument uses
+    /// the same syntax as the parameter to the "console=" kernel argument.
+    #[clap(long, value_name = "spec")]
+    pub dest_console: Vec<Console>,
     /// Destination kernel argument to append
     ///
     /// Automatically run installer, adding the specified kernel argument

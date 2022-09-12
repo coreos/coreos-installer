@@ -31,12 +31,17 @@ grepq() {
 
 # kargs we need on every boot
 kargs_common=(
-    # make sure we get log output
-    console=ttyS0,115200
-    # make sure it's readable
+    # make sure log output is readable
     systemd.log_color=0
     # force NM in initrd
     rd.neednet=1
+)
+
+# kargs we need on live boots
+kargs_live=(
+    # make sure we get log output
+    # the installed system sets this with --dest-console instead
+    console=ttyS0,115200
 )
 
 # options that don't initiate an install, even if they pertain to one
@@ -75,6 +80,8 @@ opts_install=(
     # Tested implicitly
     --dest-device "/dev/vda"
     # Condition of @applied-dest-ign@
+    --dest-console "ttyS0,115200"
+    # Condition of @applied-dest-ign@
     --dest-karg-append dest-karg
     # Condition of @applied-dest-ign@
     --dest-karg-delete ignition.platform.id=metal
@@ -86,7 +93,7 @@ for arg in ${kargs_common[@]}; do
 done
 
 opts_iso=()
-for arg in ${kargs_common[@]}; do
+for arg in ${kargs_common[@]} ${kargs_live[@]}; do
     opts_iso+=(--live-karg-append "${arg}")
 done
 
@@ -123,7 +130,7 @@ qemu_iso() {
 qemu_pxe() {
     cat > ipxe <<EOF
 #!ipxe
-kernel tftp://10.0.2.2/src-kernel ignition.firstboot ignition.platform.id=qemu ${kargs_common[*]}
+kernel tftp://10.0.2.2/src-kernel ignition.firstboot ignition.platform.id=qemu ${kargs_common[*]} ${kargs_live[*]}
 initrd tftp://10.0.2.2/initrd
 initrd tftp://10.0.2.2/src-rootfs
 boot
@@ -322,7 +329,10 @@ check_dest
 
 # User config passed directly to installer without wrapping
 echo "=== ISO with one dest config ==="
-iso_customize --dest-ignition "${fixtures}/dest-2.ign" --dest-device /dev/vda
+iso_customize \
+    --dest-ignition "${fixtures}/dest-2.ign" \
+    --dest-karg-append console=ttyS0,115200 \
+    --dest-device /dev/vda
 qemu_iso
 qemu_disk
 assert @applied-dest-2-ign@

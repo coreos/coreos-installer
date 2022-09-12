@@ -394,6 +394,7 @@ fn write_disk(
         || !config.append_karg.is_empty()
         || !config.delete_karg.is_empty()
         || config.platform.is_some()
+        || !config.console.is_empty()
         || network_config.is_some()
         || cfg!(target_arch = "s390x")
     {
@@ -405,6 +406,14 @@ fn write_disk(
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
         }
+        if config.platform.is_some() || !config.console.is_empty() {
+            write_console(
+                mount.mountpoint(),
+                config.platform.as_deref(),
+                &config.console,
+            )
+            .context("configuring console")?;
+        }
         if let Some(firstboot_args) = config.firstboot_args.as_ref() {
             write_firstboot_kargs(mount.mountpoint(), firstboot_args)
                 .context("writing firstboot kargs")?;
@@ -412,6 +421,7 @@ fn write_disk(
         if !config.append_karg.is_empty() || !config.delete_karg.is_empty() {
             eprintln!("Modifying kernel arguments");
 
+            Console::maybe_warn_on_kargs(&config.append_karg, "--append-karg", "--console");
             visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
                 KargsEditor::new()
                     .append(config.append_karg.as_slice())
@@ -532,79 +542,93 @@ struct PlatformSpec {
     kernel_arguments: Vec<String>,
 }
 
-/// Override the platform ID.  Add any kernel arguments and grub.cfg
-/// directives specified for this platform in platforms.json.
+/// Override the platform ID.
 fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     // early return if setting the platform to the default value, since
     // otherwise we'll think we failed to set it
     if platform == "metal" {
         return Ok(());
     }
+    eprintln!("Setting platform to {}", platform);
 
-    // read platforms table
-    let (spec, metal_spec) = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
-        Ok(json) => {
-            let mut table: HashMap<String, PlatformSpec> =
-                serde_json::from_str(&json).context("parsing platform table")?;
-            // no spec for this platform, or for metal?
-            (
-                table.remove(platform).unwrap_or_default(),
-                table.remove("metal").unwrap_or_default(),
-            )
+    // We assume that we will only install from metal images and that the
+    // bootloader configs will always set ignition.platform.id.
+    visit_bls_entry_options(mountpoint, |orig_options: &str| {
+        let new_options = KargsEditor::new()
+            .replace(&[format!("ignition.platform.id=metal={}", platform)])
+            .apply_to(orig_options)
+            .context("setting platform ID argument")?;
+        if orig_options == new_options {
+            bail!("couldn't locate platform ID");
         }
+        Ok(Some(new_options))
+    })?;
+    Ok(())
+}
+
+/// Configure console kernel arguments and GRUB commands.
+fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]) -> Result<()> {
+    // read platforms table
+    let platforms = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
+        Ok(json) => serde_json::from_str::<HashMap<String, PlatformSpec>>(&json)
+            .context("parsing platform table")?,
         // no table for this image?
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
         Err(e) => return Err(e).context("reading platform table"),
     };
 
+    let mut kargs = Vec::new();
+    let mut grub_commands = Vec::new();
+    if !consoles.is_empty() {
+        // custom console settings completely override platform-specific
+        // defaults
+        let mut grub_terminals = Vec::new();
+        for console in consoles {
+            kargs.push(console.karg());
+            if let Some(cmd) = console.grub_command() {
+                grub_commands.push(cmd);
+            }
+            grub_terminals.push(console.grub_terminal());
+        }
+        grub_terminals.sort_unstable();
+        grub_terminals.dedup();
+        for direction in ["input", "output"] {
+            grub_commands.push(format!("terminal_{direction} {}", grub_terminals.join(" ")));
+        }
+    } else if let Some(platform) = platform {
+        // platform-specific defaults
+        if platform == "metal" {
+            // we're just being asked to apply the defaults which are already
+            // applied
+            return Ok(());
+        }
+        let spec = platforms.get(platform).cloned().unwrap_or_default();
+        kargs.extend(spec.kernel_arguments);
+        grub_commands.extend(spec.grub_commands);
+    } else {
+        // nothing to do and the caller shouldn't have called us
+        unreachable!();
+    }
+
     // set kargs, removing any metal-specific ones
-    eprintln!("Setting platform to {}", platform);
+    let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
-        bls_entry_options_write_platform(
-            orig_options,
-            platform,
-            &spec.kernel_arguments,
-            &metal_spec.kernel_arguments,
-        )
+        KargsEditor::new()
+            .append(&kargs)
+            .delete(&metal_spec.kernel_arguments)
+            .maybe_apply_to(orig_options)
+            .context("setting platform kernel arguments")
     })?;
 
     // set grub commands
-    if spec.grub_commands != metal_spec.grub_commands {
+    if grub_commands != metal_spec.grub_commands {
         let path = mountpoint.join("grub2/grub.cfg");
         let grub_cfg = fs::read_to_string(&path).context("reading grub.cfg")?;
-        let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &spec.grub_commands)
+        let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &grub_commands)
             .context("updating grub.cfg")?;
         fs::write(&path, new_grub_cfg).context("writing grub.cfg")?;
     }
     Ok(())
-}
-
-/// To be used with `visit_bls_entry_options()`.  Modifies the BLS config,
-/// changing the `ignition.platform.id` and then appending/deleting any
-/// specified kargs.  This assumes that we will only install from metal
-/// images and that the bootloader configs will always set
-/// ignition.platform.id.  Fail if those assumptions change.  This is
-/// deliberately simplistic.
-fn bls_entry_options_write_platform(
-    orig_options: &str,
-    platform: &str,
-    append_kargs: &[String],
-    delete_kargs: &[String],
-) -> Result<Option<String>> {
-    let new_options = KargsEditor::new()
-        .replace(&[format!("ignition.platform.id=metal={}", platform)])
-        .apply_to(orig_options)
-        .context("updating platform ID")?;
-    if orig_options == new_options {
-        bail!("Couldn't locate platform ID");
-    }
-    Ok(Some(
-        KargsEditor::new()
-            .append(append_kargs)
-            .delete(delete_kargs)
-            .apply_to(&new_options)
-            .context("adding platform-specific kernel arguments")?,
-    ))
 }
 
 /// Rewrite the grub.cfg CONSOLE-SETTINGS block to use the specified GRUB
@@ -776,56 +800,6 @@ mod tests {
                 err
             );
         }
-    }
-
-    #[test]
-    fn test_platform_id() {
-        let orig_content = "ignition.platform.id=metal foo bar";
-        let new_content = bls_entry_options_write_platform(
-            orig_content,
-            "openstack",
-            &vec!["baz".to_string(), "blah".to_string()],
-            &[],
-        )
-        .unwrap();
-        assert_eq!(
-            new_content.unwrap(),
-            "ignition.platform.id=openstack foo bar baz blah"
-        );
-
-        let orig_content = "foo ignition.platform.id=metal bar";
-        let new_content = bls_entry_options_write_platform(
-            orig_content,
-            "openstack",
-            &vec!["baz".to_string(), "blah".to_string()],
-            &vec!["foo".to_string()],
-        )
-        .unwrap();
-        assert_eq!(
-            new_content.unwrap(),
-            "ignition.platform.id=openstack bar baz blah"
-        );
-
-        let orig_content = "foo bar ignition.platform.id=metal";
-        let new_content = bls_entry_options_write_platform(
-            orig_content,
-            "openstack",
-            &vec!["baz".to_string(), "blah".to_string()],
-            &[],
-        )
-        .unwrap();
-        assert_eq!(
-            new_content.unwrap(),
-            "foo bar ignition.platform.id=openstack baz blah"
-        );
-
-        let orig_content = "foo bar ignition.platform.id=metal";
-        let new_content =
-            bls_entry_options_write_platform(orig_content, "openstack", &[], &[]).unwrap();
-        assert_eq!(
-            new_content.unwrap(),
-            "foo bar ignition.platform.id=openstack"
-        );
     }
 
     #[test]

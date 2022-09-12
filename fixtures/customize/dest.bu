@@ -18,10 +18,12 @@ systemd:
         ConditionKernelCommandLine=dest-karg
         ConditionKernelCommandLine=!ignition.platform.id=metal
         ConditionKernelCommandLine=ignition.platform.id=qemu
+        ConditionKernelCommandLine=console=ttyS0,115200n8
 
         [Service]
         Type=oneshot
         RemainAfterExit=true
+        ExecStart=/bin/grep -qz 'serial --unit=0 --speed=115200 --word=8 --parity=no.terminal_input serial.terminal_output serial.#' /boot/grub2/grub.cfg
         ExecStart=/bin/echo @applied-dest-ign@
         StandardOutput=tty
 
