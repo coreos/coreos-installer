@@ -21,6 +21,7 @@ Minor changes:
 - Add release notes to documentation
 - iso: Detect incomplete ISO files
 - Warn if console kargs could have used `--console`/`--dest-console` instead
+- install: fail if `--save-partindex` is specified on an MBR disk
 
 Internal changes:
 
