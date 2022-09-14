@@ -570,6 +570,16 @@ impl SavedPartitions {
         let gpt = match GPT::find_from(disk) {
             Ok(gpt) => gpt,
             Err(gptman::Error::InvalidSignature) => {
+                // ensure no indexes are listed to be saved from a MBR disk
+                // we don't need to check for labels since MBR does not support them
+                if filters
+                    .iter()
+                    .any(|f| matches!(f, PartitionFilter::Index(_, _)))
+                    && disk_has_mbr(disk).context("checking if disk has an MBR")?
+                {
+                    bail!("saving partitions from an MBR disk is not yet supported");
+                }
+
                 // no GPT on this disk, so no partitions to save
                 return Ok(Self {
                     sector_size,
@@ -1103,6 +1113,14 @@ pub fn get_gpt_size(file: &mut (impl Read + Seek)) -> Result<u64> {
     Ok(gpt.header.first_usable_lba * gpt.sector_size)
 }
 
+fn disk_has_mbr(file: &mut (impl Read + Seek)) -> Result<bool> {
+    let mut sig = [0u8; 2];
+    file.seek(SeekFrom::Start(510))
+        .context("seeking to MBR signature")?;
+    file.read_exact(&mut sig).context("reading MBR signature")?;
+    Ok(sig == [0x55, 0xaa])
+}
+
 pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
@@ -1469,7 +1487,7 @@ mod tests {
             let saved = SavedPartitions::new_from_file(&mut base, 512, filter).unwrap();
             let mut disk = make_unformatted_disk();
             saved.overwrite(&mut disk).unwrap();
-            assert!(disk_has_mbr(&mut disk), "test {}", testnum);
+            assert!(disk_has_mbr(&mut disk).unwrap(), "test {}", testnum);
             let result = GPT::find_from(&mut disk).unwrap();
             assert_eq!(
                 get_gpt_size(&mut disk).unwrap(),
@@ -1481,7 +1499,7 @@ mod tests {
             let mut disk = make_disk(512, &merge_base_parts);
             saved.merge(&mut image, &mut disk).unwrap();
             assert!(
-                disk_has_mbr(&mut disk) == !expected_blank.is_empty(),
+                disk_has_mbr(&mut disk).unwrap() == !expected_blank.is_empty(),
                 "test {}",
                 testnum
             );
@@ -1515,7 +1533,7 @@ mod tests {
             let saved =
                 SavedPartitions::new_from_file(&mut disk, *sector_size as u64, &vec![]).unwrap();
             saved.overwrite(&mut disk).unwrap();
-            assert!(disk_has_mbr(&mut disk), "{}", *sector_size);
+            assert!(disk_has_mbr(&mut disk).unwrap(), "{}", *sector_size);
             disk.seek(SeekFrom::Start(0)).unwrap();
             let mut buf = vec![0u8; *sector_size + 1];
             disk.read_exact(&mut buf).unwrap();
@@ -1547,6 +1565,30 @@ mod tests {
             format!("{:#}", err).contains(&gptman::Error::InvalidPartitionBoundaries.to_string()),
             "incorrect error: {:#}",
             err
+        );
+
+        // test trying to save partitions from a MBR disk
+        let mut disk = make_unformatted_disk();
+        gptman::GPT::write_protective_mbr_into(&mut disk, 512).unwrap();
+        // label only
+        SavedPartitions::new(&mut disk, 512, &vec![label("*i*")]).unwrap();
+        // index only
+        assert_eq!(
+            SavedPartitions::new(&mut disk, 512, &vec![Index(index(1), index(1))])
+                .unwrap_err()
+                .to_string(),
+            "saving partitions from an MBR disk is not yet supported"
+        );
+        // label and index
+        assert_eq!(
+            SavedPartitions::new(
+                &mut disk,
+                512,
+                &vec![Index(index(1), index(1)), label("*i*")]
+            )
+            .unwrap_err()
+            .to_string(),
+            "saving partitions from an MBR disk is not yet supported"
         );
 
         // test sector size mismatch
@@ -1677,13 +1719,6 @@ mod tests {
             guid[i % guid.len()] ^= *b;
         }
         guid
-    }
-
-    fn disk_has_mbr(disk: &mut File) -> bool {
-        let mut sig = [0u8; 2];
-        disk.seek(SeekFrom::Start(510)).unwrap();
-        disk.read_exact(&mut sig).unwrap();
-        sig == [0x55, 0xaa]
     }
 
     fn assert_partitions_eq(expected: &Vec<(u32, GPTPartitionEntry)>, found: &GPT, message: &str) {
