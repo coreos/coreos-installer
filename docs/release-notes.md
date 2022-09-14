@@ -4,41 +4,54 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.16.0 (unreleased)
+## Upcoming coreos-installer 0.17.0 (unreleased)
+
+Major changes:
+
+Minor changes:
+
+Internal changes:
+
+Packaging changes:
+
+
+## coreos-installer 0.16.0 (2022-09-14)
 
 Major changes:
 
 - install: Add `--console` for configuring kernel and bootloader console
 - customize: Add `--dest-console` for configuring kernel and bootloader console
+- customize: Support configuring network with Nmstate via `--network-nmstate`
 - Support reading initrd images compressed with zstd
 - Add Fedora 38 signing key; drop Fedora 35 signing key
 
 Minor changes:
 
+- install: Fail if `--save-partindex` specified on MBR disk, to avoid data loss
 - Detect truncated xz archives
 - iso: Fix corrupt `extract minimal-iso` output when writing to stdout
 - Fix unlikely decompression error reading initrd
-- Add release notes to documentation
 - iso: Detect incomplete ISO files
 - Warn if console kargs could have used `--console`/`--dest-console` instead
-- install: fail if `--save-partindex` is specified on an MBR disk
+- Add release notes to documentation
 
 Internal changes:
 
+- rootmap: Support devices with LUKS integrity protection enabled
 - zipl: Deprecate `--kargs` in favor of new `--append-karg`, which supports multiple instances
-- Only open BLS configs in write mode when modifying
 - zipl: Support Secure Execution systems without LUKS for coreos-assembler
+- zipl: Add `--append-file` for adding files to an SE image
 - zipl: Remove obsolete `--rootfs`
-- zipl: Add new `--append-file`, which supports multiple instances
+- Only open BLS configs in write mode when modifying
 
 Packaging changes:
 
 - Require Rust ≥ 1.58.0
-- Add dependencies on `textwrap` and `zstd` crates
+- Install example installer config file in `/usr/share/coreos-installer`
+- Add dependencies on `nmstate`, `textwrap`, and `zstd` crates
 - Add dependency on `libzstd` shared library
 - Support `serde_yaml` 0.9
 - Remove non-Linux dependencies from vendor archive
-- Install example installer config file in `/usr/share/coreos-installer`
 
 
 ## coreos-installer 0.15.0 (2022-06-17)
