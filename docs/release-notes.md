@@ -28,6 +28,8 @@ Internal changes:
 - zipl: Deprecate `--kargs` in favor of new `--append-karg`, which supports multiple instances
 - Only open BLS configs in write mode when modifying
 - zipl: Support Secure Execution systems without LUKS for coreos-assembler
+- zipl: Remove obsolete `--rootfs`
+- zipl: Add new `--append-file`, which supports multiple instances
 
 Packaging changes:
 

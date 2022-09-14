@@ -57,8 +57,8 @@ pub fn kargs(config: KargsConfig) -> Result<()> {
                 mount.mountpoint(),
                 None,
                 None,
-                None,
                 s390x::ZiplSecexMode::Auto,
+                None,
             )?;
         }
     }
@@ -98,8 +98,8 @@ pub fn zipl(config: ZiplConfig) -> Result<()> {
     s390x::zipl(
         boot.mountpoint(),
         config.hostkey,
-        config.rootfs,
         config.append_karg.as_ref().map(|v| v.join(" ")),
         config.secex_mode,
+        config.append_file,
     )
 }

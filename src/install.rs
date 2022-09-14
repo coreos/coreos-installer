@@ -439,8 +439,8 @@ fn write_disk(
                 mount.mountpoint(),
                 None,
                 None,
-                None,
                 s390x::ZiplSecexMode::Disable,
+                None,
             )?;
             s390x::chreipl(device)?;
         }
