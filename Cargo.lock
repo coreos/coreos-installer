@@ -204,7 +204,7 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
 name = "coreos-installer"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -223,7 +223,7 @@ dependencies = [
  "libc",
  "maplit",
  "mbrman",
- "nix 0.25.0",
+ "nix 0.24.2",
  "nmstate",
  "openssl",
  "pipe",
@@ -238,7 +238,7 @@ dependencies = [
  "textwrap",
  "thiserror",
  "url",
- "uuid 1.1.2",
+ "uuid",
  "walkdir",
  "xz2",
  "zstd",
@@ -1062,20 +1062,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nix"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e322c04a9e3440c327fca7b6c8a63e6890a32fa2ad689db972425f07e0d22abb"
-dependencies = [
- "autocfg",
- "bitflags",
- "cfg-if",
- "libc",
- "memoffset",
- "pin-utils",
-]
-
-[[package]]
 name = "nmstate"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1087,7 +1073,7 @@ dependencies = [
  "nix 0.24.2",
  "serde",
  "serde_json",
- "uuid 0.8.2",
+ "uuid",
  "zbus",
  "zvariant",
 ]
@@ -1845,15 +1831,6 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom",
  "sha1",
-]
-
-[[package]]
-name = "uuid"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
-dependencies = [
- "getrandom",
 ]
 
 [[package]]
