@@ -61,7 +61,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `cargo publish`
 
 - assemble vendor archive:
-  - [ ] `cargo vendor-filterer --format=tar.gz target/coreos-installer-${RELEASE_VER}-vendor.tar.gz`
+  - [ ] `cargo vendor-filterer target/vendor && tar czf target/coreos-installer-${RELEASE_VER}-vendor.tar.gz -C target vendor`
 
 - publish this release on GitHub:
   - [ ] find the new tag in the [GitHub tag list](https://github.com/coreos/coreos-installer/tags), click the triple dots menu, and create a release for it
