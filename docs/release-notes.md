@@ -15,6 +15,13 @@ Internal changes:
 Packaging changes:
 
 
+## coreos-installer 0.16.1 (2022-09-19)
+
+Packaging changes:
+
+- Fix directory layout of vendor archive
+
+
 ## coreos-installer 0.16.0 (2022-09-14)
 
 Major changes:
