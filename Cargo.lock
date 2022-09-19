@@ -238,7 +238,7 @@ dependencies = [
  "textwrap",
  "thiserror",
  "url",
- "uuid",
+ "uuid 1.1.2",
  "walkdir",
  "xz2",
  "zstd",
@@ -1073,7 +1073,7 @@ dependencies = [
  "nix 0.24.2",
  "serde",
  "serde_json",
- "uuid",
+ "uuid 0.8.2",
  "zbus",
  "zvariant",
 ]
@@ -1831,6 +1831,15 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom",
  "sha1",
+]
+
+[[package]]
+name = "uuid"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
+dependencies = [
+ "getrandom",
 ]
 
 [[package]]
