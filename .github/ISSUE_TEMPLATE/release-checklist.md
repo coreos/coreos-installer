@@ -38,6 +38,7 @@ Push access to the upstream repository is required in order to publish the new t
 
 - make sure the project is clean and prepare the environment:
   - [ ] Make sure `cargo-release` is up to date: `cargo install cargo-release`
+  - [ ] Make sure `cargo-vendor-filterer` is up to date: `cargo install cargo-vendor-filterer`
   - [ ] `cargo test --all-features`
   - [ ] `cargo clean`
   - [ ] `git clean -fd`
@@ -61,7 +62,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `cargo publish`
 
 - assemble vendor archive:
-  - [ ] `cargo vendor-filterer target/vendor && tar czf target/coreos-installer-${RELEASE_VER}-vendor.tar.gz -C target vendor`
+  - [ ] `cargo vendor-filterer --format=tar.gz --prefix=vendor target/coreos-installer-${RELEASE_VER}-vendor.tar.gz`
 
 - publish this release on GitHub:
   - [ ] find the new tag in the [GitHub tag list](https://github.com/coreos/coreos-installer/tags), click the triple dots menu, and create a release for it
@@ -119,7 +120,7 @@ Push access to the upstream repository is required in order to publish the new t
     - remove any patches obsoleted by the new release
     - update changelog
   - [ ] run `spectool -g -S coreos-installer.spec`
-  - [ ] run `kinit your_account@REDHAT.COM`
+  - [ ] run `kinit your_account@IPA.REDHAT.COM`
   - [ ] run `rhpkg new-sources $(spectool -S coreos-installer.spec | sed 's:.*/::')`
   - [ ] PR the changes
   - [ ] get the PR reviewed and merge it
