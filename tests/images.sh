@@ -2,8 +2,11 @@
 
 set -euo pipefail
 
-export PATH="$(realpath $(dirname $0)/../target/${PROFILE:-debug}):$PATH"
-fixturesdir="$(realpath $(dirname $0)/../fixtures)"
+export PATH
+if [[ -d "$(realpath "$(dirname "$0")/../target")" ]]; then
+    PATH="$(realpath "$(dirname "$0")/../target/${PROFILE:-debug}"):$PATH"
+fi
+fixturesdir="$(realpath "$(dirname "$0")"/../fixtures)"
 
 fixtures=(
     embed-areas-2020-09.iso.xz
@@ -27,7 +30,7 @@ call() {
     msg "$*"
     local cmd="$1"
     shift
-    "$(dirname $0)/images/${cmd}" "$@"
+    "$(dirname "$0")/images/${cmd}" "$@"
 }
 
 call_for_fixtures() {
@@ -50,10 +53,12 @@ call_for_fixtures() {
 if [ -n "${1:-}" ]; then
     # test with artifacts in cosa build dir
     basedir="$1"
-    if ! [ -e "${basedir}"/*.iso ] ;then
-        echo "Couldn't find ISO image in ${basedir}"
-        exit 1
-    fi
+    for f in "${basedir}"/*.iso; do
+        if [[ ! -e "${f}" ]]; then
+            echo "Couldn't find ISO image in ${basedir}"
+            exit 1
+        fi
+    done
     call iso-ignition.sh "${basedir}"/*.iso
     call iso-network.sh "${basedir}"/*.iso
     call iso-kargs.sh "${basedir}"/*.iso
