@@ -1,9 +1,10 @@
 // Documentation: https://github.com/coreos/coreos-ci/blob/main/README-upstream-ci.md
 
-buildPod {
+buildPod(runAsUser: 0) {
     checkout scm
 
     stage("Build") {
+        shwrap("dnf -y downgrade rust")
         shwrap("make && make install DESTDIR=install")
         stash name: 'build', includes: 'install/**'
     }
