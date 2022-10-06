@@ -10,6 +10,8 @@ Major changes:
 
 Minor changes:
 
+- install: Avoid osmet performance regression in debug builds on Rust 1.64+
+
 Internal changes:
 
 Packaging changes:
