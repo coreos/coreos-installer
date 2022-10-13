@@ -17,31 +17,29 @@ cosaPod(buildroot: true, runAsUser: 0) {
     // Make sure cosa is using the binary we just built.
     shwrap("rsync -rlv install/usr/ /usr/")
 
-    fcosBuild(skipKola: true, overlays: ["install"])
+    cosaBuild(skipKola: true, overlays: ["install"])
     // Skipping kdump.crash due to CI failure in coreos-installer repo
     // https://github.com/coreos/fedora-coreos-tracker/issues/1075
-    fcosKola(extraArgs: "--denylist-test ext.config.kdump.crash")
+    kola(extraArgs: "--denylist-test ext.config.kdump.crash")
 
     stage("Build metal+live") {
-        shwrap("cd /srv/fcos && cosa buildextend-metal")
-        shwrap("cd /srv/fcos && cosa buildextend-metal4k")
-        shwrap("cd /srv/fcos && cosa buildextend-live --fast")
+        shwrap("cd /srv/coreos && cosa buildextend-metal")
+        shwrap("cd /srv/coreos && cosa buildextend-metal4k")
+        shwrap("cd /srv/coreos && cosa buildextend-live --fast")
         // Test metal with an uncompressed image and metal4k with a
         // compressed one
-        shwrap("cd /srv/fcos && cosa compress --fast --artifact=metal4k")
+        shwrap("cd /srv/coreos && cosa compress --fast --artifact=metal4k")
     }
     stage("Test ISO") {
         // No need to run the iso-live-login/iso-as-disk scenarios
-        fcosKolaTestIso(
-            cosaDir: "/srv/fcos",
+        kolaTestIso(
             scenarios: "pxe-install,pxe-offline-install,iso-install,iso-offline-install,miniso-install",
             scenarios4k: "iso-install,iso-offline-install",
             skipUEFI: true
         )
         // Only test ISO because kola testiso doesn't support NM keyfiles
         // for PXE
-        fcosKolaTestIso(
-            cosaDir: "/srv/fcos",
+        kolaTestIso(
             scenarios: "iso-install",
             extraArgs: "--add-nm-keyfile",
             skipMetal4k: true,
@@ -50,6 +48,6 @@ cosaPod(buildroot: true, runAsUser: 0) {
         )
     }
     stage("Image tests") {
-        shwrap("tests/images.sh /srv/fcos/builds/latest/x86_64")
+        shwrap("tests/images.sh /srv/coreos/builds/latest/x86_64")
     }
 }
