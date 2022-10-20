@@ -27,7 +27,7 @@ all-features = true
 [features]
 # rdcore is only useful inside the initrd of a CoreOS system
 rdcore = []
-docgen = ["dep:clap_mangen"]
+docgen = ["clap/string", "dep:clap_mangen"]
 
 [lib]
 name = "libcoreinst"
