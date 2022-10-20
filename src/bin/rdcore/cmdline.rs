@@ -15,7 +15,7 @@
 // For consistency, have all parse_*() functions return Result.
 #![allow(clippy::unnecessary_wraps)]
 
-use clap::{AppSettings, Parser};
+use clap::Parser;
 
 #[cfg(target_arch = "s390x")]
 use libcoreinst::s390x;
@@ -24,7 +24,6 @@ use libcoreinst::s390x;
 
 #[derive(Debug, Parser)]
 #[clap(name = "rdcore", version)]
-#[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(args_conflicts_with_subcommands = true)]
 #[clap(disable_help_subcommand = true)]
 #[clap(help_expected = true)]
@@ -52,10 +51,10 @@ pub struct RootmapConfig {
     // for changing implementation details on the OS side without having to
     // respin rdcore
     /// Boot device containing BLS entries to modify
-    #[clap(long, value_name = "DEVPATH", conflicts_with = "boot-mount")]
+    #[clap(long, value_name = "DEVPATH", conflicts_with = "boot_mount")]
     pub boot_device: Option<String>,
     /// Boot mount containing BLS entries to modify
-    #[clap(long, value_name = "BOOT_MOUNT", conflicts_with = "boot-device")]
+    #[clap(long, value_name = "BOOT_MOUNT", conflicts_with = "boot_device")]
     pub boot_mount: Option<String>,
     /// Path to rootfs mount
     #[clap(value_name = "ROOT_MOUNT")]
@@ -77,15 +76,15 @@ pub struct KargsConfig {
     // see comment block in rootmap command above
     /// Boot device containing BLS entries to modify
     #[clap(long, value_name = "DEVPATH")]
-    #[clap(conflicts_with = "boot-mount", conflicts_with = "current")]
+    #[clap(conflicts_with_all = ["boot_mount", "current"])]
     pub boot_device: Option<String>,
     /// Boot mount containing BLS entries to modify
     #[clap(long, value_name = "BOOT_MOUNT")]
-    #[clap(conflicts_with = "boot-device", conflicts_with = "current")]
+    #[clap(conflicts_with_all = ["boot_device", "current"])]
     pub boot_mount: Option<String>,
     /// Dry run using kargs from this boot
     #[clap(long)]
-    #[clap(conflicts_with = "boot-device", conflicts_with = "boot-mount")]
+    #[clap(conflicts_with_all = ["boot_device", "boot_mount"])]
     pub current: bool,
     /// Modify this option string instead of fetching from BLS entry
     // this is purely for dev testing
@@ -133,8 +132,7 @@ pub struct ZiplConfig {
     pub boot_mount: String,
 
     /// Zipl mode for Secure Execution
-    #[clap(arg_enum)]
-    #[clap(long, default_value = "auto")]
+    #[clap(long, value_enum, default_value = "auto")]
     pub secex_mode: s390x::ZiplSecexMode,
 
     /// Path to hostkey
@@ -154,7 +152,7 @@ pub struct ZiplConfig {
 #[cfg(test)]
 mod test {
     use super::*;
-    use clap::IntoApp;
+    use clap::CommandFactory;
 
     #[test]
     fn clap_app() {

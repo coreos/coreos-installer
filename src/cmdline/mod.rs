@@ -15,7 +15,7 @@
 // We don't care about the size of enum variants and don't want to box them
 #![allow(clippy::large_enum_variant)]
 
-use clap::{AppSettings, Parser};
+use clap::Parser;
 use reqwest::Url;
 
 mod console;
@@ -37,7 +37,6 @@ pub use self::types::*;
 /// Installer for Fedora CoreOS and RHEL CoreOS
 #[derive(Debug, Parser)]
 #[clap(version)]
-#[clap(global_setting(AppSettings::DeriveDisplayOrder))]
 #[clap(args_conflicts_with_subcommands = true)]
 #[clap(disable_help_subcommand = true)]
 #[clap(help_expected = true)]
@@ -719,7 +718,7 @@ pub struct PackExampleConfigConfig {}
 #[cfg(test)]
 mod test {
     use super::*;
-    use clap::IntoApp;
+    use clap::CommandFactory;
 
     #[test]
     fn clap_app() {

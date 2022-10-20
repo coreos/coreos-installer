@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use clap::ArgEnum;
+use clap::ValueEnum;
 
 pub mod dasd;
 pub mod zipl;
@@ -23,7 +23,7 @@ pub use zipl::zipl;
 mod eckd;
 mod fba;
 
-#[derive(ArgEnum, Clone, Debug)]
+#[derive(ValueEnum, Clone, Debug)]
 pub enum ZiplSecexMode {
     Auto,
     Enforce,

@@ -33,7 +33,7 @@ use super::Cmd;
 // Args are listed in --help in the order declared in these structs/enums.
 // Please keep the entire help text to 80 columns.
 
-const ADVANCED: &str = "ADVANCED OPTIONS";
+const ADVANCED: &str = "Advanced Options";
 
 // As a special case, this struct supports Serialize and Deserialize for
 // config file parsing.  Here are the rules.  Build or test should fail if
@@ -79,7 +79,7 @@ pub struct InstallConfig {
     /// The name of the Fedora CoreOS stream to install, such as "stable",
     /// "testing", or "next".
     #[clap(short, long, value_name = "name")]
-    #[clap(conflicts_with = "image-file", conflicts_with = "image-url")]
+    #[clap(conflicts_with_all = ["image_file", "image_url"])]
     pub stream: Option<String>,
     /// Manually specify the image URL
     ///
@@ -88,7 +88,7 @@ pub struct InstallConfig {
     /// ignored with --insecure.
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[clap(short = 'u', long, value_name = "URL")]
-    #[clap(conflicts_with = "stream", conflicts_with = "image-file")]
+    #[clap(conflicts_with_all = ["stream", "image_file"])]
     pub image_url: Option<Url>,
     /// Manually specify a local image file
     ///
@@ -96,7 +96,7 @@ pub struct InstallConfig {
     /// image, which must exist and be valid.  A missing signature can be
     /// ignored with --insecure.
     #[clap(short = 'f', long, value_name = "path")]
-    #[clap(conflicts_with = "stream", conflicts_with = "image-url")]
+    #[clap(conflicts_with_all = ["stream", "image_url"])]
     pub image_file: Option<String>,
 
     // postprocessing options
@@ -105,7 +105,7 @@ pub struct InstallConfig {
     /// Embed the specified Ignition config in the installed system.
     // deprecated long name from <= 0.1.2
     #[clap(short, long, alias = "ignition", value_name = "path")]
-    #[clap(conflicts_with = "ignition-url")]
+    #[clap(conflicts_with = "ignition_url")]
     pub ignition_file: Option<String>,
     /// Embed an Ignition config from a URL
     ///
@@ -113,7 +113,7 @@ pub struct InstallConfig {
     /// the installed system.
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[clap(short = 'I', long, value_name = "URL")]
-    #[clap(conflicts_with = "ignition-file")]
+    #[clap(conflicts_with = "ignition_file")]
     pub ignition_url: Option<Url>,
     /// Digest (type-value) of the Ignition config
     ///
@@ -192,7 +192,6 @@ pub struct InstallConfig {
     #[clap(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
     // one argument.
-    #[clap(number_of_values = 1, require_value_delimiter = true)]
     #[clap(value_delimiter = ',')]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
@@ -210,7 +209,6 @@ pub struct InstallConfig {
     #[clap(long, value_name = "id")]
     // Allow argument multiple times, but one value each.  Allow "1-5,7" in
     // one argument.
-    #[clap(number_of_values = 1, require_value_delimiter = true)]
     #[clap(value_delimiter = ',')]
     // Allow ranges like "-2".
     #[clap(allow_hyphen_values = true)]
@@ -260,7 +258,7 @@ pub struct InstallConfig {
     ///
     /// Path to the device node for the destination disk.  The beginning of
     /// the device will be overwritten without further confirmation.
-    #[clap(required_unless_present = "config-file")]
+    #[clap(required_unless_present = "config_file")]
     pub dest_device: Option<String>,
 }
 
