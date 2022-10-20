@@ -40,8 +40,8 @@ const ADVANCED: &str = "ADVANCED OPTIONS";
 // you break anything too badly.
 // - Defaults cannot be specified using #[clap(default_value = "x")]
 //   because serde won't see them otherwise.  Instead, use
-//   #[clap(default_value_t)], implement Default, and derive PartialEq
-//   for the type.  (For string-typed defaults, you can use
+//   #[clap(default_value_t)], implement Default, and derive Clone and
+//   PartialEq for the type.  (For string-typed defaults, you can use
 //   DefaultedString<T> where T is a custom type implementing
 //   DefaultString.)
 // - Add #[serde(skip_serializing_if = "is_default")] for all fields that

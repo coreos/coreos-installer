@@ -25,7 +25,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 /// Ignition-style message digests
-#[derive(Debug, DeserializeFromStr, SerializeDisplay, PartialEq, Eq)]
+#[derive(Clone, Debug, DeserializeFromStr, SerializeDisplay, PartialEq, Eq)]
 pub enum IgnitionHash {
     /// SHA-256 digest.
     Sha256(Vec<u8>),
