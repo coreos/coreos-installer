@@ -15,7 +15,6 @@
 //! Serde serializer for a Parser struct, producing a Vec of command-line
 //! arguments.
 
-use anyhow::Context;
 use clap::Parser;
 use serde::{ser, Serialize};
 
@@ -27,17 +26,12 @@ where
     // or a positional argument.  clap doesn't provide an API for this,
     // and we don't want to implement a proc macro because those have to
     // go in a separate crate.  Get the subcommand help text and grep it.
-    let mut help = Vec::new();
-    T::command()
-        .write_long_help(&mut help)
-        .context("reading subcommand help text")?;
+    // Add trailing space to each line, so push_field() option check works
+    // consistently for boolean flags.
+    let help_text = format!("{}", T::command().render_long_help()).replace('\n', " \n");
 
     let mut serializer = Serializer {
-        help_text: String::from_utf8(help)
-            .context("decoding subcommand help text")?
-            // add trailing space to each line, so push_field()
-            // option check works consistently for boolean flags
-            .replace('\n', " \n"),
+        help_text,
         output: Vec::new(),
         field_stack: Vec::new(),
     };
