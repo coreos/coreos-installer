@@ -4,16 +4,10 @@
 .SH NAME
 coreos\-installer\-download \- Download a CoreOS image
 .SH SYNOPSIS
-\fBcoreos\-installer\-download\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-C\fR|\fB\-\-directory\fR] [\fB\-d\fR|\fB\-\-decompress\fR] [\fB\-\-insecure\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-fetch\-retries\fR] 
+\fBcoreos\-installer\-download\fR [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-C\fR|\fB\-\-directory\fR] [\fB\-d\fR|\fB\-\-decompress\fR] [\fB\-\-insecure\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-fetch\-retries\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] 
 .SH DESCRIPTION
 Download a CoreOS image
 .SH OPTIONS
-.TP
-\fB\-h\fR, \fB\-\-help\fR
-Print help information
-.TP
-\fB\-V\fR, \fB\-\-version\fR
-Print version information
 .TP
 \fB\-s\fR, \fB\-\-stream\fR=\fIname\fR [default: stable]
 Fedora CoreOS stream
@@ -44,5 +38,11 @@ Base URL for Fedora CoreOS stream metadata
 .TP
 \fB\-\-fetch\-retries\fR=\fIN\fR [default: 0]
 Fetch retries, or "infinite"
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
 .SH VERSION
 v0.17.0
