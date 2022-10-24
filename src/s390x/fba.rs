@@ -39,7 +39,7 @@ pub(crate) fn fba_make_partitions(
             length: blocks * bytes_per_block as u64,
         });
         mbr[idx + 1] = MBRPartitionEntry {
-            boot: false,
+            boot: mbrman::BOOT_INACTIVE,
             first_chs: CHS::empty(),
             sys: 0x83, // MBR_LINUX_DATA_PARTITION
             last_chs: CHS::empty(),

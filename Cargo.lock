@@ -862,13 +862,14 @@ checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "mbrman"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef6f6de0b8cfc56e13dc3ac3c662d9419f8aa5e3ebceb2d0eb25abce49e00395"
+checksum = "cdee9caaf6ebb0bae8ae1cb6b591e5553b6cf5a34c7ea07bb6f24c1a80619819"
 dependencies = [
  "bincode",
  "bitvec",
  "serde",
+ "serde-big-array",
  "thiserror",
 ]
 
@@ -1519,6 +1520,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "728eb6351430bccb993660dfffc5a72f91ccc1295abaa8ce19b27ebe4f75568b"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3323f09a748af288c3dc2474ea6803ee81f118321775bffa3ac8f7e65c5e90e7"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
