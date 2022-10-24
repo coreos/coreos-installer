@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# don't waste job slots on superseded code
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-rpm-build:
     name: "Build (Fedora)"
