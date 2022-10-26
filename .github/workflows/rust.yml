@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# s390x tests are expensive; don't waste job slots on superseded code
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CONTAINER: registry.fedoraproject.org/fedora:latest
   CARGO_TERM_COLOR: always
