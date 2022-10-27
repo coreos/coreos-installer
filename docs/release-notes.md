@@ -11,6 +11,7 @@ Major changes:
 Minor changes:
 
 - install: Avoid osmet performance regression in debug builds on Rust 1.64+
+- install: Avoid network fetch timeout when low-level formatting ECKD DASD
 
 Internal changes:
 
