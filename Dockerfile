@@ -1,5 +1,5 @@
 FROM registry.fedoraproject.org/fedora:36 AS builder
-RUN dnf install -y cargo git-core libzstd-devel openssl-devel xz-devel
+RUN dnf install -y cargo clang-devel git-core libzstd-devel nettle-devel openssl-devel xz-devel
 WORKDIR /build
 COPY Cargo.* ./
 COPY src src/
@@ -14,8 +14,7 @@ RUN mkdir -p .cargo && echo -e '[net]\ngit-fetch-with-cli = true' > .cargo/confi
 RUN cargo build --release
 
 FROM registry.fedoraproject.org/fedora:36
-RUN dnf install -y /usr/bin/gpg /usr/sbin/kpartx /usr/bin/lsblk \
-    /usr/sbin/udevadm && \
+RUN dnf install -y /usr/sbin/kpartx /usr/bin/lsblk /usr/sbin/udevadm && \
     dnf clean all
 COPY --from=builder /build/target/release/coreos-installer /usr/sbin
 ENTRYPOINT ["/usr/sbin/coreos-installer"]

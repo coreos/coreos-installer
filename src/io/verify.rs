@@ -13,12 +13,16 @@
 // limitations under the License.
 
 use anyhow::{bail, Context, Result};
-use std::fs::{metadata, set_permissions, OpenOptions};
+use pipe::{pipe, PipeReader, PipeWriter};
+use sequoia_openpgp::cert::CertParser;
+use sequoia_openpgp::parse::stream::{
+    DetachedVerifierBuilder, MessageLayer, MessageStructure, VerificationError, VerificationHelper,
+};
+use sequoia_openpgp::parse::{PacketParser, Parse};
+use sequoia_openpgp::policy::StandardPolicy;
+use sequoia_openpgp::{Cert, KeyHandle};
 use std::io::{self, Read, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::process::{Child, Command, Stdio};
 use std::thread::{self, JoinHandle};
-use tempfile::{self, TempDir};
 
 #[derive(Debug)]
 pub enum VerifyKeys {
@@ -35,8 +39,6 @@ enum VerifyReport {
     Stderr,
     /// Report verification result to stderr only if successful
     StderrOnSuccess,
-    /// Verify silently
-    Ignore,
 }
 
 pub struct VerifyReader<R: Read> {
@@ -89,195 +91,97 @@ impl<R: Read> Read for VerifyReader<R> {
 }
 
 struct GpgReader<R: Read> {
-    _gpgdir: TempDir,
     source: R,
-    child: Child,
-    stderr_thread: Option<JoinHandle<io::Result<Vec<u8>>>>,
+    verify_pipe: Option<PipeWriter>,
+    verify_thread: Option<JoinHandle<Result<String>>>,
+    success: bool,
 }
 
 impl<R: Read> GpgReader<R> {
     fn new(source: R, signature: &[u8], keys: VerifyKeys) -> Result<Self> {
-        // create GPG home directory with restrictive mode
-        let gpgdir = tempfile::Builder::new()
-            .prefix("coreos-installer-")
-            .tempdir()
-            .context("creating temporary directory")?;
-        let meta = metadata(gpgdir.path()).context("getting metadata for temporary directory")?;
-        let mut permissions = meta.permissions();
-        permissions.set_mode(0o700);
-        set_permissions(gpgdir.path(), permissions)
-            .context("setting mode for temporary directory")?;
-
-        // import public keys
-        let keys = match keys {
-            VerifyKeys::Production => &include_bytes!("../signing-keys.asc")[..],
-            #[cfg(test)]
-            VerifyKeys::InsecureTest => {
-                &include_bytes!("../../fixtures/verify/test-key.pub.asc")[..]
-            }
-        };
-        let mut import = Command::new("gpg")
-            .arg("--homedir")
-            .arg(gpgdir.path())
-            .arg("--batch")
-            .arg("--quiet")
-            .arg("--import")
-            .stdin(Stdio::piped())
-            .spawn()
-            .context("running gpg --import")?;
-        import
-            .stdin
-            .as_mut()
-            .unwrap()
-            .write_all(keys)
-            .context("importing GPG keys")?;
-        if !import.wait().context("waiting for gpg --import")?.success() {
-            bail!("gpg --import failed");
-        }
-
-        // list the public keys we just imported
-        let mut list = Command::new("gpg")
-            .arg("--homedir")
-            .arg(gpgdir.path())
-            .arg("--batch")
-            .arg("--list-keys")
-            .arg("--with-colons")
-            .stdout(Stdio::piped())
-            .spawn()
-            .context("running gpg --list-keys")?;
-        let mut list_output = String::new();
-        list.stdout
-            .as_mut()
-            .unwrap()
-            .read_to_string(&mut list_output)
-            .context("listing GPG keys")?;
-        if !list
-            .wait()
-            .context("waiting for gpg --list-keys")?
-            .success()
-        {
-            bail!("gpg --list-keys failed");
-        }
-
-        // accumulate key IDs into trust arguments
-        let mut trust: Vec<&str> = Vec::new();
-        for line in list_output.lines() {
-            let fields: Vec<&str> = line.split(':').collect();
-            // only look at public keys
-            if fields[0] != "pub" {
-                continue;
-            }
-            // extract key ID
-            if fields.len() >= 5 {
-                trust.append(&mut vec!["--trusted-key", fields[4]]);
-            }
-        }
-
-        // mark keys trusted in trustdb
-        // We do this as a separate pass to keep the resulting log lines
-        // out of the verify output.
-        let trustdb = Command::new("gpg")
-            .arg("--homedir")
-            .arg(gpgdir.path())
-            .arg("--batch")
-            .arg("--check-trustdb")
-            .args(trust)
-            .output()
-            .context("running gpg --check-trustdb")?;
-        if !trustdb.status.success() {
-            // copy out its stderr
-            eprint!("{}", String::from_utf8_lossy(&*trustdb.stderr));
-            bail!("gpg --check-trustdb failed");
-        }
-
-        // write signature to file
-        let mut signature_path = gpgdir.path().to_path_buf();
-        signature_path.push("signature");
-        let mut signature_file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&signature_path)
-            .context("creating signature file")?;
-        signature_file
-            .write_all(signature)
-            .context("writing signature file")?;
+        // parse public keys
+        let helper = GpgHelper::new(
+            CertParser::from(
+                PacketParser::from_bytes(match keys {
+                    VerifyKeys::Production => &include_bytes!("../signing-keys.asc")[..],
+                    #[cfg(test)]
+                    VerifyKeys::InsecureTest => {
+                        &include_bytes!("../../fixtures/verify/test-key.pub.asc")[..]
+                    }
+                })
+                .context("decoding verification keys")?,
+            )
+            .collect::<Result<Vec<Cert>>>()
+            .context("parsing verification keys")?,
+        );
 
         // start verification
-        let mut verify = Command::new("gpg")
-            .arg("--homedir")
-            .arg(gpgdir.path())
-            .arg("--batch")
-            .arg("--verify")
-            .arg(&signature_path)
-            .arg("-")
-            .stdin(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("running gpg --verify")?;
-
-        // spawn stderr reader
-        let mut stderr = verify.stderr.take().unwrap();
-        let stderr_thread = thread::Builder::new()
-            .name("gpg-stderr".into())
-            .spawn(move || -> io::Result<Vec<u8>> {
-                let mut buf = Vec::new();
-                stderr.read_to_end(&mut buf)?;
-                Ok(buf)
-            })
-            .context("spawning GPG stderr reader")?;
+        fn verify(reader: PipeReader, signature: Vec<u8>, helper: GpgHelper) -> Result<String> {
+            let policy = StandardPolicy::new();
+            let mut verifier = DetachedVerifierBuilder::from_bytes(&signature)
+                .context("parsing signature")?
+                .with_policy(&policy, None, helper)
+                .context("creating signature verifier")?;
+            verifier
+                .verify_reader(reader)
+                .map(|_| verifier.into_helper().success_detail.unwrap())
+        }
+        let (pipe_read, pipe_write) = pipe();
+        let sig = signature.to_vec();
+        let verify_thread = thread::Builder::new()
+            .name("gpg-verify".into())
+            .spawn(move || verify(pipe_read, sig, helper))
+            .context("spawning GPG verifier")?;
 
         Ok(GpgReader {
-            _gpgdir: gpgdir,
             source,
-            child: verify,
-            stderr_thread: Some(stderr_thread),
+            verify_pipe: Some(pipe_write),
+            verify_thread: Some(verify_thread),
+            success: false,
         })
     }
 
     /// Stop GPG, forward its stderr if requested, and check its exit status.
     /// The exit status check happens on every call, but stderr forwarding
     /// only happens on the first call.
-    fn finish(&mut self, report: VerifyReport) -> io::Result<()> {
-        // do cleanup first: wait for child process and join on thread
-        let wait_result = self.child.wait();
-        let join_result = self.stderr_thread.take().map(|t| t.join());
+    fn finish(&mut self, report: VerifyReport) -> Result<()> {
+        // if the thread hasn't been cleaned up, collect results
+        if let Some(thread) = self.verify_thread.take() {
+            // close pipe
+            self.verify_pipe.take();
+            // wait for thread
+            let result = match thread.join() {
+                // thread returned normally
+                Ok(res) => res,
+                // thread panicked; propagate the panic
+                Err(e) => std::panic::resume_unwind(e),
+            };
+            // record result
+            self.success = result.is_ok();
 
-        // possibly copy GPG's stderr to ours
-        let success = wait_result?.success();
-        match join_result {
-            // thread returned GPG's stderr
-            Some(Ok(Ok(stderr))) => match report {
-                VerifyReport::StderrOnSuccess if !success => (),
-                // use eprint rather than io::stderr() so the output is
+            // report result to stderr if enabled
+            match report {
+                VerifyReport::StderrOnSuccess if !self.success => (),
+                // use eprintln rather than io::stderr() so the output is
                 // captured when running tests
-                VerifyReport::Stderr | VerifyReport::StderrOnSuccess => {
-                    eprint!("{}", String::from_utf8_lossy(&stderr))
-                }
-                VerifyReport::Ignore => (),
-            },
-            // thread returned error
-            Some(Ok(Err(e))) => return Err(e),
-            // thread panicked; propagate the panic
-            Some(Err(e)) => std::panic::resume_unwind(e),
-            // already joined the thread on a previous call
-            None => (),
+                VerifyReport::Stderr | VerifyReport::StderrOnSuccess => match result {
+                    Ok(s) => eprintln!("{}", s),
+                    Err(e) => eprintln!("{}", e),
+                },
+            }
         }
 
-        // check GPG exit status
-        if !success {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "GPG verification failure",
-            ));
+        // return result
+        if !self.success {
+            bail!("GPG verification failure");
         }
-
         Ok(())
     }
 }
 
 impl<R: Read> Read for GpgReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if buf.is_empty() {
+        if buf.is_empty() || self.verify_pipe.is_none() {
             return Ok(0);
         }
         let count = self.source.read(buf)?;
@@ -285,8 +189,7 @@ impl<R: Read> Read for GpgReader<R> {
             // On a partial write we return an error in violation of the
             // API contract.  This should be okay, since it's a fatal error
             // for us anyway.
-            self.child
-                .stdin
+            self.verify_pipe
                 .as_mut()
                 .unwrap()
                 .write_all(&buf[0..count])?;
@@ -295,11 +198,64 @@ impl<R: Read> Read for GpgReader<R> {
     }
 }
 
-impl<R: Read> Drop for GpgReader<R> {
-    fn drop(&mut self) {
-        // if we haven't already forwarded GPG's stderr, avoid doing it now,
-        // so we don't imply that we're checking the result
-        self.finish(VerifyReport::Ignore).ok();
+struct GpgHelper {
+    certs: Vec<Cert>,
+    success_detail: Option<String>,
+}
+
+impl GpgHelper {
+    fn new(certs: Vec<Cert>) -> Self {
+        Self {
+            certs,
+            success_detail: None,
+        }
+    }
+}
+
+impl VerificationHelper for GpgHelper {
+    fn get_certs(&mut self, _ids: &[KeyHandle]) -> Result<Vec<Cert>> {
+        Ok(self.certs.clone())
+    }
+
+    fn check(&mut self, s: MessageStructure) -> Result<()> {
+        if s.len() != 1 {
+            bail!("wrong number of layers ({}) in message structure", s.len());
+        }
+        if let MessageLayer::SignatureGroup { ref results } = s[0] {
+            let mut errs = Vec::new();
+            for res in results {
+                use VerificationError::*;
+                match res {
+                    // XXX improve these
+                    Ok(_) => {
+                        self.success_detail = Some(format!(
+                            "Good signature from \"{}\"\n    made on {} with key {}",
+                            "a", "b", "c"
+                        ));
+                        return Ok(());
+                    }
+                    Err(MalformedSignature { error, .. }) => {
+                        errs.push(format!("Malformed signature: {}", error));
+                    }
+                    Err(MissingKey { .. }) => {
+                        errs.push("Missing key".to_string());
+                    }
+                    Err(UnboundKey { error, .. }) => {
+                        errs.push(format!("Unbound key: {}", error));
+                    }
+                    Err(BadKey { error, .. }) => {
+                        errs.push(format!("Bad key: {}", error));
+                    }
+                    Err(BadSignature { error, .. }) => {
+                        errs.push(format!("Bad signature: {}", error));
+                    }
+                }
+            }
+            if !errs.is_empty() {
+                bail!(errs.join("\n"));
+            }
+        }
+        bail!("couldn't find any signatures");
     }
 }
 
@@ -338,6 +294,25 @@ mod tests {
         reader.verify().unwrap_err();
         reader.verify_without_logging_failure().unwrap_err();
         assert_eq!(&buf[..], &data[..]);
+    }
+
+    /// Read data with garbage signature
+    #[test]
+    fn test_garbage_signature() {
+        let data = include_bytes!("../../fixtures/verify/test-key.priv.asc").clone();
+        let sig = b"asdf";
+
+        let mut reader =
+            VerifyReader::new(&data[..], Some(&sig[..]), VerifyKeys::InsecureTest).unwrap();
+        let mut buf = Vec::new();
+        // verifier thread exits early on parse error
+        assert!(matches!(
+            reader.read_to_end(&mut buf).unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        ));
+        reader.verify().unwrap_err();
+        reader.verify().unwrap_err();
+        reader.verify_without_logging_failure().unwrap_err();
     }
 
     /// Read truncated data with otherwise-valid signature
