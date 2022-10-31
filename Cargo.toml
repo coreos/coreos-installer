@@ -67,7 +67,7 @@ ignition-config = "0.2"
 lazy_static = "^1.4"
 libc = "^0.2"
 nix = ">= 0.24, < 0.27"
-nmstate = "2.1.2"
+nmstate = { version = ">= 2.2.3, < 3", default-features = false, features = ["gen_conf"] }
 openssl = "^0.10"
 pipe = ">= 0.3, < 0.5"
 regex = ">= 1.4, < 2"
