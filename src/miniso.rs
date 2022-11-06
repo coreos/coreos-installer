@@ -51,12 +51,9 @@ impl Table {
         for (path, minimal_entry) in minimal_files {
             let full_entry = full_files
                 .get(path)
-                .with_context(|| format!("missing minimal file {} in full ISO", path))?;
+                .with_context(|| format!("missing minimal file {path} in full ISO"))?;
             if full_entry.length != minimal_entry.length {
-                bail!(
-                    "File {} has different lengths in full and minimal ISOs",
-                    path
-                );
+                bail!("File {path} has different lengths in full and minimal ISOs");
             }
             entries.push(TableEntry {
                 minimal: minimal_entry.address,

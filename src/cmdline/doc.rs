@@ -48,12 +48,12 @@ fn pack_one_man(config: &PackManConfig, cmd: Command) -> Result<()> {
         .section("8")
         .source(format!("coreos-installer {}", crate_version!()))
         .render(&mut buf)
-        .with_context(|| format!("rendering {}.8", name))?;
+        .with_context(|| format!("rendering {name}.8"))?;
     buf.flush().context("flushing man page")?;
     drop(buf);
 
     for subcmd in cmd.get_subcommands().filter(|c| !c.is_hide_set()) {
-        let subname = format!("{}-{}", name, subcmd.get_name());
+        let subname = format!("{name}-{}", subcmd.get_name());
         pack_one_man(
             config,
             subcmd.clone().name(subname).version(crate_version!()),
@@ -95,7 +95,7 @@ pub fn pack_example_config(_config: PackExampleConfigConfig) -> Result<()> {
                     "delete-karg" => "Delete default kernel arguments",
                     _ => help,
                 };
-                writeln!(out, "# {}", help).unwrap();
+                writeln!(out, "# {help}").unwrap();
             }
 
             // output "field: argument-description"
@@ -121,7 +121,7 @@ pub fn pack_example_config(_config: PackExampleConfigConfig) -> Result<()> {
                 // option flag
                 "true".into()
             };
-            writeln!(out, "{}: {}", field, desc).unwrap();
+            writeln!(out, "{field}: {desc}").unwrap();
         } else {
             bail!("couldn't look up field {}", field);
         }

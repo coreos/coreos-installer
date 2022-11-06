@@ -216,7 +216,7 @@ impl PartTableKernel {
         let file = OpenOptions::new()
             .write(true)
             .open(path)
-            .with_context(|| format!("opening {}", path))?;
+            .with_context(|| format!("opening {path}"))?;
         Ok(Self { file })
     }
 }
@@ -917,10 +917,10 @@ pub fn find_parent_devices(device: &str) -> Result<Vec<String>> {
         let dev = split_lsblk_line(line);
         let name = dev
             .get("NAME")
-            .with_context(|| format!("device in hierarchy of {} missing NAME", device))?;
+            .with_context(|| format!("device in hierarchy of {device} missing NAME"))?;
         let kind = dev
             .get("TYPE")
-            .with_context(|| format!("device in hierarchy of {} missing TYPE", device))?;
+            .with_context(|| format!("device in hierarchy of {device} missing TYPE"))?;
         if kind == "disk" {
             parents.push(name.clone());
         } else if kind == "mpath" {
@@ -941,7 +941,7 @@ pub fn find_colocated_esps(device: &str) -> Result<Vec<String>> {
 
     // first, get the parent device
     let parent_devices = find_parent_devices(device)
-        .with_context(|| format!("while looking for colocated ESPs of '{}'", device))?;
+        .with_context(|| format!("while looking for colocated ESPs of '{device}'"))?;
 
     // now, look for all ESPs on those devices
     let mut esps = Vec::new();
@@ -1165,14 +1165,14 @@ pub fn is_dasd(device: &str, fd: Option<&mut File>) -> Result<bool> {
     let read_magic = |device: &str, disk: &mut File| -> Result<[u8; 4]> {
         let offset = disk
             .seek(SeekFrom::Current(0))
-            .with_context(|| format!("saving offset {}", device))?;
+            .with_context(|| format!("saving offset {device}"))?;
         disk.seek(SeekFrom::Start(8194))
-            .with_context(|| format!("seeking {}", device))?;
+            .with_context(|| format!("seeking {device}"))?;
         let mut lbl = [0u8; 4];
         disk.read_exact(&mut lbl)
-            .with_context(|| format!("reading label {}", device))?;
+            .with_context(|| format!("reading label {device}"))?;
         disk.seek(SeekFrom::Start(offset))
-            .with_context(|| format!("restoring offset {}", device))?;
+            .with_context(|| format!("restoring offset {device}"))?;
         Ok(lbl)
     };
     if target.to_string_lossy().starts_with("/dev/vd") {
