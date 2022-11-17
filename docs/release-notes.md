@@ -17,6 +17,7 @@ Internal changes:
 Packaging changes:
 
 - Require `mbrman` ≥ 0.5.0
+- Update container to Fedora 37
 
 
 ## coreos-installer 0.16.1 (2022-09-19)
