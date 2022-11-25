@@ -11,6 +11,7 @@ Major changes:
 Minor changes:
 
 - install: Avoid osmet performance regression in debug builds on Rust 1.64+
+- install: Install 4Kn image on 512e disks
 
 Internal changes:
 

@@ -1085,7 +1085,7 @@ pub fn get_sector_size_for_path(device: &Path) -> Result<NonZeroU32> {
 pub fn get_sector_size(file: &File) -> Result<NonZeroU32> {
     let fd = file.as_raw_fd();
     let mut size: c_int = 0;
-    match unsafe { ioctl::blksszget(fd, &mut size) } {
+    match unsafe { ioctl::blkpbszget(fd, &mut size) } {
         Ok(_) => {
             let size_u32: u32 = size
                 .try_into()
@@ -1194,7 +1194,7 @@ mod ioctl {
     use super::c_int;
     use nix::{ioctl_none, ioctl_read, ioctl_read_bad, request_code_none};
     ioctl_none!(blkrrpart, 0x12, 95);
-    ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+    ioctl_read_bad!(blkpbszget, request_code_none!(0x12, 123), c_int);
     ioctl_read!(blkgetsize64, 0x12, 114, libc::size_t);
 }
 
