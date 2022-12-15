@@ -9,6 +9,7 @@ nav_order: 8
 Major changes:
 
 - Add Fedora 39 signing key; drop Fedora 36 signing key
+- iso: Support Ignition embedding on s390x by using `igninfo.json` if present
 
 Minor changes:
 

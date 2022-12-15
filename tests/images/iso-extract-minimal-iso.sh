@@ -22,6 +22,11 @@ grepq() {
 iso=$1; shift
 iso=$(realpath "${iso}")
 
+if [[ "${iso}" == *.s390x.* ]]; then
+    echo "Skipped; minimal ISO not supported on s390x"
+    exit 0
+fi
+
 tmpd=$(mktemp -d)
 trap 'rm -rf "${tmpd}"' EXIT
 cd "${tmpd}"
