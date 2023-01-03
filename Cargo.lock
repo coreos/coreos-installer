@@ -95,9 +95,9 @@ checksum = "37ccbd214614c6783386c1af30caf03192f17891059cecc394b4fb119e363de3"
 
 [[package]]
 name = "byte-unit"
-version = "4.0.17"
+version = "4.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "581ad4b3d627b0c09a0ccb2912148f839acaca0b93cf54cbe42b6c674e86079c"
+checksum = "3348673602e04848647fffaa8e9a861e7b5d5cae6570727b41bde0f722514484"
 dependencies = [
  "serde",
  "utf8-width",
