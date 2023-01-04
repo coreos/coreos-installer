@@ -110,6 +110,22 @@ pub fn install(config: InstallConfig) -> Result<()> {
         .with_context(|| format!("getting sector size of {}", device))?
         .get();
 
+    // Set up DASD.  We need to do this before initiating the download
+    // because otherwise the download might time out while we're low-level
+    // formatting the DASD.
+    #[cfg(target_arch = "s390x")]
+    {
+        if is_dasd(device, None)? {
+            if !save_partitions.is_empty() {
+                // The user requested partition saving, but SavedPartitions
+                // doesn't understand DASD VTOCs and won't find any partitions
+                // to save.
+                bail!("saving DASD partitions is not supported");
+            }
+            s390x::prepare_dasd(device)?;
+        }
+    }
+
     // set up image source
     // create location
     let location: Box<dyn ImageLocation> = if let Some(image_file) = &config.image_file {
@@ -169,20 +185,6 @@ pub fn install(config: InstallConfig) -> Result<()> {
             eprintln!("Signature not found; skipping verification as requested");
         } else {
             bail!("--insecure not specified and signature not found");
-        }
-    }
-
-    // set up DASD
-    #[cfg(target_arch = "s390x")]
-    {
-        if is_dasd(device, None)? {
-            if !save_partitions.is_empty() {
-                // The user requested partition saving, but SavedPartitions
-                // doesn't understand DASD VTOCs and won't find any partitions
-                // to save.
-                bail!("saving DASD partitions is not supported");
-            }
-            s390x::prepare_dasd(device)?;
         }
     }
 
