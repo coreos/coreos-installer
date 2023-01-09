@@ -245,7 +245,7 @@ dependencies = [
  "textwrap",
  "thiserror",
  "url",
- "uuid 1.2.2",
+ "uuid",
  "walkdir",
  "xz2",
  "zstd",
@@ -1006,9 +1006,9 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9ea4302b9759a7a88242299225ea3688e63c85ea136371bb6cf94fd674efaab"
+checksum = "f5dee5ed749373c298237fe694eb0a51887f4cc1a27370c8464bac4382348f1a"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -1060,9 +1060,9 @@ dependencies = [
 
 [[package]]
 name = "nispor"
-version = "1.2.7"
+version = "1.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1eb96b713e29801b11e750239a3fa36ee308b72b8524ecbf6c6b80e2d01af512"
+checksum = "726e9a52eb0e495fd7e2e15549fc133a38683ca16b96e4181d183c7c8185ccdb"
 dependencies = [
  "ethtool",
  "futures",
@@ -1119,17 +1119,17 @@ dependencies = [
 
 [[package]]
 name = "nmstate"
-version = "2.1.2"
+version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc0f597181184df3669c68b0ca927da8884a610e521ba2ccfd941f13c508fae3"
+checksum = "95d78d54c92abb46e51faa73cd5093327f339b5d0967e34835308e300b3b0a64"
 dependencies = [
- "libc",
+ "ipnet",
  "log",
  "nispor",
  "nix 0.24.2",
  "serde",
  "serde_json",
- "uuid 0.8.2",
+ "uuid",
  "zbus",
  "zvariant",
 ]
@@ -1442,9 +1442,9 @@ checksum = "b833d8d034ea094b1ea68aa6d5c740e0d04bad9d16568d08ba6f76823a114316"
 
 [[package]]
 name = "rtnetlink"
-version = "0.10.1"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "322c53fd76a18698f1c27381d58091de3a043d356aa5bd0d510608b565f469a0"
+checksum = "46f1cfa18f8cebe685373a2697915d7e0db3b4554918bba118385e0f71f258a7"
 dependencies = [
  "futures",
  "log",
@@ -1573,6 +1573,7 @@ version = "1.0.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877c235533714907a8c2464236f5c4b2a17262ef1bd71f38f35ea592c8da6883"
 dependencies = [
+ "indexmap",
  "itoa",
  "ryu",
  "serde",
@@ -1634,15 +1635,6 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
-]
-
-[[package]]
-name = "sha1"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1da05c97445caa12d05e848c4a4fcbbea29e748ac28f7e80e9b010392063770"
-dependencies = [
- "sha1_smol",
 ]
 
 [[package]]
@@ -1904,21 +1896,12 @@ checksum = "5190c9442dcdaf0ddd50f37420417d219ae5261bbf5db120d0f9bab996c9cba1"
 
 [[package]]
 name = "uuid"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-dependencies = [
- "getrandom",
- "sha1",
-]
-
-[[package]]
-name = "uuid"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "422ee0de9031b5b948b97a8fc04e3aa35230001a722ddd27943e0be31564ce4c"
 dependencies = [
  "getrandom",
+ "sha1_smol",
 ]
 
 [[package]]
