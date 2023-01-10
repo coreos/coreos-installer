@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use anyhow::{bail, Context, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use flate2::read::GzEncoder;
 use flate2::Compression;
 use ignition_config as ign_multi;
@@ -117,7 +118,7 @@ fn make_resource(data: &[u8]) -> Result<ign::Resource> {
     let mut compressed = Vec::new();
     GzEncoder::new(data, Compression::best()).read_to_end(&mut compressed)?;
     Ok(ign::Resource {
-        source: Some(format!("data:;base64,{}", base64::encode(&compressed))),
+        source: Some(format!("data:;base64,{}", BASE64.encode(&compressed))),
         compression: Some("gzip".into()),
         ..Default::default()
     })
