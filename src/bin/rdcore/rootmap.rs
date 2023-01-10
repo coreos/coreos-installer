@@ -208,7 +208,7 @@ fn get_luks_uuid(device: &Path) -> Result<String> {
     match deps.as_slice() {
         [] => bail!("missing parent device for {}", device.display()),
         [device] => {
-            if Disk::new(&device)?.is_dm_device() {
+            if Disk::new(device)?.is_dm_device() {
                 return get_luks_uuid(device);
             }
             Ok(runcmd_output!("cryptsetup", "luksUUID", device)?

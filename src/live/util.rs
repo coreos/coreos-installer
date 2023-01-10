@@ -34,7 +34,7 @@ pub(super) fn open_live_iso(
     OpenOptions::new()
         .read(true)
         .write(matches!(output_path, Some(None)))
-        .open(&input_path)
+        .open(input_path)
         .with_context(|| format!("opening {}", &input_path))
 }
 
@@ -64,7 +64,7 @@ pub(super) fn write_live_iso(
             copy(input, output.as_file_mut()).context("copying input to temporary file")?;
             iso.write(output.as_file_mut())?;
             output
-                .persist_noclobber(&output_path)
+                .persist_noclobber(output_path)
                 .map_err(|e| e.error)
                 .with_context(|| format!("persisting output file to {}", output_path))?;
         }
@@ -95,7 +95,7 @@ pub(super) fn copy_file_from_iso(
     let mut outf = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&output_path)
+        .open(output_path)
         .with_context(|| format!("opening {}", output_path.display()))?;
     let mut bufw = BufWriter::with_capacity(BUFFER_SIZE, &mut outf);
     copy(&mut iso.read_file(file)?, &mut bufw)?;

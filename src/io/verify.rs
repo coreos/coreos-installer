@@ -186,7 +186,7 @@ impl<R: Read> GpgReader<R> {
             .context("running gpg --check-trustdb")?;
         if !trustdb.status.success() {
             // copy out its stderr
-            eprint!("{}", String::from_utf8_lossy(&*trustdb.stderr));
+            eprint!("{}", String::from_utf8_lossy(&trustdb.stderr));
             bail!("gpg --check-trustdb failed");
         }
 
