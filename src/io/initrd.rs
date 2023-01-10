@@ -186,7 +186,7 @@ impl GlobMatcher {
         Ok(Self {
             patterns: globs
                 .iter()
-                .map(|p| glob::Pattern::new(*p).map_err(|e| anyhow!(e)))
+                .map(|p| glob::Pattern::new(p).map_err(|e| anyhow!(e)))
                 .collect::<Result<_>>()?,
         })
     }

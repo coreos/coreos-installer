@@ -672,7 +672,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     })?;
 
     // copy files from source to destination directories
-    for entry in fs::read_dir(&net_config_src)
+    for entry in fs::read_dir(net_config_src)
         .with_context(|| format!("reading directory {}", net_config_src))?
     {
         let entry = entry.with_context(|| format!("reading directory {net_config_src}"))?;

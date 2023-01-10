@@ -255,7 +255,7 @@ fn initrd_network_extract(initrd: &Initrd, directory: Option<&String>) -> Result
         bail!("No embedded network settings.");
     }
     if let Some(dir) = directory {
-        create_dir_all(&dir)?;
+        create_dir_all(dir)?;
         for (path, contents) in files {
             let path = Path::new(dir).join(filename(path)?);
             OpenOptions::new()
@@ -446,7 +446,7 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
             let mut tempfile = tempfile.unwrap();
             do_write(tempfile.as_file_mut())?;
             tempfile
-                .persist_noclobber(&path)
+                .persist_noclobber(path)
                 .map_err(|e| e.error)
                 .with_context(|| format!("persisting output file to {}", path))?;
             Ok(())

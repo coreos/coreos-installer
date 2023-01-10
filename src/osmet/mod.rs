@@ -366,7 +366,7 @@ fn write_xzpacked_image_to_file(
 
     let mut dev = OpenOptions::new()
         .read(true)
-        .open(&block_device)
+        .open(block_device)
         .with_context(|| format!("opening {:?}", block_device))?;
 
     let total_bytes_skipped = write_packed_image(&mut dev, &mut xz_tmpf, partitions)?;
