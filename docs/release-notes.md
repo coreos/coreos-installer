@@ -15,6 +15,8 @@ Minor changes:
 
 Internal changes:
 
+- verify-unique-fs-label: Use `-p` when calling `blkid` to avoid stale cache
+
 Packaging changes:
 
 - Require `mbrman` ≥ 0.5.0
@@ -107,7 +109,7 @@ Minor changes:
 Internal changes:
 
 - bind-boot: Fix EFI vendor directory detection
-- verify-unique-fs-label: use `blkid` instead of `lsblk` to make filesystem label querying more reliable
+- verify-unique-fs-label: Use `blkid` instead of `lsblk` to make filesystem label querying more reliable
 - Delete legacy aliases for `osmet` and `minimal-iso` pack commands used by coreos-assembler
 
 Packaging changes:
