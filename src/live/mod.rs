@@ -574,7 +574,7 @@ pub fn iso_extract_pxe(config: IsoExtractPxeConfig) -> Result<()> {
                     s.push(file.name.to_lowercase());
                     s
                 };
-                let path = Path::new(&config.output_dir).join(&filename);
+                let path = Path::new(&config.output_dir).join(filename);
                 println!("{}", path.display());
                 copy_file_from_iso(&mut iso, &file, &path)?;
             }
@@ -630,7 +630,7 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
     };
     let mut outf = tempfile::Builder::new()
         .prefix(".coreos-installer-temp-")
-        .tempfile_in(&output_dir)
+        .tempfile_in(output_dir)
         .context("creating temporary file")?;
     data.unxzpack(full_iso.as_file()?, &mut outf)
         .context("unpacking miniso")?;

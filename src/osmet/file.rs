@@ -110,9 +110,9 @@ pub(super) fn osmet_file_write(
 }
 
 /// Reads in the header, and does some basic sanity checking.
-fn read_and_check_header(mut f: &mut impl Read) -> Result<OsmetFileHeader> {
+fn read_and_check_header(f: &mut impl Read) -> Result<OsmetFileHeader> {
     let header: OsmetFileHeader = bincoder()
-        .deserialize_from(&mut f)
+        .deserialize_from(f)
         .context("failed to deserialize osmet file")?;
     if header.magic != OSMET_FILE_HEADER_MAGIC {
         bail!("not an OSMET file!");
