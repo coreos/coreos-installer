@@ -888,8 +888,22 @@ fn split_blkid_line(line: &str) -> HashMap<String, String> {
 }
 
 fn blkid() -> Result<Vec<HashMap<String, String>>> {
-    let mut cmd = Command::new("blkid");
-    let output = cmd_output(&mut cmd)?;
+    // Run once to gather the list of devices, and then run again with -p so
+    // that we don't rely on blkid cache:
+    // https://github.com/coreos/fedora-coreos-config/pull/2181#issuecomment-1397386896
+    let devices = {
+        let mut cmd = Command::new("blkid");
+        cmd.arg("-o");
+        cmd.arg("device");
+        cmd_output(&mut cmd)?
+    };
+
+    let output = {
+        let mut cmd = Command::new("blkid");
+        cmd.arg("-p");
+        cmd.args(devices.lines());
+        cmd_output(&mut cmd)?
+    };
 
     let mut result: Vec<HashMap<String, String>> = Vec::new();
     for line in output.lines() {
