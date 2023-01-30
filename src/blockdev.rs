@@ -14,6 +14,7 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use gptman::{GPTPartitionEntry, GPT};
+use lazy_static::lazy_static;
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount, sched};
 use regex::Regex;
@@ -996,9 +997,11 @@ pub fn find_efi_vendor_dir(efi_mount: &Mount) -> Result<PathBuf> {
 /// Parse key-value pairs from lsblk --pairs.
 /// Newer versions of lsblk support JSON but the one in CentOS 7 doesn't.
 fn split_lsblk_line(line: &str) -> HashMap<String, String> {
-    let re = Regex::new(r#"([A-Z-_]+)="([^"]+)""#).unwrap();
+    lazy_static! {
+        static ref REGEX: Regex = Regex::new(r#"([A-Z-_]+)="([^"]+)""#).unwrap();
+    }
     let mut fields: HashMap<String, String> = HashMap::new();
-    for cap in re.captures_iter(line) {
+    for cap in REGEX.captures_iter(line) {
         fields.insert(cap[1].to_string(), cap[2].to_string());
     }
     fields
