@@ -680,7 +680,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
         let destpath = net_config_dest.join(entry.file_name());
         if srcpath.is_file() {
             eprintln!("Copying {} to installed system", srcpath.display());
-            fs::copy(&srcpath, &destpath).context("Copying networking config")?;
+            fs::copy(&srcpath, destpath).context("Copying networking config")?;
         }
     }
 

@@ -791,7 +791,7 @@ fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64
 
 fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String> {
     let path = PathBuf::from(format!("/sys/dev/block/{}:{}/{}", maj, min, field));
-    Ok(read_to_string(&path)?.trim_end().into())
+    Ok(read_to_string(path)?.trim_end().into())
 }
 
 pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
