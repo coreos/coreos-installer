@@ -7,6 +7,7 @@ nav_order: 8
 ## Upcoming coreos-installer 0.17.0 (unreleased)
 
 Major changes:
+- install: Add support for MBR partition tables to `--save-partindex`
 
 Minor changes:
 

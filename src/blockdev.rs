@@ -14,6 +14,7 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use gptman::{GPTPartitionEntry, GPT};
+use mbrman::{MBRPartitionEntry, MBR};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount, sched};
 use regex::Regex;
@@ -32,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
-use uuid::Uuid;
+use uuid::{uuid, Uuid};
 
 use crate::cmdline::PartitionFilter;
 use crate::util::*;
@@ -519,6 +520,36 @@ pub struct SavedPartitions {
     partitions: Vec<(u32, GPTPartitionEntry)>,
 }
 
+fn translate_mbr_types_to_gpt(sys: u8) -> Uuid {
+    // non inclusive best effort mapping of MBR types to GPT types using the below references
+    // https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_type_GUIDs && https://tldp.org/HOWTO/Partition-Mass-Storage-Definitions-Naming-HOWTO/x190.html
+
+    match sys {
+        // Linux filesystem
+        0x01 => uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4"),
+        0x04 => uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4"),
+        0x06 => uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4"),
+        // Linux Filesystem Data
+        0x83 => uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4"),
+        // Linux LVM
+        0x8e => uuid!("E6D6D379-F507-44C2-A23C-238F2A3DF928"),
+        // Linux Swap
+        0x82 => uuid!("0657FD6D-A4AB-43C4-84E5-0933C84B4F4F"),
+        _ => uuid!("00000000-0000-0000-0000-000000000000"),
+    }
+}
+
+fn translate_mbr_to_gpt(mbr_partition: &MBRPartitionEntry) -> GPTPartitionEntry {
+    let mut gpt_partition = GPTPartitionEntry::empty();
+
+    gpt_partition.partition_type_guid = *translate_mbr_types_to_gpt(mbr_partition.sys).as_bytes();
+    gpt_partition.unique_partition_guid = *Uuid::new_v4().as_bytes();
+    gpt_partition.starting_lba = u64::from(mbr_partition.starting_lba);
+    // -1 because the end is inclusive
+    gpt_partition.ending_lba = u64::from(mbr_partition.starting_lba + mbr_partition.sectors) - 1;
+    gpt_partition
+}
+
 impl SavedPartitions {
     /// Create a SavedPartitions for a block device with a sector size.
     pub fn new_from_disk(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
@@ -566,39 +597,58 @@ impl SavedPartitions {
             });
         }
 
+        // Create a vector of the partitions
+        let mut partitions = Vec::new();
+
         // read GPT
-        let gpt = match GPT::find_from(disk) {
-            Ok(gpt) => gpt,
+        match GPT::find_from(disk) {
+            Ok(gpt) => {
+                // cross-check GPT sector size
+                Self::verify_gpt_sector_size(&gpt, sector_size)?;
+
+                // save partitions accepted by filters
+                for (i, p) in gpt.iter() {
+                    if Self::matches_filters(i, p, filters) {
+                        partitions.push((i, p.clone()));
+                    }
+                }
+            }
             Err(gptman::Error::InvalidSignature) => {
-                // ensure no indexes are listed to be saved from a MBR disk
-                // we don't need to check for labels since MBR does not support them
+                // no GPT, check for MBR
                 if filters
                     .iter()
                     .any(|f| matches!(f, PartitionFilter::Index(_, _)))
                     && disk_has_mbr(disk).context("checking if disk has an MBR")?
                 {
-                    bail!("saving partitions from an MBR disk is not yet supported");
-                }
+                    let mbr = MBR::read_from(disk, u32::try_from(sector_size)?)
+                        .context("reading disk as MBR")?;
 
+                    // cross-check MBR sector size
+                    Self::verify_mbr_sector_size(&mbr, sector_size)?;
+
+                    for (i, p) in mbr.iter() {
+                        if Self::matches_filters_mbr(i.try_into().unwrap(), p, filters) {
+                            // if the partition is using any of the last 33 sectors, we need to bail.
+                            if p.starting_lba + p.sectors < mbr.disk_size - 33 {
+                                partitions.push((
+                                    i.try_into().context("convert usize into u32")?,
+                                    translate_mbr_to_gpt(p),
+                                ));
+                            } else {
+                                bail!("MBR partition {} is using the last 33 sectors of the disk, which is not supported by GPT", i);
+                            }
+                        }
+                    }
+                }
                 // no GPT on this disk, so no partitions to save
                 return Ok(Self {
                     sector_size,
-                    partitions: Vec::new(),
+                    partitions: partitions,
                 });
             }
             Err(e) => return Err(e).context("reading partition table"),
         };
 
-        // cross-check GPT sector size
-        Self::verify_gpt_sector_size(&gpt, sector_size)?;
-
-        // save partitions accepted by filters
-        let mut partitions = Vec::new();
-        for (i, p) in gpt.iter() {
-            if Self::matches_filters(i, p, filters) {
-                partitions.push((i, p.clone()));
-            }
-        }
         let result = Self {
             sector_size,
             partitions,
@@ -654,6 +704,17 @@ impl SavedPartitions {
         Ok(())
     }
 
+    fn verify_mbr_sector_size(mbr: &MBR, sector_size: u64) -> Result<()> {
+        if u64::from(mbr.sector_size) != sector_size {
+            bail!(
+                "MBR sector size {} doesn't match expected {}",
+                mbr.sector_size,
+                sector_size
+            );
+        }
+        Ok(())
+    }
+
     fn matches_filters(i: u32, p: &GPTPartitionEntry, filters: &[PartitionFilter]) -> bool {
         use PartitionFilter::*;
         if !p.is_used() {
@@ -664,6 +725,19 @@ impl SavedPartitions {
             Index(_, Some(last)) if last.get() < i => false,
             Index(_, _) => true,
             Label(glob) if glob.matches(p.partition_name.as_str()) => true,
+            _ => false,
+        })
+    }
+
+    fn matches_filters_mbr(i: u32, p: &MBRPartitionEntry, filters: &[PartitionFilter]) -> bool {
+        use PartitionFilter::*;
+        if !p.is_used() {
+            return false;
+        }
+        filters.iter().any(|f| match f {
+            Index(Some(first), _) if first.get() > i => false,
+            Index(_, Some(last)) if last.get() < i => false,
+            Index(_, _) => true,
             _ => false,
         })
     }
@@ -1583,17 +1657,35 @@ mod tests {
 
         // test trying to save partitions from a MBR disk
         let mut disk = make_unformatted_disk();
-        gptman::GPT::write_protective_mbr_into(&mut disk, 512).unwrap();
-        // label only
-        SavedPartitions::new(&mut disk, 512, &vec![label("*i*")]).unwrap();
+        let mut mbr = mbrman::MBR::new_from(&mut disk, 512 as u32, [0xff; 4])
+            .expect("could not create partition table");
+
+        // create a mbr partition to copy over to gpt
+        mbr[1] = mbrman::MBRPartitionEntry {
+            boot: mbrman::BOOT_INACTIVE,
+            first_chs: mbrman::CHS::empty(),
+            sys: 0x0f,
+            last_chs: mbrman::CHS::empty(),
+            starting_lba: 1,
+            sectors: mbr.disk_size - 5000,
+        };
+
+        mbr.write_into(&mut disk).unwrap();
         // index only
-        assert_eq!(
-            SavedPartitions::new(&mut disk, 512, &vec![Index(index(1), index(1))])
-                .unwrap_err()
-                .to_string(),
-            "saving partitions from an MBR disk is not yet supported"
-        );
-        // label and index
+        let saved = SavedPartitions::new(&mut disk, 512, &vec![Index(index(1), index(1))]).unwrap();
+        assert!(saved.is_saved());
+
+        // create a mbr partition that uses some of the last 33 sectors of the disk
+        mbr[1] = mbrman::MBRPartitionEntry {
+            boot: mbrman::BOOT_INACTIVE,
+            first_chs: mbrman::CHS::empty(),
+            sys: 0x0f,
+            last_chs: mbrman::CHS::empty(),
+            starting_lba: 1,
+            sectors: mbr.disk_size - 22,
+        };
+        mbr.write_into(&mut disk).unwrap();
+
         assert_eq!(
             SavedPartitions::new(
                 &mut disk,
@@ -1602,7 +1694,7 @@ mod tests {
             )
             .unwrap_err()
             .to_string(),
-            "saving partitions from an MBR disk is not yet supported"
+            "MBR partition 1 is using the last 33 sectors of the disk, which is not supported by GPT"
         );
 
         // test sector size mismatch
