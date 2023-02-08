@@ -10,6 +10,7 @@ Major changes:
 
 Minor changes:
 
+- customize: Avoid disabling ISO autologin when only changing live kargs
 - install: Avoid osmet performance regression in debug builds on Rust 1.64+
 - install: Avoid network fetch timeout when low-level formatting ECKD DASD
 

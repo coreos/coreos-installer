@@ -310,6 +310,9 @@ iso_customize \
     --live-karg-replace ignition.platform.id=metal=bar
 coreos-installer iso kargs show iso | grepq ignition.platform.id=bar
 coreos-installer iso kargs show iso | grepq foo
+# Embedding only live kargs shouldn't also embed an Ignition config
+(coreos-installer iso ignition show iso 2>&1 ||:) |
+    grepq "No embedded Ignition config"
 iso_customize \
     --live-karg-delete ignition.platform.id=metal
 ! coreos-installer iso kargs show iso | grepq ignition.platform.id
