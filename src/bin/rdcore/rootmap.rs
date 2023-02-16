@@ -85,9 +85,9 @@ pub fn get_boot_mount_from_cmdline_args(
     if let Some(path) = boot_mount {
         Ok(Some(Mount::from_existing(path)?))
     } else if let Some(devpath) = boot_device {
-        let devinfo = lsblk_single(Path::new(devpath))?;
+        let devinfo = blkid_single(Path::new(devpath))?;
         let fs = devinfo
-            .get("FSTYPE")
+            .get("TYPE")
             .with_context(|| format!("failed to query filesystem for {}", devpath))?;
         Ok(Some(Mount::try_mount(
             devpath,
@@ -100,10 +100,7 @@ pub fn get_boot_mount_from_cmdline_args(
 }
 
 fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>> {
-    let blkinfo = lsblk_single(&device)?;
-    let blktype = blkinfo
-        .get("TYPE")
-        .with_context(|| format!("missing TYPE for {}", device.display()))?;
+    let blktype = get_block_device_type(&device)?;
     // a `match {}` construct would be nice here, but for RAID it's a prefix match
     if blktype.starts_with("raid") || blktype == "linear" {
         Ok(Some(get_raid_kargs(&device)?))

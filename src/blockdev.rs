@@ -479,7 +479,7 @@ impl Mount {
     }
 
     pub fn get_filesystem_uuid(&self) -> Result<String> {
-        let devinfo = lsblk_single(Path::new(&self.device))?;
+        let devinfo = blkid_single(Path::new(&self.device))?;
         devinfo
             .get("UUID")
             .map(String::from)
@@ -795,13 +795,16 @@ fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String>
     Ok(read_to_string(path)?.trim_end().into())
 }
 
-pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
+pub fn get_block_device_type(dev: &Path) -> Result<String> {
     let mut devinfos = lsblk(Path::new(dev), false)?;
     if devinfos.is_empty() {
         // this should never happen because `lsblk` itself would've failed
         bail!("no lsblk results for {}", dev.display());
     }
-    Ok(devinfos.remove(0))
+    devinfos
+        .remove(0)
+        .remove("TYPE")
+        .with_context(|| format!("missing TYPE for {}", dev.display()))
 }
 
 /// Returns all available filesystems.
@@ -911,6 +914,17 @@ fn blkid() -> Result<Vec<HashMap<String, String>>> {
         result.push(split_blkid_line(line));
     }
     Ok(result)
+}
+
+pub fn blkid_single(dev: &Path) -> Result<HashMap<String, String>> {
+    let mut cmd = Command::new("blkid");
+    cmd.arg(dev);
+    let output = cmd_output(&mut cmd)?;
+    if output.is_empty() {
+        // this should never happen because `blkid` itself would've failed
+        bail!("no blkid results for {}", dev.display());
+    }
+    Ok(split_blkid_line(&output))
 }
 
 /// This is a bit fuzzy, but... this function will return every block device in the parent
