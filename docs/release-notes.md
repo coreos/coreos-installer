@@ -8,6 +8,8 @@ nav_order: 8
 
 Major changes:
 
+- Add Fedora 39 signing key; drop Fedora 36 signing key
+
 Minor changes:
 
 - customize: Avoid disabling ISO autologin when only changing live kargs
