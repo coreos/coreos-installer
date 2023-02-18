@@ -37,7 +37,7 @@ fn secure_execution_is_enabled() -> Result<bool> {
     let sysfs_flag = "/sys/firmware/uv/prot_virt_guest";
     match File::open(sysfs_flag) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e).with_context(|| format!("reading {}", sysfs_flag)),
+        Err(e) => Err(e).with_context(|| format!("reading {sysfs_flag}")),
         Ok(mut f) => {
             let mut buffer = String::new();
             f.read_to_string(&mut buffer)?;
@@ -132,7 +132,7 @@ fn generate_sdboot(
 
     // write all kargs to a tmpfile, so genprotimg can append them to sd-boot
     if let Some(kargs) = kargs {
-        options = format!("{} {}", options, kargs);
+        options = format!("{options} {kargs}");
     }
     let mut cmdline = Builder::new()
         .prefix("se-cmdline.")
@@ -271,7 +271,7 @@ pub fn zipl<P: AsRef<Path>>(
                     .append_if_missing(extra.as_slice())
                     .maybe_apply_to(orig_options)
             })
-            .with_context(|| format!("appending {:?}", extra))?;
+            .with_context(|| format!("appending {extra:?}"))?;
 
             blsdir
         } else {

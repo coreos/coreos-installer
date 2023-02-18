@@ -256,7 +256,7 @@ impl PartTableKpartx {
         let re = Regex::new(r"^p[0-9]+$").expect("compiling RE");
         let expected = Path::new(path)
             .file_name()
-            .with_context(|| format!("getting filename of {}", path))?
+            .with_context(|| format!("getting filename of {path}"))?
             .to_os_string()
             .into_string()
             .map_err(|_| anyhow!("converting filename of {}", path))?;
@@ -297,9 +297,9 @@ impl PartTable for PartTableKpartx {
         for _ in 0..4 {
             match self.run_kpartx("-u") {
                 Ok(()) => return Ok(()),
-                Err(e) => eprintln!("Error: {}", e),
+                Err(e) => eprintln!("Error: {e}"),
             }
-            eprintln!("Retrying in {} second", delay);
+            eprintln!("Retrying in {delay} second");
             sleep(Duration::from_secs(delay));
         }
         self.run_kpartx("-u")
@@ -313,7 +313,7 @@ impl Drop for PartTableKpartx {
     fn drop(&mut self) {
         if self.need_teardown {
             if let Err(e) = self.run_kpartx("-d") {
-                eprintln!("{}", e)
+                eprintln!("{e}")
             }
         }
     }
@@ -334,7 +334,7 @@ impl Partition {
     /// Return start and end offsets within the disk.
     pub fn get_offsets(path: &str) -> Result<(u64, u64)> {
         let dev = metadata(path)
-            .with_context(|| format!("getting metadata for {}", path))?
+            .with_context(|| format!("getting metadata for {path}"))?
             .st_rdev();
         let maj: u64 = major(dev);
         let min: u64 = minor(dev);
@@ -615,7 +615,7 @@ impl SavedPartitions {
             let len = disk.seek(SeekFrom::End(0)).context("getting disk size")?;
             let mut temp = tempfile::tempfile().context("creating dry run image")?;
             temp.set_len(len)
-                .with_context(|| format!("setting test image size to {}", len))?;
+                .with_context(|| format!("setting test image size to {len}"))?;
             result.overwrite(&mut temp).context(
                 "failed dry run restoring saved partitions; input partition table may be invalid",
             )?;
@@ -776,12 +776,8 @@ impl SavedPartitions {
 }
 
 fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64> {
-    let s = read_sysfs_dev_block_value(maj, min, field).with_context(|| {
-        format!(
-            "reading partition {}:{} {} value from sysfs",
-            maj, min, field
-        )
-    })?;
+    let s = read_sysfs_dev_block_value(maj, min, field)
+        .with_context(|| format!("reading partition {maj}:{min} {field} value from sysfs"))?;
     s.parse().with_context(|| {
         format!(
             "parsing partition {}:{} {} value \"{}\" as u64",
@@ -791,7 +787,7 @@ fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64
 }
 
 fn read_sysfs_dev_block_value(maj: u64, min: u64, field: &str) -> Result<String> {
-    let path = PathBuf::from(format!("/sys/dev/block/{}:{}/{}", maj, min, field));
+    let path = PathBuf::from(format!("/sys/dev/block/{maj}:{min}/{field}"));
     Ok(read_to_string(path)?.trim_end().into())
 }
 
@@ -1084,11 +1080,11 @@ pub fn get_sector_size_for_path(device: &Path) -> Result<NonZeroU32> {
     let dev = OpenOptions::new()
         .read(true)
         .open(device)
-        .with_context(|| format!("opening {:?}", device))?;
+        .with_context(|| format!("opening {device:?}"))?;
 
     if !dev
         .metadata()
-        .with_context(|| format!("getting metadata for {:?}", device))?
+        .with_context(|| format!("getting metadata for {device:?}"))?
         .file_type()
         .is_block_device()
     {
@@ -1106,7 +1102,7 @@ pub fn get_sector_size(file: &File) -> Result<NonZeroU32> {
         Ok(_) => {
             let size_u32: u32 = size
                 .try_into()
-                .with_context(|| format!("sector size {} doesn't fit in u32", size))?;
+                .with_context(|| format!("sector size {size} doesn't fit in u32"))?;
             NonZeroU32::new(size_u32).context("found sector size of zero")
         }
         Err(e) => Err(anyhow!(e).context("getting sector size")),
@@ -1175,7 +1171,7 @@ pub fn detect_formatted_sector_size(buf: &[u8]) -> Option<NonZeroU32> {
 /// Checks if underlying device is IBM DASD disk
 pub fn is_dasd(device: &str, fd: Option<&mut File>) -> Result<bool> {
     let target =
-        canonicalize(device).with_context(|| format!("getting absolute path to {}", device))?;
+        canonicalize(device).with_context(|| format!("getting absolute path to {device}"))?;
     if target.to_string_lossy().starts_with("/dev/dasd") {
         return Ok(true);
     }
@@ -1197,7 +1193,7 @@ pub fn is_dasd(device: &str, fd: Option<&mut File>) -> Result<bool> {
         let lbl = if let Some(t) = fd {
             read_magic(device, t)?
         } else {
-            let mut disk = File::open(device).with_context(|| format!("opening {}", device))?;
+            let mut disk = File::open(device).with_context(|| format!("opening {device}"))?;
             read_magic(device, &mut disk)?
         };
         return Ok(cdl_magic == lbl);
@@ -1364,7 +1360,7 @@ mod tests {
                 i,
                 GPTPartitionEntry {
                     partition_type_guid: make_guid("type"),
-                    unique_partition_guid: make_guid(&format!("{} {} {}", name, start, end)),
+                    unique_partition_guid: make_guid(&format!("{name} {start} {end}")),
                     starting_lba: start * 2048,
                     ending_lba: end * 2048 - 1,
                     attribute_bits: 0,
@@ -1504,28 +1500,27 @@ mod tests {
             let saved = SavedPartitions::new_from_file(&mut base, 512, filter).unwrap();
             let mut disk = make_unformatted_disk();
             saved.overwrite(&mut disk).unwrap();
-            assert!(disk_has_mbr(&mut disk).unwrap(), "test {}", testnum);
+            assert!(disk_has_mbr(&mut disk).unwrap(), "test {testnum}");
             let result = GPT::find_from(&mut disk).unwrap();
             assert_eq!(
                 get_gpt_size(&mut disk).unwrap(),
                 512 * result.header.first_usable_lba
             );
-            assert_partitions_eq(expected_blank, &result, &format!("test {} blank", testnum));
+            assert_partitions_eq(expected_blank, &result, &format!("test {testnum} blank"));
 
             // try merging with image disk onto merge_base disk
             let mut disk = make_disk(512, &merge_base_parts);
             saved.merge(&mut image, &mut disk).unwrap();
             assert!(
                 disk_has_mbr(&mut disk).unwrap() == !expected_blank.is_empty(),
-                "test {}",
-                testnum
+                "test {testnum}"
             );
             let result = GPT::find_from(&mut disk).unwrap();
             assert_eq!(
                 get_gpt_size(&mut disk).unwrap(),
                 512 * result.header.first_usable_lba
             );
-            assert_partitions_eq(expected_image, &result, &format!("test {} image", testnum));
+            assert_partitions_eq(expected_image, &result, &format!("test {testnum} image"));
             assert_eq!(
                 saved.get_offset().unwrap(),
                 match expected_blank.is_empty() {
@@ -1538,8 +1533,7 @@ mod tests {
                         ))
                     }
                 },
-                "test {}",
-                testnum
+                "test {testnum}"
             );
         }
 
@@ -1579,9 +1573,8 @@ mod tests {
         let mut disk = make_disk(512, &merge_base_parts);
         let err = saved.merge(&mut image, &mut disk).unwrap_err();
         assert!(
-            format!("{:#}", err).contains(&gptman::Error::InvalidPartitionBoundaries.to_string()),
-            "incorrect error: {:#}",
-            err
+            format!("{err:#}").contains(&gptman::Error::InvalidPartitionBoundaries.to_string()),
+            "incorrect error: {err:#}"
         );
 
         // test trying to save partitions from a MBR disk
@@ -1662,9 +1655,8 @@ mod tests {
             let err = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![label("one")])
                 .unwrap_err();
             assert!(
-                format!("{:#}", err).contains("could not read primary header"),
-                "incorrect error: {:#}",
-                err
+                format!("{err:#}").contains("could not read primary header"),
+                "incorrect error: {err:#}"
             );
         }
     }
@@ -1748,8 +1740,7 @@ mod tests {
                 .iter()
                 .filter(|(_, p)| p.is_used())
                 .collect::<Vec<(u32, &GPTPartitionEntry)>>(),
-            "{}",
-            message
+            "{message}"
         );
     }
 }

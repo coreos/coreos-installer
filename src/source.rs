@@ -94,7 +94,7 @@ impl FileLocation {
     pub fn new(path: &str) -> Self {
         Self {
             image_path: path.to_string(),
-            sig_path: format!("{}.sig", path),
+            sig_path: format!("{path}.sig"),
         }
     }
 }
@@ -132,7 +132,7 @@ impl ImageLocation for FileLocation {
                 Some(sig_vec)
             }
             Err(err) => {
-                eprintln!("Couldn't read signature file: {}", err);
+                eprintln!("Couldn't read signature file: {err}");
                 None
             }
         };
@@ -195,7 +195,7 @@ impl ImageLocation for UrlLocation {
     fn sources(&self) -> Result<Vec<ImageSource>> {
         let signature = self
             .fetch_signature()
-            .map_err(|e| eprintln!("Failed to fetch signature: {}", e))
+            .map_err(|e| eprintln!("Failed to fetch signature: {e}"))
             .ok();
 
         // start fetch, get length
@@ -351,7 +351,7 @@ impl ImageLocation for OsmetLocation {
             // really we don't need to care about UTF-8 here, but ImageSource right now does
             let mut filename: String = stem
                 .to_str()
-                .with_context(|| format!("non-UTF-8 osmet file stem: {:?}", stem))?
+                .with_context(|| format!("non-UTF-8 osmet file stem: {stem:?}"))?
                 .into();
             filename.push_str(".raw");
             filename
@@ -435,7 +435,7 @@ pub fn list_stream(config: ListStreamConfig) -> Result<()> {
 fn build_stream_url(stream: &str, base_url: Option<&Url>) -> Result<Url> {
     base_url
         .unwrap_or(&Url::parse(DEFAULT_STREAM_BASE_URL).unwrap())
-        .join(&format!("{}.json", stream))
+        .join(&format!("{stream}.json"))
         .context("building stream URL")
 }
 
@@ -490,7 +490,7 @@ pub fn http_get(
                 _ => {
                     return resp
                         .error_for_status()
-                        .with_context(|| format!("fetching '{}'", url));
+                        .with_context(|| format!("fetching '{url}'"));
                 }
             },
         };
@@ -498,12 +498,12 @@ pub fn http_get(
         if !infinite {
             tries -= 1;
             if tries == 0 {
-                return Err(err).with_context(|| format!("fetching '{}'", url));
+                return Err(err).with_context(|| format!("fetching '{url}'"));
             }
         }
 
-        eprintln!("Error fetching '{}': {}", url, err);
-        eprintln!("Sleeping {}s and retrying...", delay);
+        eprintln!("Error fetching '{url}': {err}");
+        eprintln!("Sleeping {delay}s and retrying...");
         sleep(Duration::from_secs(delay));
         delay = std::cmp::min(delay * 2, 10 * 60); // cap to 10 mins; matches curl
     }

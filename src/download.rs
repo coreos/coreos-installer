@@ -45,7 +45,7 @@ pub fn download(config: DownloadConfig) -> Result<()> {
             config.fetch_retries,
         )?)
     };
-    eprintln!("{}", location);
+    eprintln!("{location}");
 
     // walk sources
     let mut sources = location.sources()?;
@@ -67,7 +67,7 @@ pub fn download(config: DownloadConfig) -> Result<()> {
         let mut path = PathBuf::new();
         path.push(&config.directory);
         path.push(filename);
-        let sig_path = path.with_file_name(format!("{}.sig", filename));
+        let sig_path = path.with_file_name(format!("{filename}.sig"));
 
         // check existing image and signature; don't redownload if OK
         // If we decompressed last time, the call will fail because we can't
@@ -380,7 +380,7 @@ pub fn image_copy_default(
     };
     // do the copy
     dest.seek(SeekFrom::Start(offset))
-        .with_context(|| format!("seeking disk to offset {}", offset))?;
+        .with_context(|| format!("seeking disk to offset {offset}"))?;
     dest.write_all(&first_mb[offset as usize..first_mb.len()])
         .context("writing first MiB of disk")?;
 
@@ -398,13 +398,13 @@ pub fn download_to_tempfile(url: &Url, retries: FetchRetries) -> Result<File> {
         &mut BufReader::with_capacity(BUFFER_SIZE, &mut resp),
         &mut writer,
     )
-    .with_context(|| format!("couldn't copy '{}'", url))?;
+    .with_context(|| format!("couldn't copy '{url}'"))?;
     writer
         .flush()
-        .with_context(|| format!("couldn't write '{}' to disk", url))?;
+        .with_context(|| format!("couldn't write '{url}' to disk"))?;
     drop(writer);
     f.rewind()
-        .with_context(|| format!("rewinding file for '{}'", url))?;
+        .with_context(|| format!("rewinding file for '{url}'"))?;
 
     Ok(f)
 }
@@ -425,7 +425,7 @@ struct ProgressReader<'a, R: Read> {
 impl<'a, R: Read> ProgressReader<'a, R> {
     fn new(source: R, length: Option<u64>, artifact_type: &'a str) -> Self {
         let tty = isatty(stderr().as_raw_fd()).unwrap_or_else(|e| {
-            eprintln!("checking if stderr is a TTY: {}", e);
+            eprintln!("checking if stderr is a TTY: {e}");
             false
         });
         // disable percentage reporting for zero-length files to avoid
@@ -671,9 +671,8 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            format!("{:#}", err).contains("collision with partition"),
-            "incorrect error: {:#}",
-            err
+            format!("{err:#}").contains("collision with partition"),
+            "incorrect error: {err:#}"
         );
 
         dest.seek(SeekFrom::Start(offset)).unwrap();

@@ -58,9 +58,9 @@ fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
     if device.starts_with("vd") {
         return Ok(DasdType::Virt);
     }
-    let devtype_path = format!("/sys/class/block/{}/device/devtype", device);
+    let devtype_path = format!("/sys/class/block/{device}/device/devtype");
     let devtype_str = std::fs::read_to_string(&devtype_path)
-        .with_context(|| format!("reading {}", devtype_path))?;
+        .with_context(|| format!("reading {devtype_path}"))?;
     let devtype = match devtype_str.starts_with("3390/") {
         true => DasdType::Eckd,
         false => DasdType::Fba,

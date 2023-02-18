@@ -182,7 +182,7 @@ pub fn find_matching_osmet_in_dir(
     sector_size: u32,
 ) -> Result<Option<(PathBuf, String)>> {
     for entry in WalkDir::new(osmet_dir).max_depth(1) {
-        let entry = entry.with_context(|| format!("walking {:?}", osmet_dir))?;
+        let entry = entry.with_context(|| format!("walking {osmet_dir:?}"))?;
 
         if !entry.file_type().is_file() {
             continue;
@@ -367,7 +367,7 @@ fn write_xzpacked_image_to_file(
     let mut dev = OpenOptions::new()
         .read(true)
         .open(block_device)
-        .with_context(|| format!("opening {:?}", block_device))?;
+        .with_context(|| format!("opening {block_device:?}"))?;
 
     let total_bytes_skipped = write_packed_image(&mut dev, &mut xz_tmpf, partitions)?;
 
@@ -375,7 +375,7 @@ fn write_xzpacked_image_to_file(
 
     // sanity check that the number of bytes written + packed match up with block device size
     let blksize = get_block_device_size(&dev)
-        .with_context(|| format!("querying block device size of {:?}", block_device))?;
+        .with_context(|| format!("querying block device size of {block_device:?}"))?;
     let total_bytes_written = xz_tmpf.total_in();
     if total_bytes_written + total_bytes_skipped != blksize.get() {
         bail!(
@@ -386,8 +386,8 @@ fn write_xzpacked_image_to_file(
         );
     }
 
-    eprintln!("Total bytes skipped: {}", total_bytes_skipped);
-    eprintln!("Total bytes written: {}", total_bytes_written);
+    eprintln!("Total bytes skipped: {total_bytes_skipped}");
+    eprintln!("Total bytes written: {total_bytes_written}");
     eprintln!("Total bytes written (compressed): {}", xz_tmpf.total_out());
 
     let mut tmpf = xz_tmpf.finish().context("finishing xz stream")?;
@@ -410,7 +410,7 @@ fn write_packed_image(
         assert!(partition.start_offset >= cursor);
         copy_exactly_n(dev, w, partition.start_offset - cursor, &mut buf)?;
         total_bytes_skipped += write_packed_image_partition(dev, w, partition, &mut buf)
-            .with_context(|| format!("packing partition {}", i))?;
+            .with_context(|| format!("packing partition {i}"))?;
         cursor = partition.end_offset;
     }
 
@@ -496,7 +496,7 @@ fn canonicalize(mappings: &mut Vec<Mapping>) {
     }
 
     eprintln!("Duplicate extents dropped: {}", mappings_to_delete.len());
-    eprintln!("Overlapping extents clamped: {}", clamped_mappings_count);
+    eprintln!("Overlapping extents clamped: {clamped_mappings_count}");
 
     for i in mappings_to_delete.into_iter().rev() {
         mappings.remove(i);

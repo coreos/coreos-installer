@@ -92,7 +92,7 @@ impl Console {
     }
 
     pub fn karg(&self) -> String {
-        format!("{KARG_PREFIX}{}", self)
+        format!("{KARG_PREFIX}{self}")
     }
 
     /// Write a warning message to stdout if kargs contains "console="
@@ -124,7 +124,7 @@ impl Console {
                     .word_splitter(WordSplitter::NoHyphenation),
             )
             .replace(NBSP, " ");
-            eprintln!("\n{}\n", wrapped);
+            eprintln!("\n{wrapped}\n");
         }
     }
 
@@ -265,16 +265,14 @@ mod tests {
             assert_eq!(
                 console.grub_terminal(),
                 grub_terminal,
-                "GRUB terminal for {}",
-                input
+                "GRUB terminal for {input}"
             );
             assert_eq!(
                 console.grub_command().as_deref(),
                 grub_command,
-                "GRUB command for {}",
-                input
+                "GRUB command for {input}"
             );
-            assert_eq!(console.karg(), karg, "karg for {}", input);
+            assert_eq!(console.karg(), karg, "karg for {input}");
         }
     }
 

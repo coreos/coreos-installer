@@ -53,15 +53,13 @@ macro_rules! runcmd_output {
 /// standard output. Output is assumed to be UTF-8. Errors are adequately prefixed with the full
 /// command.
 pub fn cmd_output(cmd: &mut Command) -> Result<String> {
-    let result = cmd
-        .output()
-        .with_context(|| format!("running {:#?}", cmd))?;
+    let result = cmd.output().with_context(|| format!("running {cmd:#?}"))?;
     if !result.status.success() {
         eprint!("{}", String::from_utf8_lossy(&result.stderr));
         bail!("{:#?} failed with {}", cmd, result.status);
     }
     String::from_utf8(result.stdout)
-        .with_context(|| format!("decoding as UTF-8 output of `{:#?}`", cmd))
+        .with_context(|| format!("decoding as UTF-8 output of `{cmd:#?}`"))
 }
 
 /// Rust ignores SIGPIPE by default, which causes verbose failures when

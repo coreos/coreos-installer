@@ -32,7 +32,7 @@ pub fn object_path_to_checksum(path: &Path) -> Result<Sha256Digest> {
         .file_stem()
         .unwrap()
         .to_str()
-        .with_context(|| format!("invalid non-UTF-8 object filename: {:?}", path))?;
+        .with_context(|| format!("invalid non-UTF-8 object filename: {path:?}"))?;
     if chksum2.len() != 2 || chksum62.len() != 62 {
         bail!("Malformed object path {:?}", path);
     }

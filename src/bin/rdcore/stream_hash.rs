@@ -100,7 +100,7 @@ fn do_stream_hash(
         // get expected hash
         let line = line.context("couldn't read hash from hash file")?;
         let expected_hash =
-            hex::decode(&line).with_context(|| format!("couldn't decode hash: {:?}", line))?;
+            hex::decode(&line).with_context(|| format!("couldn't decode hash: {line:?}"))?;
 
         // read data
         let mut count = 0;
@@ -261,11 +261,11 @@ ef2323b075d71f44c62f62d37b29a5fc4f10c03579a3f6e5b00c2d9666a75e65
                         i,
                         test.err.unwrap_or("-")
                     );
-                    assert_eq!(test.input.as_bytes(), output.as_slice(), "{}", i);
+                    assert_eq!(test.input.as_bytes(), output.as_slice(), "{i}");
                 }
                 Err(e) => {
-                    assert!(test.err.is_some(), "{}: found error: {}", i, e);
-                    assert_eq!(&e.to_string(), test.err.unwrap(), "{}", i);
+                    assert!(test.err.is_some(), "{i}: found error: {e}");
+                    assert_eq!(&e.to_string(), test.err.unwrap(), "{i}");
                 }
             }
         }

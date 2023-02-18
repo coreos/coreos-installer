@@ -178,7 +178,7 @@ impl Data {
             // bytes after xz. So not worth the complexity.
             offset = miniso
                 .seek(SeekFrom::Current(entry.length as i64))
-                .with_context(|| format!("skipping miniso file at offset {}", addr))?;
+                .with_context(|| format!("skipping miniso file at offset {addr}"))?;
             skipped += entry.length as u64;
         }
 
@@ -253,9 +253,9 @@ impl Data {
             }
             fulliso
                 .seek(SeekFrom::Start(fulliso_addr))
-                .with_context(|| format!("seeking to full ISO file at offset {}", fulliso_addr))?;
+                .with_context(|| format!("seeking to full ISO file at offset {fulliso_addr}"))?;
             offset += copy_exactly_n(fulliso, &mut w, entry.length as u64, &mut buf)
-                .with_context(|| format!("copying full ISO file at offset {}", fulliso_addr))?;
+                .with_context(|| format!("copying full ISO file at offset {fulliso_addr}"))?;
         }
 
         copy(&mut xzr, &mut w).context("copying remaining packed bytes")?;

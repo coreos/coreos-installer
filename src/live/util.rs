@@ -55,7 +55,7 @@ pub(super) fn write_live_iso(
         Some(output_path) => {
             let output_dir = Path::new(output_path)
                 .parent()
-                .with_context(|| format!("no parent directory of {}", output_path))?;
+                .with_context(|| format!("no parent directory of {output_path}"))?;
             let mut output = tempfile::Builder::new()
                 .prefix(".coreos-installer-temp-")
                 .tempfile_in(output_dir)
@@ -66,7 +66,7 @@ pub(super) fn write_live_iso(
             output
                 .persist_noclobber(output_path)
                 .map_err(|e| e.error)
-                .with_context(|| format!("persisting output file to {}", output_path))?;
+                .with_context(|| format!("persisting output file to {output_path}"))?;
         }
     }
     Ok(())
@@ -77,7 +77,7 @@ pub(super) fn write_live_iso(
 pub(super) fn write_live_pxe(initrd: &Initrd, output_path: Option<&String>) -> Result<()> {
     let initrd = initrd.to_bytes()?;
     match output_path {
-        Some(path) => write(path, &initrd).with_context(|| format!("writing {}", path)),
+        Some(path) => write(path, &initrd).with_context(|| format!("writing {path}")),
         None => {
             let stdout = io::stdout();
             let mut out = stdout.lock();
@@ -113,7 +113,7 @@ pub(super) fn verify_stdout_not_tty() -> Result<()> {
 pub(super) fn filename(path: &str) -> Result<String> {
     Ok(Path::new(path)
         .file_name()
-        .with_context(|| format!("missing filename in {}", path))?
+        .with_context(|| format!("missing filename in {path}"))?
         // path was originally a string
         .to_string_lossy()
         .into_owned())

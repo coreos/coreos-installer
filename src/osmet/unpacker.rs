@@ -80,7 +80,7 @@ impl Read for OsmetUnpacker {
                     Ok(_) => Ok(0),
                     Err(e) => Err(io::Error::new(
                         ErrorKind::Other,
-                        format!("while unpacking: {}", e),
+                        format!("while unpacking: {e}"),
                     )),
                 };
             }
@@ -207,11 +207,11 @@ fn write_partition_mapping(
     let mut object = OpenOptions::new()
         .read(true)
         .open(object)
-        .with_context(|| format!("opening {:?}", object))?;
+        .with_context(|| format!("opening {object:?}"))?;
 
     let mut objlen = object
         .metadata()
-        .with_context(|| format!("getting metadata for {:?}", object))?
+        .with_context(|| format!("getting metadata for {object:?}"))?
         .len();
 
     if extent.logical > 0 {
