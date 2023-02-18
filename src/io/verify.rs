@@ -326,7 +326,7 @@ mod tests {
     /// Read data with bad signature
     #[test]
     fn test_bad_signature() {
-        let mut data = include_bytes!("../../fixtures/verify/test-key.priv.asc").clone();
+        let mut data = *include_bytes!("../../fixtures/verify/test-key.priv.asc");
         let sig = include_bytes!("../../fixtures/verify/test-key.priv.asc.sig");
         data[data.len() - 1] = b'!';
 

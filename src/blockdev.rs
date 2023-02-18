@@ -1512,7 +1512,7 @@ mod tests {
             let mut disk = make_disk(512, &merge_base_parts);
             saved.merge(&mut image, &mut disk).unwrap();
             assert!(
-                disk_has_mbr(&mut disk).unwrap() == !expected_blank.is_empty(),
+                disk_has_mbr(&mut disk).unwrap() != expected_blank.is_empty(),
                 "test {testnum}"
             );
             let result = GPT::find_from(&mut disk).unwrap();
@@ -1538,7 +1538,7 @@ mod tests {
         }
 
         // ensure overwrite clobbers every byte of MBR
-        for sector_size in [512 as usize, 4096 as usize].iter() {
+        for sector_size in [512_usize, 4096_usize].iter() {
             let mut disk = make_unformatted_disk();
             disk.write_all(&vec![0xdau8; *sector_size]).unwrap();
             let saved =

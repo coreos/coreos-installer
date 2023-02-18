@@ -283,7 +283,7 @@ mod tests {
             .append(&append_kargs)
             .replace(&replace_kargs)
             .delete(&delete_kargs)
-            .apply_to(&orig_kargs)
+            .apply_to(orig_kargs)
             .unwrap();
         assert_eq!(
             new_kargs,
