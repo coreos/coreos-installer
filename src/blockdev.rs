@@ -1542,7 +1542,7 @@ mod tests {
             let mut disk = make_unformatted_disk();
             disk.write_all(&vec![0xdau8; *sector_size]).unwrap();
             let saved =
-                SavedPartitions::new_from_file(&mut disk, *sector_size as u64, &vec![]).unwrap();
+                SavedPartitions::new_from_file(&mut disk, *sector_size as u64, &[]).unwrap();
             saved.overwrite(&mut disk).unwrap();
             assert!(disk_has_mbr(&mut disk).unwrap(), "{}", *sector_size);
             disk.rewind().unwrap();
@@ -1560,7 +1560,7 @@ mod tests {
 
         // test merging with unformatted initial disk
         let mut disk = make_unformatted_disk();
-        let saved = SavedPartitions::new_from_file(&mut disk, 512, &vec![label("z")]).unwrap();
+        let saved = SavedPartitions::new_from_file(&mut disk, 512, &[label("z")]).unwrap();
         let mut disk = make_disk(512, &merge_base_parts);
         saved.merge(&mut image, &mut disk).unwrap();
         let result = GPT::find_from(&mut disk).unwrap();
@@ -1568,8 +1568,7 @@ mod tests {
 
         // test overlapping partitions
         let saved =
-            SavedPartitions::new_from_file(&mut base, 512, &vec![Index(index(1), index(1))])
-                .unwrap();
+            SavedPartitions::new_from_file(&mut base, 512, &[Index(index(1), index(1))]).unwrap();
         let mut disk = make_disk(512, &merge_base_parts);
         let err = saved.merge(&mut image, &mut disk).unwrap_err();
         assert!(
@@ -1581,28 +1580,24 @@ mod tests {
         let mut disk = make_unformatted_disk();
         gptman::GPT::write_protective_mbr_into(&mut disk, 512).unwrap();
         // label only
-        SavedPartitions::new(&mut disk, 512, &vec![label("*i*")]).unwrap();
+        SavedPartitions::new(&mut disk, 512, &[label("*i*")]).unwrap();
         // index only
         assert_eq!(
-            SavedPartitions::new(&mut disk, 512, &vec![Index(index(1), index(1))])
+            SavedPartitions::new(&mut disk, 512, &[Index(index(1), index(1))])
                 .unwrap_err()
                 .to_string(),
             "saving partitions from an MBR disk is not yet supported"
         );
         // label and index
         assert_eq!(
-            SavedPartitions::new(
-                &mut disk,
-                512,
-                &vec![Index(index(1), index(1)), label("*i*")]
-            )
-            .unwrap_err()
-            .to_string(),
+            SavedPartitions::new(&mut disk, 512, &[Index(index(1), index(1)), label("*i*")])
+                .unwrap_err()
+                .to_string(),
             "saving partitions from an MBR disk is not yet supported"
         );
 
         // test sector size mismatch
-        let saved = SavedPartitions::new_from_file(&mut base, 512, &vec![label("*i*")]).unwrap();
+        let saved = SavedPartitions::new_from_file(&mut base, 512, &[label("*i*")]).unwrap();
         let mut image_4096 = make_disk(4096, &image_parts);
         assert_eq!(
             get_gpt_size(&mut image_4096).unwrap(),
@@ -1625,7 +1620,7 @@ mod tests {
         let data = include_bytes!("../fixtures/gpt-512-duplicate-partition-guids.xz");
         copy(&mut XzDecoder::new(&data[..]), &mut disk).unwrap();
         assert_eq!(
-            SavedPartitions::new_from_file(&mut disk, 512, &vec![label("*")])
+            SavedPartitions::new_from_file(&mut disk, 512, &[label("*")])
                 .unwrap_err()
                 .to_string(),
             "failed dry run restoring saved partitions; input partition table may be invalid"
@@ -1636,23 +1631,23 @@ mod tests {
             let sector_size: u64 = *sector_size;
             // backup corrupt
             let mut disk = make_damaged_disk(sector_size, &base_parts, false, true);
-            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![]).unwrap();
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &[]).unwrap();
             assert!(!saved.is_saved());
-            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![label("one")])
-                .unwrap();
+            let saved =
+                SavedPartitions::new_from_file(&mut disk, sector_size, &[label("one")]).unwrap();
             assert!(saved.is_saved());
             // primary corrupt
             let mut disk = make_damaged_disk(sector_size, &base_parts, true, false);
-            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![]).unwrap();
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &[]).unwrap();
             assert!(!saved.is_saved());
-            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![label("one")])
-                .unwrap();
+            let saved =
+                SavedPartitions::new_from_file(&mut disk, sector_size, &[label("one")]).unwrap();
             assert!(saved.is_saved());
             // both corrupt
             let mut disk = make_damaged_disk(sector_size, &base_parts, true, true);
-            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![]).unwrap();
+            let saved = SavedPartitions::new_from_file(&mut disk, sector_size, &[]).unwrap();
             assert!(!saved.is_saved());
-            let err = SavedPartitions::new_from_file(&mut disk, sector_size, &vec![label("one")])
+            let err = SavedPartitions::new_from_file(&mut disk, sector_size, &[label("one")])
                 .unwrap_err();
             assert!(
                 format!("{err:#}").contains("could not read primary header"),
