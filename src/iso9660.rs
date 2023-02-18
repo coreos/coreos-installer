@@ -60,9 +60,7 @@ impl IsoFs {
     }
 
     pub fn as_file(&mut self) -> Result<&mut fs::File> {
-        self.file
-            .seek(SeekFrom::Start(0))
-            .context("seeking to start of ISO")?;
+        self.file.rewind().context("seeking to start of ISO")?;
         Ok(&mut self.file)
     }
 

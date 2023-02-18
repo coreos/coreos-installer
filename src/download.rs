@@ -359,8 +359,7 @@ pub fn image_copy_default(
     let offset = match saved {
         Some(saved) if saved.is_saved() => {
             // copy MBR
-            dest.seek(SeekFrom::Start(0))
-                .context("seeking disk to MBR")?;
+            dest.rewind().context("seeking disk to MBR")?;
             dest.write_all(&first_mb[0..saved.get_sector_size() as usize])
                 .context("writing MBR")?;
 
@@ -404,7 +403,7 @@ pub fn download_to_tempfile(url: &Url, retries: FetchRetries) -> Result<File> {
         .flush()
         .with_context(|| format!("couldn't write '{}' to disk", url))?;
     drop(writer);
-    f.seek(SeekFrom::Start(0))
+    f.rewind()
         .with_context(|| format!("rewinding file for '{}'", url))?;
 
     Ok(f)
@@ -655,7 +654,7 @@ mod tests {
         let precious = "hello world";
         dest.seek(SeekFrom::Start(offset)).unwrap();
         dest.write_all(precious.as_bytes()).unwrap();
-        dest.seek(SeekFrom::Start(0)).unwrap();
+        dest.rewind().unwrap();
 
         let err = write_image(
             &mut FileLocation::new(source_path.to_str().unwrap())
@@ -700,7 +699,7 @@ mod tests {
         source.seek(SeekFrom::Start(mb as u64)).unwrap();
         image_copy_default(&data[0..mb], &mut source, &mut dest, Path::new("/z"), None).unwrap();
         // compare
-        dest.seek(SeekFrom::Start(0)).unwrap();
+        dest.rewind().unwrap();
         let mut result = vec![0u8; len];
         dest.read_exact(&mut result).unwrap();
         assert_eq!(data, result);
@@ -724,7 +723,7 @@ mod tests {
         )
         .unwrap();
         // compare
-        dest.seek(SeekFrom::Start(0)).unwrap();
+        dest.rewind().unwrap();
         let mut result = vec![0u8; len];
         dest.read_exact(&mut result).unwrap();
         assert_eq!(data, result);
@@ -759,7 +758,7 @@ mod tests {
         )
         .unwrap();
         // compare
-        dest.seek(SeekFrom::Start(0)).unwrap();
+        dest.rewind().unwrap();
         let mut result = vec![0u8; len];
         dest.read_exact(&mut result).unwrap();
         assert_eq!(detect_formatted_sector_size(&result), NonZeroU32::new(512));

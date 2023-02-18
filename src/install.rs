@@ -219,7 +219,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
-    dest.seek(SeekFrom::Start(0))
+    dest.rewind()
         .with_context(|| format!("seeking {}", device))?;
     if let Err(err) = write_disk(
         &config,
@@ -468,7 +468,7 @@ fn write_ignition(
             .validate(&mut config_in)
             .context("failed to validate Ignition configuration digest")?;
         config_in
-            .seek(SeekFrom::Start(0))
+            .rewind()
             .context("rewinding Ignition configuration file")?;
     };
 
@@ -702,8 +702,7 @@ fn reset_partition_table(
         // Don't write out a GPT, since the backup GPT may overwrite
         // something we're not allowed to touch.  Just clear the first MiB
         // of disk.
-        dest.seek(SeekFrom::Start(0))
-            .context("seeking to start of disk")?;
+        dest.rewind().context("seeking to start of disk")?;
         let zeroes = [0u8; 1024 * 1024];
         dest.write_all(&zeroes)
             .context("clearing primary partition table")?;

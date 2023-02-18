@@ -691,7 +691,7 @@ impl SavedPartitions {
         // partition table, then write protective MBR.  This ensures that
         // there's no time window without an MBR, during which the kernel
         // would refuse to read the GPT.
-        disk.seek(SeekFrom::Start(0)).context("seeking to MBR")?;
+        disk.rewind().context("seeking to MBR")?;
         disk.write(&[0u8; 446])
             .context("overwriting MBR boot code")?;
         if self.sector_size > 512 {
@@ -1181,7 +1181,7 @@ pub fn is_dasd(device: &str, fd: Option<&mut File>) -> Result<bool> {
     }
     let read_magic = |device: &str, disk: &mut File| -> Result<[u8; 4]> {
         let offset = disk
-            .seek(SeekFrom::Current(0))
+            .stream_position()
             .with_context(|| format!("saving offset {device}"))?;
         disk.seek(SeekFrom::Start(8194))
             .with_context(|| format!("seeking {device}"))?;
@@ -1551,7 +1551,7 @@ mod tests {
                 SavedPartitions::new_from_file(&mut disk, *sector_size as u64, &vec![]).unwrap();
             saved.overwrite(&mut disk).unwrap();
             assert!(disk_has_mbr(&mut disk).unwrap(), "{}", *sector_size);
-            disk.seek(SeekFrom::Start(0)).unwrap();
+            disk.rewind().unwrap();
             let mut buf = vec![0u8; *sector_size + 1];
             disk.read_exact(&mut buf).unwrap();
             assert_eq!(

@@ -17,7 +17,7 @@ use lazy_static::lazy_static;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read, File, OpenOptions};
-use std::io::{self, copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufReader, BufWriter, Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 
 use crate::cmdline::*;
@@ -639,7 +639,7 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
         .context("modifying miniso kernel args")?;
 
     if &config.output == "-" {
-        outf.seek(SeekFrom::Start(0))
+        outf.rewind()
             .context("seeking back to start of miniso tempfile")?;
         copy(&mut outf, &mut io::stdout().lock()).context("writing output")?;
     } else {

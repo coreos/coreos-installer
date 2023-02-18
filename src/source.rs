@@ -121,8 +121,7 @@ impl ImageLocation for FileLocation {
         let length = out
             .seek(SeekFrom::End(0))
             .context("seeking source image file")?;
-        out.seek(SeekFrom::Start(0))
-            .context("seeking source image file")?;
+        out.rewind().context("seeking source image file")?;
 
         // load signature file if present
         let signature = match OpenOptions::new().read(true).open(&self.sig_path) {

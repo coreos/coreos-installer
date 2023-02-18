@@ -155,9 +155,8 @@ impl Data {
 
         // A `ReadHasher` here would let us wrap the miniso so we calculate the digest as we read.
         let digest = Sha256Digest::from_file(miniso)?;
-        let mut offset = miniso
-            .seek(SeekFrom::Start(0))
-            .context("seeking back to miniso start")?;
+        miniso.rewind().context("seeking back to miniso start")?;
+        let mut offset = 0;
 
         let mut xzw = XzEncoder::new(Vec::new(), 9);
         let mut buf = [0u8; BUFFER_SIZE];

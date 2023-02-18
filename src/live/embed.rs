@@ -207,7 +207,7 @@ trait Stream {
 
 impl Stream for [&Region] {
     fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        input.seek(SeekFrom::Start(0)).context("seeking to start")?;
+        input.rewind().context("seeking to start")?;
 
         let mut regions: Vec<&&Region> = self.iter().filter(|r| r.modified).collect();
         regions.sort_unstable();

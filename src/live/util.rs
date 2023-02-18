@@ -15,7 +15,7 @@
 use anyhow::{bail, Context, Result};
 use nix::unistd::isatty;
 use std::fs::{write, File, OpenOptions};
-use std::io::{self, copy, BufWriter, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufWriter, Seek, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
@@ -60,7 +60,7 @@ pub(super) fn write_live_iso(
                 .prefix(".coreos-installer-temp-")
                 .tempfile_in(output_dir)
                 .context("creating temporary file")?;
-            input.seek(SeekFrom::Start(0)).context("seeking input")?;
+            input.rewind().context("seeking input")?;
             copy(input, output.as_file_mut()).context("copying input to temporary file")?;
             iso.write(output.as_file_mut())?;
             output

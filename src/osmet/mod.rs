@@ -117,7 +117,7 @@ pub fn pack_osmet(config: PackOsmetConfig) -> Result<()> {
     let (checksum, unpacked_size) =
         get_unpacked_image_digest(&mut xzpacked_image, &partitions, &root)?;
     xzpacked_image
-        .seek(SeekFrom::Start(0))
+        .rewind()
         .context("seeking back to start of xzpacked image")?;
 
     if unpacked_size != size {
@@ -391,8 +391,7 @@ fn write_xzpacked_image_to_file(
     eprintln!("Total bytes written (compressed): {}", xz_tmpf.total_out());
 
     let mut tmpf = xz_tmpf.finish().context("finishing xz stream")?;
-    tmpf.seek(SeekFrom::Start(0))
-        .context("seeking back to start of tempfile")?;
+    tmpf.rewind().context("seeking back to start of tempfile")?;
 
     Ok((tmpf, blksize.get()))
 }
