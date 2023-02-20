@@ -155,9 +155,8 @@ impl Data {
 
         // A `ReadHasher` here would let us wrap the miniso so we calculate the digest as we read.
         let digest = Sha256Digest::from_file(miniso)?;
-        let mut offset = miniso
-            .seek(SeekFrom::Start(0))
-            .context("seeking back to miniso start")?;
+        miniso.rewind().context("seeking back to miniso start")?;
+        let mut offset = 0;
 
         let mut xzw = XzEncoder::new(Vec::new(), 9);
         let mut buf = [0u8; BUFFER_SIZE];
@@ -179,7 +178,7 @@ impl Data {
             // bytes after xz. So not worth the complexity.
             offset = miniso
                 .seek(SeekFrom::Current(entry.length as i64))
-                .with_context(|| format!("skipping miniso file at offset {}", addr))?;
+                .with_context(|| format!("skipping miniso file at offset {addr}"))?;
             skipped += entry.length as u64;
         }
 
@@ -254,9 +253,9 @@ impl Data {
             }
             fulliso
                 .seek(SeekFrom::Start(fulliso_addr))
-                .with_context(|| format!("seeking to full ISO file at offset {}", fulliso_addr))?;
+                .with_context(|| format!("seeking to full ISO file at offset {fulliso_addr}"))?;
             offset += copy_exactly_n(fulliso, &mut w, entry.length as u64, &mut buf)
-                .with_context(|| format!("copying full ISO file at offset {}", fulliso_addr))?;
+                .with_context(|| format!("copying full ISO file at offset {fulliso_addr}"))?;
         }
 
         copy(&mut xzr, &mut w).context("copying remaining packed bytes")?;

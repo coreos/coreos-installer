@@ -60,9 +60,7 @@ impl IsoFs {
     }
 
     pub fn as_file(&mut self) -> Result<&mut fs::File> {
-        self.file
-            .seek(SeekFrom::Start(0))
-            .context("seeking to start of ISO")?;
+        self.file.rewind().context("seeking to start of ISO")?;
         Ok(&mut self.file)
     }
 
@@ -101,13 +99,10 @@ impl IsoFs {
         for c in &components {
             dir = self
                 .get_dir_record(&dir, c)?
-                .ok_or_else(|| NotFound(format!("intermediate directory {} does not exist", c)))?
+                .ok_or_else(|| NotFound(format!("intermediate directory {c} does not exist")))?
                 .try_into_dir()
                 .map_err(|_| {
-                    NotFound(format!(
-                        "component {:?} in path {} is not a directory",
-                        c, path
-                    ))
+                    NotFound(format!("component {c:?} in path {path} is not a directory"))
                 })?;
         }
 
@@ -708,7 +703,7 @@ mod tests {
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
         for i in 1..=150 {
-            expected.push(format!("LARGEDIR/{}.DAT", i));
+            expected.push(format!("LARGEDIR/{i}.DAT"));
         }
         expected.sort_unstable();
 

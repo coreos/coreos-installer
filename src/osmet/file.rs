@@ -104,7 +104,7 @@ pub(super) fn osmet_file_write(
     f.into_inner()
         .context("failed to flush write buffer")?
         .persist(path)
-        .with_context(|| format!("failed to persist tempfile to {:?}", path))?;
+        .with_context(|| format!("failed to persist tempfile to {path:?}"))?;
 
     Ok(())
 }
@@ -130,7 +130,7 @@ pub(super) fn osmet_file_read_header(path: &Path) -> Result<OsmetFileHeader> {
         OpenOptions::new()
             .read(true)
             .open(path)
-            .with_context(|| format!("opening {:?}", path))?,
+            .with_context(|| format!("opening {path:?}"))?,
     );
 
     read_and_check_header(&mut f)
@@ -142,7 +142,7 @@ pub(super) fn osmet_file_read(path: &Path) -> Result<(OsmetFileHeader, Osmet, im
         OpenOptions::new()
             .read(true)
             .open(path)
-            .with_context(|| format!("opening {:?}", path))?,
+            .with_context(|| format!("opening {path:?}"))?,
     );
 
     let header = read_and_check_header(&mut f)?;
@@ -171,10 +171,9 @@ fn validate_osmet(osmet: &Osmet) -> Result<()> {
         }
         cursor = cursor
             .checked_add(
-                verify_canonical(&partition.mappings)
-                    .with_context(|| format!("partition {}", i))?,
+                verify_canonical(&partition.mappings).with_context(|| format!("partition {i}"))?,
             )
-            .with_context(|| format!("overflow after partition {}", i))?;
+            .with_context(|| format!("overflow after partition {i}"))?;
         if cursor > partition.end_offset {
             bail!(
                 "cursor past partition end: {} vs {}",
@@ -202,7 +201,7 @@ fn verify_canonical(mappings: &[Mapping]) -> Result<u64> {
             .extent
             .physical
             .checked_add(mapping.extent.length)
-            .with_context(|| format!("overflow after mapping {}", i))?;
+            .with_context(|| format!("overflow after mapping {i}"))?;
     }
 
     Ok(cursor)

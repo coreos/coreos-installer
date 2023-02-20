@@ -17,7 +17,7 @@ use lazy_static::lazy_static;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read, File, OpenOptions};
-use std::io::{self, copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, BufReader, BufWriter, Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 
 use crate::cmdline::*;
@@ -71,7 +71,7 @@ pub fn iso_remove(config: IsoRemoveConfig) -> Result<()> {
 pub fn iso_ignition_embed(config: IsoIgnitionEmbedConfig) -> Result<()> {
     let ignition = match &config.ignition_file {
         Some(ignition_path) => {
-            read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
+            read(ignition_path).with_context(|| format!("reading {ignition_path}"))?
         }
         None => {
             let mut data = Vec::new();
@@ -164,7 +164,7 @@ pub fn pxe_ignition_wrap(config: PxeIgnitionWrapConfig) -> Result<()> {
 
     let ignition = match &config.ignition_file {
         Some(ignition_path) => {
-            read(ignition_path).with_context(|| format!("reading {}", ignition_path))?
+            read(ignition_path).with_context(|| format!("reading {ignition_path}"))?
         }
         None => {
             let mut data = Vec::new();
@@ -190,7 +190,7 @@ pub fn pxe_ignition_unwrap(config: PxeIgnitionUnwrapConfig) -> Result<()> {
             OpenOptions::new()
                 .read(true)
                 .open(path)
-                .with_context(|| format!("opening {}", path))?,
+                .with_context(|| format!("opening {path}"))?,
         )
     } else {
         Box::new(stdin.lock())
@@ -220,9 +220,9 @@ pub fn pxe_network_wrap(config: PxeNetworkWrapConfig) -> Result<()> {
 
 fn initrd_network_embed(initrd: &mut Initrd, keyfiles: &[String]) -> Result<()> {
     for path in keyfiles {
-        let data = read(path).with_context(|| format!("reading {}", path))?;
+        let data = read(path).with_context(|| format!("reading {path}"))?;
         let name = filename(path)?;
-        let path = format!("{}/{}", INITRD_NETWORK_DIR, name);
+        let path = format!("{INITRD_NETWORK_DIR}/{name}");
         if initrd.get(&path).is_some() {
             bail!("multiple input files named '{}'", name);
         }
@@ -238,7 +238,7 @@ pub fn pxe_network_unwrap(config: PxeNetworkUnwrapConfig) -> Result<()> {
             OpenOptions::new()
                 .read(true)
                 .open(path)
-                .with_context(|| format!("opening {}", path))?,
+                .with_context(|| format!("opening {path}"))?,
         )
     } else {
         Box::new(stdin.lock())
@@ -316,7 +316,7 @@ pub fn iso_kargs_show(config: IsoKargsShowConfig) -> Result<()> {
     } else {
         iso.kargs()?
     };
-    println!("{}", kargs);
+    println!("{kargs}");
     Ok(())
 }
 
@@ -389,7 +389,7 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
         path => {
             let dir = Path::new(path)
                 .parent()
-                .with_context(|| format!("no parent directory of {}", path))?;
+                .with_context(|| format!("no parent directory of {path}"))?;
             let tempfile = tempfile::Builder::new()
                 .prefix(".coreos-installer-temp-")
                 .tempfile_in(dir)
@@ -403,7 +403,7 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
         INITRD_LIVE_STAMP_PATH,
         INITRD_FEATURES_PATH,
         INITRD_IGNITION_PATH,
-        &format!("{}/*", INITRD_NETWORK_DIR),
+        &format!("{INITRD_NETWORK_DIR}/*"),
     ])
     .unwrap();
     let base_initrd = match &*config.output {
@@ -448,7 +448,7 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
             tempfile
                 .persist_noclobber(path)
                 .map_err(|e| e.error)
-                .with_context(|| format!("persisting output file to {}", path))?;
+                .with_context(|| format!("persisting output file to {path}"))?;
             Ok(())
         }
     }
@@ -496,7 +496,7 @@ pub fn dev_show_initrd(config: DevShowInitrdConfig) -> Result<()> {
     set_die_on_sigpipe()?;
     let initrd = read_initrd(&config.input, &config.filter)?;
     for path in initrd.find(&ALL_GLOB).keys() {
-        println!("{}", path);
+        println!("{path}");
     }
     Ok(())
 }
@@ -543,7 +543,7 @@ fn read_initrd(path: &str, filter: &[String]) -> Result<Initrd> {
             OpenOptions::new()
                 .read(true)
                 .open(path)
-                .with_context(|| format!("opening {}", path))?,
+                .with_context(|| format!("opening {path}"))?,
             &filter,
         ),
     }
@@ -609,7 +609,7 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
     if let Some(path) = &config.output_rootfs {
         let rootfs = full_iso
             .get_path(COREOS_ISO_ROOTFS_IMG)
-            .with_context(|| format!("looking up '{}'", COREOS_ISO_ROOTFS_IMG))?
+            .with_context(|| format!("looking up '{COREOS_ISO_ROOTFS_IMG}'"))?
             .try_into_file()?;
         copy_file_from_iso(&mut full_iso, &rootfs, Path::new(path))?;
     }
@@ -619,9 +619,7 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
         Err(e) if e.is::<iso9660::NotFound>() => {
             bail!("This ISO image does not support extracting a minimal ISO.")
         }
-        Err(e) => {
-            return Err(e).with_context(|| format!("looking up '{}'", COREOS_ISO_MINISO_FILE))
-        }
+        Err(e) => return Err(e).with_context(|| format!("looking up '{COREOS_ISO_MINISO_FILE}'")),
     };
 
     let data = {
@@ -639,7 +637,7 @@ pub fn iso_extract_minimal_iso(config: IsoExtractMinimalIsoConfig) -> Result<()>
         .context("modifying miniso kernel args")?;
 
     if &config.output == "-" {
-        outf.seek(SeekFrom::Start(0))
+        outf.rewind()
             .context("seeking back to start of miniso tempfile")?;
         copy(&mut outf, &mut io::stdout().lock()).context("writing output")?;
     } else {
@@ -670,9 +668,9 @@ pub fn pack_minimal_iso(config: PackMinimalIsoConfig) -> Result<()> {
             .context("packing miniso")?;
     eprintln!("Matched {} files of {}", matches, minimal_files.len());
 
-    eprintln!("Total bytes skipped: {}", skipped);
-    eprintln!("Total bytes written: {}", written);
-    eprintln!("Total bytes written (compressed): {}", written_compressed);
+    eprintln!("Total bytes skipped: {skipped}");
+    eprintln!("Total bytes written: {written}");
+    eprintln!("Total bytes written (compressed): {written_compressed}");
 
     eprintln!("Verifying that packed image matches digest");
     data.unxzpack(full_iso.as_file()?, std::io::sink())
@@ -680,7 +678,7 @@ pub fn pack_minimal_iso(config: PackMinimalIsoConfig) -> Result<()> {
 
     let miniso_entry = full_iso
         .get_path(COREOS_ISO_MINISO_FILE)
-        .with_context(|| format!("looking up '{}'", COREOS_ISO_MINISO_FILE))?
+        .with_context(|| format!("looking up '{COREOS_ISO_MINISO_FILE}'"))?
         .try_into_file()?;
     let mut w = full_iso.overwrite_file(&miniso_entry)?;
     data.serialize(&mut w).context("writing miniso data file")?;
@@ -727,7 +725,7 @@ fn modify_miniso_kargs(f: &mut File, rootfs_url: Option<&String>) -> Result<()> 
             bail!("forbidden whitespace found in '{}'", url);
         }
         let final_kargs = KargsEditor::new()
-            .append(&[format!("coreos.live.rootfs_url={}", url)])
+            .append(&[format!("coreos.live.rootfs_url={url}")])
             .apply_to(&new_default_kargs)?;
 
         cfg.set_kargs(&final_kargs)?;

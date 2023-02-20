@@ -51,7 +51,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
             OpenOptions::new()
                 .read(true)
                 .open(file)
-                .with_context(|| format!("opening source Ignition config {}", file))?,
+                .with_context(|| format!("opening source Ignition config {file}"))?,
         )
     } else if let Some(url) = &config.ignition_url {
         if url.scheme() == "http" {
@@ -63,7 +63,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
         }
         Some(
             download_to_tempfile(url, config.fetch_retries)
-                .with_context(|| format!("downloading source Ignition config {}", url))?,
+                .with_context(|| format!("downloading source Ignition config {url}"))?,
         )
     } else {
         None
@@ -99,7 +99,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     // https://bugzilla.redhat.com/show_bug.cgi?id=1905159
     #[allow(clippy::match_bool, clippy::match_single_binding)]
     let sector_size = match is_dasd(device, None)
-        .with_context(|| format!("checking whether {} is an IBM DASD disk", device))?
+        .with_context(|| format!("checking whether {device} is an IBM DASD disk"))?
     {
         #[cfg(target_arch = "s390x")]
         true => s390x::dasd_try_get_sector_size(device).transpose(),
@@ -107,7 +107,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     };
     let sector_size = sector_size
         .unwrap_or_else(|| get_sector_size_for_path(Path::new(device)))
-        .with_context(|| format!("getting sector size of {}", device))?
+        .with_context(|| format!("getting sector size of {device}"))?
         .get();
 
     // Set up DASD.  We need to do this before initiating the download
@@ -156,8 +156,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
                     // could bail on non-512, but let's be optimistic and just warn but try the regular
                     // 512b image
                     eprintln!(
-                        "Found non-standard sector size {} for {}, assuming 512b-compatible",
-                        n, device
+                        "Found non-standard sector size {n} for {device}, assuming 512b-compatible"
                     );
                     "raw.xz"
                 }
@@ -173,7 +172,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
         }
     };
     // report it to the user
-    eprintln!("{}", location);
+    eprintln!("{location}");
     // we only support installing from a single artifact
     let mut sources = location.sources()?;
     let mut source = sources.pop().context("no artifacts found")?;
@@ -193,34 +192,33 @@ pub fn install(config: InstallConfig) -> Result<()> {
         .read(true)
         .write(true)
         .open(device)
-        .with_context(|| format!("opening {}", device))?;
+        .with_context(|| format!("opening {device}"))?;
     if !dest
         .metadata()
-        .with_context(|| format!("getting metadata for {}", device))?
+        .with_context(|| format!("getting metadata for {device}"))?
         .file_type()
         .is_block_device()
     {
         bail!("{} is not a block device", device);
     }
     ensure_exclusive_access(device)
-        .with_context(|| format!("checking for exclusive access to {}", device))?;
+        .with_context(|| format!("checking for exclusive access to {device}"))?;
 
     // save partitions that we plan to keep
     let saved = SavedPartitions::new_from_disk(&mut dest, &save_partitions)
-        .with_context(|| format!("saving partitions from {}", device))?;
+        .with_context(|| format!("saving partitions from {device}"))?;
 
     // get reference to partition table
     // For kpartx partitioning, this will conditionally call kpartx -d
     // when dropped
     let mut table = Disk::new(device)?
         .get_partition_table()
-        .with_context(|| format!("getting partition table for {}", device))?;
+        .with_context(|| format!("getting partition table for {device}"))?;
 
     // copy and postprocess disk image
     // On failure, clear and reread the partition table to prevent the disk
     // from accidentally being used.
-    dest.seek(SeekFrom::Start(0))
-        .with_context(|| format!("seeking {}", device))?;
+    dest.rewind().with_context(|| format!("seeking {device}"))?;
     if let Err(err) = write_disk(
         &config,
         &mut source,
@@ -232,7 +230,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
     ) {
         // log the error so the details aren't dropped if we encounter
         // another error during cleanup
-        eprintln!("\nError: {:?}\n", err);
+        eprintln!("\nError: {err:?}\n");
 
         // clean up
         if config.preserve_on_error {
@@ -270,7 +268,7 @@ pub fn install(config: InstallConfig) -> Result<()> {
                     .collect::<Vec<_>>();
                 eprintln!("\nNote: detected other devices with a filesystem labeled `boot`:");
                 for pt in pts {
-                    eprintln!("  - {}", pt);
+                    eprintln!("  - {pt}");
                 }
                 eprintln!("The installed OS may not work correctly if there are multiple boot filesystems.
 Before rebooting, investigate whether these filesystems are needed and consider
@@ -278,7 +276,7 @@ wiping them with `wipefs -a`.\n"
                 );
             }
         }
-        Err(e) => eprintln!("checking filesystems labeled 'boot': {:?}", e),
+        Err(e) => eprintln!("checking filesystems labeled 'boot': {e:?}"),
     }
 
     eprintln!("Install complete.");
@@ -293,7 +291,7 @@ fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<Part
     for glob in labels {
         let filter = Label(
             glob::Pattern::new(glob)
-                .with_context(|| format!("couldn't parse label glob '{}'", glob))?,
+                .with_context(|| format!("couldn't parse label glob '{glob}'"))?,
         );
         filters.push(filter);
     }
@@ -305,7 +303,7 @@ fn parse_partition_filters(labels: &[&str], indexes: &[&str]) -> Result<Vec<Part
             _ => Ok(Some(
                 NonZeroU32::new(
                     i.parse()
-                        .with_context(|| format!("couldn't parse partition index '{}'", i))?,
+                        .with_context(|| format!("couldn't parse partition index '{i}'"))?,
                 )
                 .context("partition index cannot be zero")?,
             )),
@@ -339,7 +337,7 @@ fn ensure_exclusive_access(device: &str) -> Result<()> {
         return Ok(());
     }
     parts.sort_unstable_by_key(|p| p.path.to_string());
-    eprintln!("Partitions in use on {}:", device);
+    eprintln!("Partitions in use on {device}:");
     for part in parts {
         if let Some(mountpoint) = part.mountpoint.as_ref() {
             eprintln!("    {} mounted on {}", part.path, mountpoint);
@@ -468,7 +466,7 @@ fn write_ignition(
             .validate(&mut config_in)
             .context("failed to validate Ignition configuration digest")?;
         config_in
-            .seek(SeekFrom::Start(0))
+            .rewind()
             .context("rewinding Ignition configuration file")?;
     };
 
@@ -528,7 +526,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
         .append(true)
         .open(&config_dest)
         .with_context(|| format!("opening first-boot file {}", config_dest.display()))?;
-    let contents = format!("set ignition_network_kcmdline=\"{}\"\n", args);
+    let contents = format!("set ignition_network_kcmdline=\"{args}\"\n");
     config_out
         .write_all(contents.as_bytes())
         .context("writing first-boot kernel arguments")?;
@@ -551,13 +549,13 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
     if platform == "metal" {
         return Ok(());
     }
-    eprintln!("Setting platform to {}", platform);
+    eprintln!("Setting platform to {platform}");
 
     // We assume that we will only install from metal images and that the
     // bootloader configs will always set ignition.platform.id.
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
         let new_options = KargsEditor::new()
-            .replace(&[format!("ignition.platform.id=metal={}", platform)])
+            .replace(&[format!("ignition.platform.id=metal={platform}")])
             .apply_to(orig_options)
             .context("setting platform ID argument")?;
         if orig_options == new_options {
@@ -658,7 +656,7 @@ fn update_grub_cfg_console_settings(grub_cfg: &str, commands: &[String]) -> Resu
 
 /// Copy networking config if asked to do so
 fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
-    eprintln!("Copying networking configuration from {}", net_config_src);
+    eprintln!("Copying networking configuration from {net_config_src}");
 
     // get the path to the destination directory
     let net_config_dest = mountpoint.join("coreos-firstboot-network");
@@ -673,7 +671,7 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
 
     // copy files from source to destination directories
     for entry in fs::read_dir(net_config_src)
-        .with_context(|| format!("reading directory {}", net_config_src))?
+        .with_context(|| format!("reading directory {net_config_src}"))?
     {
         let entry = entry.with_context(|| format!("reading directory {net_config_src}"))?;
         let srcpath = entry.path();
@@ -702,8 +700,7 @@ fn reset_partition_table(
         // Don't write out a GPT, since the backup GPT may overwrite
         // something we're not allowed to touch.  Just clear the first MiB
         // of disk.
-        dest.seek(SeekFrom::Start(0))
-            .context("seeking to start of disk")?;
+        dest.rewind().context("seeking to start of disk")?;
         let zeroes = [0u8; 1024 * 1024];
         dest.write_all(&zeroes)
             .context("clearing primary partition table")?;

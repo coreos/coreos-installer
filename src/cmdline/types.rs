@@ -53,7 +53,7 @@ impl fmt::Display for FetchRetries {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::None => write!(f, "0"),
-            Self::Finite(n) => write!(f, "{}", n),
+            Self::Finite(n) => write!(f, "{n}"),
             Self::Infinite => write!(f, "infinite"),
         }
     }

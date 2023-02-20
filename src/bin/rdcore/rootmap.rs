@@ -55,7 +55,7 @@ pub fn rootmap(config: RootmapConfig) -> Result<()> {
     let rootflags = runcmd_output!("coreos-rootflags", &config.root_mount)?;
     let rootflags = rootflags.trim();
     if !rootflags.is_empty() {
-        kargs.push(format!("rootflags={}", rootflags));
+        kargs.push(format!("rootflags={rootflags}"));
     }
 
     let boot_mount = get_boot_mount_from_cmdline_args(&config.boot_mount, &config.boot_device)?;
@@ -88,7 +88,7 @@ pub fn get_boot_mount_from_cmdline_args(
         let devinfo = lsblk_single(Path::new(devpath))?;
         let fs = devinfo
             .get("FSTYPE")
-            .with_context(|| format!("failed to query filesystem for {}", devpath))?;
+            .with_context(|| format!("failed to query filesystem for {devpath}"))?;
         Ok(Some(Mount::try_mount(
             devpath,
             fs,
@@ -125,7 +125,7 @@ fn get_raid_kargs(device: &Path) -> Result<Vec<String>> {
     let uuid = details
         .get("MD_UUID")
         .with_context(|| format!("missing MD_UUID for {}", device.display()))?;
-    Ok(vec![format!("rd.md.uuid={}", uuid)])
+    Ok(vec![format!("rd.md.uuid={uuid}")])
 }
 
 fn mdadm_detail(device: &Path) -> Result<HashMap<String, String>> {
@@ -142,7 +142,7 @@ fn split_mdadm_line(line: &str) -> Result<(String, String)> {
 fn get_luks_kargs(root: &Mount, device: &Path) -> Result<Vec<String>> {
     let uuid = get_luks_uuid(device)?;
     let name = get_luks_name(device)?;
-    let mut kargs = vec![format!("rd.luks.name={}={}", uuid, name)];
+    let mut kargs = vec![format!("rd.luks.name={uuid}={name}")];
     if crypttab_device_has_netdev(root, &name)? {
         kargs.push("rd.neednet=1".into());
         kargs.push("rd.luks.options=_netdev".into());
@@ -228,7 +228,7 @@ pub fn bind_boot(config: BindBootConfig) -> Result<()> {
     let boot_uuid = boot_mount.get_filesystem_uuid()?;
     let root_uuid = root_mount.get_filesystem_uuid()?;
 
-    let kargs = vec![format!("boot=UUID={}", boot_uuid)];
+    let kargs = vec![format!("boot=UUID={boot_uuid}")];
     let changed = visit_bls_entry_options(boot_mount.mountpoint(), |orig_options: &str| {
         if !orig_options.starts_with("boot=") && !orig_options.contains(" boot=") {
             KargsEditor::new()
@@ -268,7 +268,7 @@ pub fn bind_boot(config: BindBootConfig) -> Result<()> {
             );
         }
     } else {
-        std::fs::write(&root_uuid_stamp, format!("{}\n", root_uuid))
+        std::fs::write(&root_uuid_stamp, format!("{root_uuid}\n"))
             .with_context(|| format!("writing {}", root_uuid_stamp.display()))?;
     }
 
@@ -290,6 +290,6 @@ pub fn bind_boot(config: BindBootConfig) -> Result<()> {
 
 fn write_boot_uuid_grub2_dropin<P: AsRef<Path>>(uuid: &str, p: P) -> Result<()> {
     let p = p.as_ref();
-    std::fs::write(p, format!("set BOOT_UUID=\"{}\"\n", uuid))
+    std::fs::write(p, format!("set BOOT_UUID=\"{uuid}\"\n"))
         .with_context(|| format!("writing {}", p.display()))
 }

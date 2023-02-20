@@ -32,7 +32,7 @@ lazy_static! {
     pub(super) static ref INITRD_IGNITION_GLOB: GlobMatcher =
         GlobMatcher::new(&[INITRD_IGNITION_PATH]).unwrap();
     pub(super) static ref INITRD_NETWORK_GLOB: GlobMatcher =
-        GlobMatcher::new(&[&format!("{}/*", INITRD_NETWORK_DIR)]).unwrap();
+        GlobMatcher::new(&[&format!("{INITRD_NETWORK_DIR}/*")]).unwrap();
 }
 
 const COREOS_INITRD_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
@@ -167,9 +167,9 @@ impl Region {
     pub fn read(file: &mut File, offset: u64, length: usize) -> Result<Self> {
         let mut contents = vec![0; length];
         file.seek(SeekFrom::Start(offset))
-            .with_context(|| format!("seeking to offset {}", offset))?;
+            .with_context(|| format!("seeking to offset {offset}"))?;
         file.read_exact(&mut contents)
-            .with_context(|| format!("reading {} bytes at {}", length, offset))?;
+            .with_context(|| format!("reading {length} bytes at {offset}"))?;
         Ok(Self {
             offset,
             length,
@@ -207,7 +207,7 @@ trait Stream {
 
 impl Stream for [&Region] {
     fn stream(&self, input: &mut File, writer: &mut (impl Write + ?Sized)) -> Result<()> {
-        input.seek(SeekFrom::Start(0)).context("seeking to start")?;
+        input.rewind().context("seeking to start")?;
 
         let mut regions: Vec<&&Region> = self.iter().filter(|r| r.modified).collect();
         regions.sort_unstable();
@@ -316,7 +316,7 @@ impl KargEmbedInfo {
         let mut contents = vec![b' '; iso_file.length as usize];
         contents[..new_json.len()].copy_from_slice(new_json.as_bytes());
         w.write_all(&contents)
-            .with_context(|| format!("failed to update {}", COREOS_KARG_EMBED_INFO_PATH))?;
+            .with_context(|| format!("failed to update {COREOS_KARG_EMBED_INFO_PATH}"))?;
         w.flush().context("flushing ISO")?;
         Ok(())
     }

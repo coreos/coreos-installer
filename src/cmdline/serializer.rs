@@ -53,7 +53,7 @@ struct Serializer {
 
 impl Serializer {
     fn push_field(&mut self, name: &'static str) {
-        let field = if self.help_text.contains(&format!(" --{} ", name)) {
+        let field = if self.help_text.contains(&format!(" --{name} ")) {
             Some(name)
         } else {
             // don't serialize to --option
@@ -70,7 +70,7 @@ impl Serializer {
         match &self.field_stack[self.field_stack.len() - 1] {
             None => (),
             Some(name) => {
-                let option = format!("--{}", name);
+                let option = format!("--{name}");
                 self.output_argument(option);
             }
         }

@@ -28,7 +28,7 @@ pub(crate) fn fba_make_partitions(
     let partitions = partitions_from_gpt_header(bytes_per_block as u64, first_mb)?;
     let mut ranges = Vec::new();
     let mut mbr = MBR::new_from(device, bytes_per_block, rand::random())
-        .with_context(|| format!("creating new partition table for {}", dasd))?;
+        .with_context(|| format!("creating new partition table for {dasd}"))?;
 
     for (idx, pt) in partitions.iter().enumerate() {
         let blocks = pt.ending_lba - pt.starting_lba + 1;
@@ -56,6 +56,6 @@ pub(crate) fn fba_make_partitions(
         };
     }
     mbr.write_into(device)
-        .with_context(|| format!("writing partition table to {}", dasd))?;
+        .with_context(|| format!("writing partition table to {dasd}"))?;
     Ok(ranges)
 }

@@ -146,7 +146,7 @@ impl Sha256Digest {
         let mut f = OpenOptions::new()
             .read(true)
             .open(path)
-            .with_context(|| format!("opening {:?}", path))?;
+            .with_context(|| format!("opening {path:?}"))?;
 
         Self::from_file(&mut f)
     }
@@ -232,7 +232,7 @@ mod tests {
     fn test_ignition_hash_cli_parse() {
         let err_cases = vec!["", "foo-bar", "-bar", "sha512", "sha512-", "sha512-00"];
         for arg in err_cases {
-            IgnitionHash::from_str(arg).expect_err(&format!("input: {}", arg));
+            IgnitionHash::from_str(arg).expect_err(&format!("input: {arg}"));
         }
 
         let null_digest = "sha512-cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
@@ -249,7 +249,7 @@ mod tests {
             (false, "sha512-cdaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")
         ];
         for (valid, hash_arg) in &hash_args {
-            let hasher = IgnitionHash::from_str(&hash_arg).unwrap();
+            let hasher = IgnitionHash::from_str(hash_arg).unwrap();
             let mut rd = std::io::Cursor::new(&input);
             assert!(hasher.validate(&mut rd).is_ok() == *valid);
         }

@@ -153,7 +153,7 @@ impl KargsEditor {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^([^=]+)=([^=]+)=([^=]+)$").unwrap();
         }
-        let mut new_kargs: String = format!(" {} ", current_kargs);
+        let mut new_kargs: String = format!(" {current_kargs} ");
         for karg in &self.delete {
             let s = format!(" {} ", karg.trim());
             new_kargs = new_kargs.replace(&s, " ");
@@ -164,7 +164,7 @@ impl KargsEditor {
         }
         for karg in &self.append_if_missing {
             let karg = karg.trim();
-            let s = format!(" {} ", karg);
+            let s = format!(" {karg} ");
             if !new_kargs.contains(&s) {
                 new_kargs.push_str(karg);
                 new_kargs.push(' ');
@@ -283,7 +283,7 @@ mod tests {
             .append(&append_kargs)
             .replace(&replace_kargs)
             .delete(&delete_kargs)
-            .apply_to(&orig_kargs)
+            .apply_to(orig_kargs)
             .unwrap();
         assert_eq!(
             new_kargs,

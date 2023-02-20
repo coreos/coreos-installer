@@ -75,18 +75,18 @@ fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<S
 
     // we always print the final kargs
     if let Some(options) = &new_options {
-        println!("{}", options);
+        println!("{options}");
         if options != orig_options {
             if let Some(path) = &config.create_if_changed {
                 std::fs::OpenOptions::new()
                     .write(true)
                     .create(true)
                     .open(path)
-                    .with_context(|| format!("creating {}", path))?;
+                    .with_context(|| format!("creating {path}"))?;
             }
         }
     } else {
-        println!("{}", orig_options);
+        println!("{orig_options}");
     }
 
     Ok(new_options)

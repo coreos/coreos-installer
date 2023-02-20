@@ -246,11 +246,11 @@ impl InstallConfig {
                     OpenOptions::new()
                         .read(true)
                         .open(path)
-                        .with_context(|| format!("opening config file {}", path))?,
+                        .with_context(|| format!("opening config file {path}"))?,
                 )
-                .with_context(|| format!("parsing config file {}", path))?
+                .with_context(|| format!("parsing config file {path}"))?
                 .to_args()
-                .with_context(|| format!("serializing config file {}", path))
+                .with_context(|| format!("serializing config file {path}"))
             })
             .collect::<Result<Vec<Vec<_>>>>()?
             .into_iter()

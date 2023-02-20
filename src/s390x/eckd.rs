@@ -37,7 +37,7 @@ pub(crate) fn eckd_try_get_sector_size(dasd: &str) -> Result<Option<NonZeroU32>>
 pub(crate) fn eckd_prepare(dasd: &str) -> Result<()> {
     low_level_format(dasd)?;
     if is_invalid(dasd)? {
-        eprintln!("Disk {} is invalid, formatting", dasd);
+        eprintln!("Disk {dasd} is invalid, formatting");
         default_format(dasd)?
     }
     Ok(())
@@ -83,9 +83,9 @@ fn partition_ranges(device: &mut File, first_mb: &[u8]) -> Result<(Vec<Range>, V
         let end_track = start_track + (blocks + blocks_per_track - 1) / blocks_per_track - 1;
 
         if idx == last {
-            entries.push(format!("[{}, last, native]", start_track));
+            entries.push(format!("[{start_track}, last, native]"));
         } else {
-            entries.push(format!("[{}, {}, native]", start_track, end_track));
+            entries.push(format!("[{start_track}, {end_track}, native]"));
         };
         start_track = end_track + 1;
     }
@@ -105,7 +105,7 @@ fn bus_id(dasd: &str) -> Result<String> {
         .arg(dasd)
         .stderr(Stdio::inherit())
         .output()
-        .with_context(|| format!("executing lszdev on {}", dasd))?;
+        .with_context(|| format!("executing lszdev on {dasd}"))?;
     if !cmd.status.success() {
         bail!("lszdev on {} failed", dasd);
     }
@@ -121,8 +121,8 @@ fn bus_id(dasd: &str) -> Result<String> {
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
 fn is_formatted(dasd: &str) -> Result<bool> {
     let id = bus_id(dasd)?;
-    let path = format!("/sys/bus/ccw/devices/{}/status", id);
-    let contents = read_to_string(&path).with_context(|| format!("reading {}", path))?;
+    let path = format!("/sys/bus/ccw/devices/{id}/status");
+    let contents = read_to_string(&path).with_context(|| format!("reading {path}"))?;
     Ok(!contents.contains("unformatted"))
 }
 
@@ -151,10 +151,10 @@ fn is_invalid(dasd: &str) -> Result<bool> {
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
 fn low_level_format(dasd: &str) -> Result<()> {
     if is_formatted(dasd)? {
-        eprintln!("Skipping low-level format for {}", dasd);
+        eprintln!("Skipping low-level format for {dasd}");
         return Ok(());
     }
-    eprintln!("Performing low-level format for {}", dasd);
+    eprintln!("Performing low-level format for {dasd}");
     runcmd!(
         "dasdfmt",
         "--blocksize",
@@ -177,9 +177,8 @@ fn low_level_format(dasd: &str) -> Result<()> {
 /// # Arguments
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
 fn default_format(dasd: &str) -> Result<()> {
-    eprintln!("Auto-partitioning {}", dasd);
-    runcmd!("fdasd", "-a", "-s", dasd)
-        .with_context(|| format!("auto-formatting {} failed", dasd))?;
+    eprintln!("Auto-partitioning {dasd}");
+    runcmd!("fdasd", "-a", "-s", dasd).with_context(|| format!("auto-formatting {dasd} failed"))?;
     udev_settle()?;
     Ok(())
 }
@@ -190,7 +189,7 @@ fn default_format(dasd: &str) -> Result<()> {
 /// * `dasd` - dasd device, i.e. smth like /dev/dasda
 /// * `config` - configuration file contents
 fn try_format(dasd: &str, config: &str) -> Result<()> {
-    eprintln!("Partitioning {}", dasd);
+    eprintln!("Partitioning {dasd}");
     let mut child = Command::new("fdasd")
         .arg("-s")
         .arg("--config")
