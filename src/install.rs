@@ -366,27 +366,29 @@ fn write_disk(
 ) -> Result<()> {
     let device = config.dest_device.as_deref().expect("device missing");
 
-    // Get sector size of destination, for comparing with image
-    let sector_size = get_sector_size(dest)?;
+    if !config.postprocess_only {
+        // Get sector size of destination, for comparing with image
+        let sector_size = get_sector_size(dest)?;
 
-    // copy the image
-    #[allow(clippy::match_bool, clippy::match_single_binding)]
-    let image_copy = match is_dasd(device, Some(dest))? {
-        #[cfg(target_arch = "s390x")]
-        true => s390x::image_copy_s390x,
-        _ => image_copy_default,
-    };
-    write_image(
-        source,
-        dest,
-        Path::new(device),
-        image_copy,
-        true,
-        Some(saved),
-        Some(sector_size),
-        VerifyKeys::Production,
-    )?;
-    table.reread()?;
+        // copy the image
+        #[allow(clippy::match_bool, clippy::match_single_binding)]
+        let image_copy = match is_dasd(device, Some(dest))? {
+            #[cfg(target_arch = "s390x")]
+            true => s390x::image_copy_s390x,
+            _ => image_copy_default,
+        };
+        write_image(
+            source,
+            dest,
+            Path::new(device),
+            image_copy,
+            true,
+            Some(saved),
+            Some(sector_size),
+            VerifyKeys::Production,
+        )?;
+        table.reread()?;
+    }
 
     // postprocess
     if ignition.is_some()
