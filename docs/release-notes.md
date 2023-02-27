@@ -12,6 +12,7 @@ Major changes:
 
 Minor changes:
 
+- customize: Support Ignition config spec 3.4.0
 - customize: Avoid disabling ISO autologin when only changing live kargs
 - install: Avoid osmet performance regression in debug builds on Rust 1.64+
 - install: Avoid network fetch timeout when low-level formatting ECKD DASD
