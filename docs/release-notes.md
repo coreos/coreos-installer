@@ -23,6 +23,7 @@ Internal changes:
 
 Packaging changes:
 
+- Require Rust ≥ 1.66.0
 - Require `mbrman` ≥ 0.5.0
 - Require `nmstate` ≥ 2.2.3
 - Update container to Fedora 37
