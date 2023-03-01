@@ -33,8 +33,7 @@ cosaPod(buildroot: true, runAsUser: 0) {
     stage("Test ISO") {
         // No need to run the iso-live-login/iso-as-disk scenarios
         kolaTestIso(
-            extraArgs: "--denylist-test iso-as-disk.* --denylist-test iso-live-login.*",
-            skipUEFI: true
+            extraArgs: "--denylist-test iso-as-disk.* --denylist-test iso-live-login.*"
         )
     }
     stage("Image tests") {
