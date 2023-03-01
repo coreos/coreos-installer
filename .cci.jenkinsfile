@@ -33,17 +33,7 @@ cosaPod(buildroot: true, runAsUser: 0) {
     stage("Test ISO") {
         // No need to run the iso-live-login/iso-as-disk scenarios
         kolaTestIso(
-            scenarios: "pxe-install,pxe-offline-install,iso-install,iso-offline-install,miniso-install",
-            scenarios4k: "iso-install,iso-offline-install",
-            skipUEFI: true
-        )
-        // Only test ISO because kola testiso doesn't support NM keyfiles
-        // for PXE
-        kolaTestIso(
-            scenarios: "iso-install",
-            extraArgs: "--add-nm-keyfile",
-            skipMetal4k: true,
-            skipMultipath: true,
+            extraArgs: "--denylist-test iso-as-disk.* --denylist-test iso-live-login.*",
             skipUEFI: true
         )
     }
