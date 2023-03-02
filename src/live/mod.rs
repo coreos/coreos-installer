@@ -432,6 +432,11 @@ pub fn pxe_customize(config: PxeCustomizeConfig) -> Result<()> {
 
     let live = LiveInitrd::from_common(&config.common, features)?;
     let initrd = live.into_initrd()?;
+    if initrd.get(INITRD_IGNITION_PATH).is_some() {
+        eprintln!(
+            "PXE configuration must include kernel arguments:\n\tignition.firstboot ignition.platform.id=metal"
+        );
+    }
 
     // append customizations to output
     let do_write = |writer: &mut dyn Write| -> Result<()> {
