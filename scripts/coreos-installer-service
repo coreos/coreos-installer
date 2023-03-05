@@ -18,7 +18,7 @@ INSTALLER_CONFIG_DIR=/etc/coreos/installer.d
 
 args=("install")
 
-cmdline=( $(</proc/cmdline) )
+IFS=" " read -r -a cmdline <<< "$(</proc/cmdline)"
 karg() {
     local name="$1" value="$2"
     for arg in "${cmdline[@]}"; do
@@ -30,7 +30,8 @@ karg() {
 }
 
 karg_bool() {
-    local value=$(karg "$@")
+    local value
+    value=$(karg "$@")
     case "$value" in
         ""|0|no|off) return 1;;
         *) return 0;;
@@ -41,8 +42,9 @@ copy_arg() {
     local arg="$1"; shift
     local opt="$1"; shift
 
-    local value="$(karg "${arg}")"
-    if [ ! -z "${value}" ]; then
+    local value
+    value="$(karg "${arg}")"
+    if [ -n "${value}" ]; then
         args+=("${opt}" "${value}")
     fi
 }
@@ -54,7 +56,7 @@ fi
 
 # Config files
 have_config_file=
-for file in ${INSTALLER_CONFIG_DIR}/*; do
+for file in "${INSTALLER_CONFIG_DIR}/"*; do
     if [ -f "${file}" ]; then
         args+=("--config-file" "${file}")
         have_config_file=1
@@ -81,7 +83,7 @@ fi
 # Ignition URL
 ignition_url="$(karg coreos.inst.ignition_url)"
 # Ignore "skip" for compatibility
-if [ -n "${ignition_url}" -a "${ignition_url}" != "skip" ]; then
+if [ -n "${ignition_url}" ] && [ "${ignition_url}" != "skip" ]; then
     # Allow HTTP URLs for compatibility
     args+=("--ignition-url" "${ignition_url}" "--insecure-ignition")
 fi
@@ -126,7 +128,7 @@ args+=("--fetch-retries" "infinite")
 udevadm settle
 
 # Install
-echo "coreos-installer ${args[@]}"
+echo "coreos-installer ${args[*]}"
 coreos-installer "${args[@]}"
 
 # Delete config files to avoid boot loops outside of a live system
