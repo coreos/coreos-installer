@@ -3,8 +3,20 @@
 set -euo pipefail
 
 export PATH
-if [[ -d "$(realpath "$(dirname "$0")/../target")" ]]; then
-    PATH="$(realpath "$(dirname "$0")/../target/${PROFILE:-debug}"):$PATH"
+bindir="$(realpath -m "$(dirname "$0")/../target/${PROFILE:-debug}")"
+if [[ -x "$bindir/coreos-installer" ]]; then
+    PATH="$bindir:$PATH"
+elif command -v coreos-installer >/dev/null; then
+    echo "$bindir/coreos-installer not found"
+    if [[ -n "${COREOS_INSTALLER_TEST_INSTALLED_BINARY:-}" ]]; then
+        echo "COREOS_INSTALLER_TEST_INSTALLED_BINARY set; testing $(command -v coreos-installer)"
+    else
+        echo "Found $(command -v coreos-installer) but COREOS_INSTALLER_TEST_INSTALLED_BINARY not set; aborting"
+        exit 1
+    fi
+else
+    echo "coreos-installer not found.  Do you need to set PROFILE?"
+    exit 1
 fi
 fixturesdir="$(realpath "$(dirname "$0")"/../fixtures)"
 

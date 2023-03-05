@@ -37,6 +37,6 @@ cosaPod(buildroot: true, runAsUser: 0) {
         )
     }
     stage("Image tests") {
-        shwrap("tests/images.sh /srv/coreos/builds/latest/x86_64")
+        shwrap("COREOS_INSTALLER_TEST_INSTALLED_BINARY=1 tests/images.sh /srv/coreos/builds/latest/x86_64")
     }
 }
