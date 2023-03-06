@@ -21,7 +21,7 @@ main() {
             shellcheck --external-sources --shell bash --severity="${severity}" "${f}" || found_errors="true"
             bash -n "${f}" || found_errors="true"
         fi
-    done< <(find . -path "./.git" -prune -o -type f -print0)
+    done< <(find . -path "./.git" -prune -o -path "./vendor" -prune -o -type f -print0)
 
     if [[ "${found_errors}" != "false" ]]; then
         echo "[+] Found errors with ShellCheck"
