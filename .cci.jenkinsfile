@@ -14,6 +14,8 @@ cosaPod(buildroot: true, runAsUser: 0) {
 
     unstash name: 'build'
 
+    // Delete the OS copy of coreos-installer so we don't test it by mistake
+    shwrap("rm /usr/bin/coreos-installer")
     // Make sure cosa is using the binary we just built.
     shwrap("rsync -rlv install/usr/ /usr/")
 
