@@ -14,6 +14,8 @@ cosaPod(buildroot: true, runAsUser: 0) {
 
     unstash name: 'build'
 
+    // Delete the OS copy of coreos-installer so we don't test it by mistake
+    shwrap("rm /usr/bin/coreos-installer")
     // Make sure cosa is using the binary we just built.
     shwrap("rsync -rlv install/usr/ /usr/")
 
@@ -37,6 +39,6 @@ cosaPod(buildroot: true, runAsUser: 0) {
         )
     }
     stage("Image tests") {
-        shwrap("tests/images.sh /srv/coreos/builds/latest/x86_64")
+        shwrap("COREOS_INSTALLER_TEST_INSTALLED_BINARY=1 tests/images.sh /srv/coreos/builds/latest/x86_64")
     }
 }
