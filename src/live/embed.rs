@@ -35,7 +35,8 @@ lazy_static! {
         GlobMatcher::new(&[&format!("{INITRD_NETWORK_DIR}/*")]).unwrap();
 }
 
-const COREOS_INITRD_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
+const COREOS_IGNINFO_PATH: &str = "COREOS/IGNINFO.JSO";
+const COREOS_INITRD_DEFAULT_EMBED_PATH: &str = "IMAGES/IGNITION.IMG";
 const COREOS_INITRD_HEADER_SIZE: u64 = 24;
 const COREOS_KARG_EMBED_AREA_HEADER_MAGIC: &[u8] = b"coreKarg";
 const COREOS_KARG_EMBED_AREA_HEADER_SIZE: u64 = 72;
@@ -503,14 +504,41 @@ struct InitrdEmbedArea {
     initrd: Initrd,
 }
 
+#[derive(Deserialize)]
+struct IgnInfo {
+    file: String,
+    offset: Option<u64>,
+    length: Option<usize>,
+}
+
 impl InitrdEmbedArea {
     pub fn for_iso(iso: &mut IsoFs) -> Result<Self> {
+        let igninfo: IgnInfo = match iso.get_path(COREOS_IGNINFO_PATH) {
+            Ok(record) => {
+                let f = record.try_into_file()?;
+                serde_json::from_reader(iso.read_file(&f).context("reading igninfo")?)
+                    .context("decoding igninfo")?
+            }
+            // old ISO without info JSON; assume ignition.img
+            Err(e) if e.is::<iso9660::NotFound>() => IgnInfo {
+                file: COREOS_INITRD_DEFAULT_EMBED_PATH.to_string(),
+                offset: None,
+                length: None,
+            },
+            Err(e) => return Err(e),
+        };
+
         let f = iso
-            .get_path(COREOS_INITRD_EMBED_PATH)
+            .get_path(&igninfo.file.to_uppercase())
             .context("finding initrd embed area")?
             .try_into_file()?;
+        let file_offset = igninfo.offset.unwrap_or(0);
+        let iso_offset = f.address.as_offset() + file_offset;
+        let length = igninfo
+            .length
+            .unwrap_or(f.length as usize - file_offset as usize);
         // read (checks offset/length as a side effect)
-        let mut region = Region::read(iso.as_file()?, f.address.as_offset(), f.length as usize)
+        let mut region = Region::read(iso.as_file()?, iso_offset, length)
             .context("reading initrd embed area")?;
         let initrd = if region.contents.iter().any(|v| *v != 0) {
             Initrd::from_reader(&*region.contents).context("decoding initrd embed area")?
