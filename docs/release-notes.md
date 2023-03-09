@@ -4,7 +4,22 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.17.0 (unreleased)
+## Upcoming coreos-installer 0.18.0 (unreleased)
+
+Major changes:
+
+
+Minor changes:
+
+
+Internal changes:
+
+
+Packaging changes:
+
+
+
+## coreos-installer 0.17.0 (2023-03-10)
 
 Major changes:
 
@@ -27,7 +42,7 @@ Packaging changes:
 - Require Rust ≥ 1.66.0
 - Require `base64` ≥ 0.21.0
 - Require `ignition-config` ≥ 0.3.0
-- Require `mbrman` ≥ 0.5.0
+- Require `mbrman` ≥ 0.5.0 (on s390x)
 - Require `nmstate` ≥ 2.2.3
 - Update container to Fedora 37
 
