@@ -37,8 +37,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] if doing a branched release, also include a PR to merge the `docs/release-notes.md` changes into main
 
 - make sure the project is clean and prepare the environment:
-  - [ ] Make sure `cargo-release` is up to date: `cargo install cargo-release`
-  - [ ] Make sure `cargo-vendor-filterer` is up to date: `cargo install cargo-vendor-filterer`
+  - [ ] Make sure `cargo-release` and `cargo-vendor-filterer` are up to date: `cargo install cargo-release cargo-vendor-filterer`
   - [ ] `cargo test --all-features`
   - [ ] `cargo clean`
   - [ ] `git clean -fd`
