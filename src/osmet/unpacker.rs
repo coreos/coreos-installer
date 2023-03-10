@@ -14,7 +14,7 @@
 
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
-use std::io::{self, copy, BufWriter, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -107,16 +107,11 @@ fn osmet_unpack_to_writer(
     repo: PathBuf,
     writer: impl Write,
 ) -> Result<()> {
-    // Work around https://github.com/rust-lang/rust/issues/102727 by
-    // buffering writes into chunks the same size as the buffer
-    // used by write_image() when reading from us
-    let buffered = BufWriter::with_capacity(BUFFER_SIZE, writer);
-    let mut w = WriteHasher::new_sha256(buffered)?;
+    let mut w = WriteHasher::new_sha256(writer)?;
     let n = write_unpacked_image(&mut packed_image, &mut w, &osmet.partitions, &repo)?;
     if n != osmet.size {
         bail!("wrote {} bytes but expected {}", n, osmet.size);
     }
-    w.flush()?;
 
     let final_checksum: Sha256Digest = w.try_into()?;
     if final_checksum != osmet.checksum {
