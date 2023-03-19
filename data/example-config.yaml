@@ -33,7 +33,7 @@ save-partlabel: [glob, glob]
 save-partindex: [id-or-range, id-or-range]
 # Force offline installation
 offline: true
-# Skip signature verification
+# Allow unsigned image
 insecure: true
 # Allow Ignition URL without HTTPS or hash
 insecure-ignition: true

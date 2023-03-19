@@ -192,7 +192,7 @@ pub struct InstallConfig {
     #[serde(skip_serializing_if = "is_default")]
     #[clap(long, help_heading = ADVANCED)]
     pub offline: bool,
-    /// Skip signature verification
+    /// Allow unsigned image
     #[serde(skip_serializing_if = "is_default")]
     #[clap(long, help_heading = ADVANCED)]
     pub insecure: bool,

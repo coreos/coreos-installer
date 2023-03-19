@@ -19,7 +19,7 @@ OPTIONS:
     -u, --image-url <URL>          Manually specify the image URL
     -C, --directory <path>         Destination directory [default: .]
     -d, --decompress               Decompress image and don't save signature
-        --insecure                 Skip signature verification
+        --insecure                 Allow unsigned image
         --stream-base-url <URL>    Base URL for Fedora CoreOS stream metadata
         --fetch-retries <N>        Fetch retries, or "infinite" [default: 0]
     -h, --help                     Print help information

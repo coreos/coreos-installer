@@ -11,6 +11,7 @@ Major changes:
 
 Minor changes:
 
+- download/install: Clarify help text for `--insecure`
 
 Internal changes:
 
