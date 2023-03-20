@@ -229,7 +229,7 @@ pub struct DownloadConfig {
     /// Decompress image and don't save signature
     #[clap(short, long)]
     pub decompress: bool,
-    /// Skip signature verification
+    /// Allow unsigned image
     #[clap(long)]
     pub insecure: bool,
     /// Base URL for Fedora CoreOS stream metadata

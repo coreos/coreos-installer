@@ -111,7 +111,7 @@ ADVANCED OPTIONS:
             Force offline installation
 
         --insecure
-            Skip signature verification
+            Allow unsigned image
 
         --insecure-ignition
             Allow Ignition URL without HTTPS or hash
