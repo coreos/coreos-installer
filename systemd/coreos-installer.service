@@ -7,6 +7,9 @@ Wants=network-online.target
 # systemd-resolved comes up if enabled.
 # https://github.com/coreos/coreos-installer/issues/283
 After=systemd-resolved.service
+# Wait for chronyd to sync the system time
+# https://github.com/coreos/coreos-installer/issues/1158
+After=chronyd.service
 ConditionDirectoryNotEmpty=|/etc/coreos/installer.d
 ConditionKernelCommandLine=|coreos.inst.install_dev
 OnFailure=emergency.target
