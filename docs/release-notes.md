@@ -18,6 +18,7 @@ Internal changes:
 
 Packaging changes:
 
+- Update container to Fedora 38
 
 
 ## coreos-installer 0.17.0 (2023-03-10)
