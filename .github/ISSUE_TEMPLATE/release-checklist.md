@@ -113,7 +113,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] [submit a fast-track](https://github.com/coreos/fedora-coreos-config/actions/workflows/add-override.yml) for FCOS next-devel if it is [open](https://github.com/coreos/fedora-coreos-pipeline/blob/main/next-devel/README.md)
 
 - RHCOS packaging:
-  - [ ] update the `coreos-installer` spec file
+  - [ ] update the [spec file](https://gitlab.com/redhat/rhel/rpms/coreos-installer)
     - bump the `Version`
     - switch the `Release` back to `1%{?dist}`
     - remove any patches obsoleted by the new release
