@@ -37,7 +37,7 @@ jobs:
           - x86_64
           - s390x
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v3
       - name: Set up environment
         run: .github/workflows/env-setup
@@ -86,7 +86,7 @@ jobs:
           - x86_64
           - s390x
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v3
       - name: Detect crate MSRV
         shell: bash
@@ -142,7 +142,7 @@ jobs:
           - x86_64
           - s390x
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v3
       - name: Set up environment
         run: .github/workflows/env-setup
@@ -188,7 +188,7 @@ jobs:
         arch:
           - x86_64
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v3
       - name: Set up environment
         run: .github/workflows/env-setup
@@ -230,7 +230,7 @@ jobs:
     name: "Docs"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v3
       - name: Set up environment
         run: .github/workflows/env-setup
