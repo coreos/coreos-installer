@@ -143,7 +143,6 @@ pub(crate) fn partitions_from_gpt_header(
     let mut partitions = gpt
         .iter()
         .filter(|(_, pt)| pt.is_used())
-        .into_iter()
         .map(|(_, pt)| pt.clone())
         .collect::<Vec<GPTPartitionEntry>>();
     if partitions.is_empty() {
