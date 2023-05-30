@@ -45,11 +45,12 @@ jobs:
           ARCH: ${{ matrix.arch }}
           TOOLCHAIN: stable
       - name: Cache build artifacts
-        if: ${{ matrix.arch == 's390x' }}
-        uses: actions/cache@v3
+        uses: Swatinem/rust-cache@v2
         with:
-          path: target/debug
-          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
+          # rust-cache creates a separate cache key for each job definition,
+          # but bases it on the Rust version in the host, not the container.
+          # Specify additional fields not implied by the job name.
+          key: ${{ matrix.arch }}
       - name: Install dependencies
         run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
       - name: Configure cargo
@@ -72,8 +73,6 @@ jobs:
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
-      - name: Clean up cache
-        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   tests-msrv:
     name: "Tests, minimum supported toolchain"
     runs-on: ubuntu-latest
@@ -101,11 +100,14 @@ jobs:
           ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ env.MSRV }}
       - name: Cache build artifacts
-        if: ${{ matrix.arch == 's390x' }}
-        uses: actions/cache@v3
+        uses: Swatinem/rust-cache@v2
         with:
-          path: target/debug
-          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
+          # rust-cache creates a separate cache key for each job definition,
+          # but bases it on the Rust version in the host, not the container.
+          # Specify additional fields not implied by the job name, plus the
+          # numeric MSRV as an optimization to ignore the old cache after the
+          # MSRV changes.
+          key: ${{ matrix.arch }}-${{ env.MSRV }}
       - name: Install dependencies
         run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
       - name: Configure cargo
@@ -128,8 +130,6 @@ jobs:
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
-      - name: Clean up cache
-        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   lints:
     name: "Lints, pinned toolchain"
     runs-on: ubuntu-latest
@@ -151,11 +151,14 @@ jobs:
           TOOLCHAIN: ${{ env.ACTIONS_LINTS_TOOLCHAIN }}
           COMPONENTS: rustfmt,clippy
       - name: Cache build artifacts
-        if: ${{ matrix.arch == 's390x' }}
-        uses: actions/cache@v3
+        uses: Swatinem/rust-cache@v2
         with:
-          path: target/debug
-          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}-lints
+          # rust-cache creates a separate cache key for each job definition,
+          # but bases it on the Rust version in the host, not the container.
+          # Specify additional fields not implied by the job name, plus the
+          # numeric version as an optimization to ignore the old cache after
+          # the lint toolchain changes.
+          key: ${{ matrix.arch }}-${{ env.ACTIONS_LINTS_TOOLCHAIN }}
       - name: Install dependencies
         run: dnf install -y gcc git-core libzstd-devel openssl-devel
       - name: Configure cargo
@@ -173,8 +176,6 @@ jobs:
         run: cargo clippy -- -D warnings
       - name: cargo clippy (rdcore, warnings)
         run: cargo clippy --features rdcore -- -D warnings
-      - name: Clean up cache
-        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   tests-other-channels:
     name: "Tests, unstable toolchain"
     runs-on: ubuntu-latest
@@ -196,11 +197,12 @@ jobs:
           ARCH: ${{ matrix.arch }}
           TOOLCHAIN: ${{ matrix.channel }}
       - name: Cache build artifacts
-        if: ${{ matrix.arch == 's390x' }}
-        uses: actions/cache@v3
+        uses: Swatinem/rust-cache@v2
         with:
-          path: target/debug
-          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ env.INSTALLED_TOOLCHAIN }}
+          # rust-cache creates a separate cache key for each job definition,
+          # but bases it on the Rust version in the host, not the container.
+          # Specify additional fields not implied by the job name.
+          key: ${{ matrix.arch }}-${{ matrix.channel }}
       - name: Install dependencies
         run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
       - name: Configure cargo
@@ -223,8 +225,6 @@ jobs:
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
-      - name: Clean up cache
-        run: "rm -rf target/debug/{*inst*,examples,incremental,deps/*inst*}"
   docs:
     name: "Docs"
     runs-on: ubuntu-latest
@@ -237,6 +237,8 @@ jobs:
         env:
           ARCH: x86_64
           TOOLCHAIN: stable
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
       - name: Install dependencies
         run: dnf install -y gcc git-core libzstd-devel openssl-devel util-linux
       - name: cargo build
