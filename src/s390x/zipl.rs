@@ -236,7 +236,6 @@ pub fn zipl<P: AsRef<Path>>(
             create_dir_all(&blsdir).with_context(|| format!("creating {}", blsdir.display()))?;
             read_dir(boot.join("loader/entries"))
                 .with_context(|| format!("reading {}", boot.display()))?
-                .into_iter()
                 .filter_map(Result::ok)
                 .filter(|p| p.file_type().unwrap().is_file())
                 .for_each(|src| {
