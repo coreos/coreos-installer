@@ -1725,7 +1725,7 @@ mod tests {
         guid
     }
 
-    fn assert_partitions_eq(expected: &Vec<(u32, GPTPartitionEntry)>, found: &GPT, message: &str) {
+    fn assert_partitions_eq(expected: &[(u32, GPTPartitionEntry)], found: &GPT, message: &str) {
         assert_eq!(
             expected
                 .iter()
