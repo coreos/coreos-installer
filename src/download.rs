@@ -687,8 +687,8 @@ mod tests {
         let mb: usize = 1024 * 1024;
 
         let mut data = vec![0u8; len];
-        for i in 0..data.len() {
-            data[i] = (i % 256) as u8;
+        for (i, el) in data.iter_mut().enumerate() {
+            *el = (i % 256) as u8;
         }
 
         // no saved partitions

@@ -63,13 +63,13 @@ jobs:
           git-fetch-with-cli = true
           EOF
       - name: cargo build
-        run: cargo build
+        run: cargo build --all-targets
       - name: cargo test
-        run: cargo test
+        run: cargo test --all-targets
       - name: cargo build (rdcore)
-        run: cargo build --features rdcore
+        run: cargo build --all-targets --features rdcore
       - name: cargo test (rdcore)
-        run: cargo test --features rdcore
+        run: cargo test --all-targets --features rdcore
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
@@ -120,13 +120,13 @@ jobs:
           git-fetch-with-cli = true
           EOF
       - name: cargo build
-        run: cargo build
+        run: cargo build --all-targets
       - name: cargo test
-        run: cargo test
+        run: cargo test --all-targets
       - name: cargo build (rdcore)
-        run: cargo build --features rdcore
+        run: cargo build --all-targets --features rdcore
       - name: cargo test (rdcore)
-        run: cargo test --features rdcore
+        run: cargo test --all-targets --features rdcore
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh
@@ -173,9 +173,9 @@ jobs:
       - name: cargo fmt (check)
         run: cargo fmt -- --check -l
       - name: cargo clippy (warnings)
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
       - name: cargo clippy (rdcore, warnings)
-        run: cargo clippy --features rdcore -- -D warnings
+        run: cargo clippy --all-targets --features rdcore -- -D warnings
   tests-other-channels:
     name: "Tests, unstable toolchain"
     runs-on: ubuntu-latest
@@ -215,13 +215,13 @@ jobs:
           git-fetch-with-cli = true
           EOF
       - name: cargo build
-        run: cargo build
+        run: cargo build --all-targets
       - name: cargo test
-        run: cargo test
+        run: cargo test --all-targets
       - name: cargo build (rdcore)
-        run: cargo build --features rdcore
+        run: cargo build --all-targets --features rdcore
       - name: cargo test (rdcore)
-        run: cargo test --features rdcore
+        run: cargo test --all-targets --features rdcore
       - name: Image tests
         if: ${{ matrix.arch == 'x86_64' }}
         run: tests/images.sh

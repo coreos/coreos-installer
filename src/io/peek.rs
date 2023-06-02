@@ -109,8 +109,7 @@ mod tests {
     }
 
     fn read_bytes<R: Read>(peek: &mut PeekReader<R>, amt: usize) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(amt);
-        buf.resize(amt, 0);
+        let mut buf = vec![0; amt];
         let amt = peek.read(&mut buf).unwrap();
         buf.truncate(amt);
         buf
