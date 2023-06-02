@@ -6,6 +6,19 @@ nav_order: 8
 
 ## Upcoming coreos-installer 0.19.0 (unreleased)
 
+Major changes:
+
+
+Minor changes:
+
+
+Internal changes:
+
+- rootmap/bind-boot: Support root devices using composefs
+
+Packaging changes:
+
+
 
 ## coreos-installer 0.18.0 (2023-08-24)
 
