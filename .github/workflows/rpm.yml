@@ -1,4 +1,6 @@
----
+# Maintained in https://github.com/coreos/repo-templates
+# Do not edit downstream.
+
 name: RPMs
 on:
   push:
@@ -24,7 +26,7 @@ jobs:
       # need to install git before checkout to get a git repo
       - name: Install packages
         run: dnf install -y git make mock
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v3
         # fetch tags for versioning
         with:
