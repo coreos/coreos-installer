@@ -82,17 +82,27 @@ pub struct InstallConfig {
     #[clap(conflicts_with = "image-file", conflicts_with = "image-url")]
     pub stream: Option<String>,
     /// Manually specify the image URL
+    ///
+    /// coreos-installer appends ".sig" to find the GPG signature for the
+    /// image, which must exist and be valid.  A missing signature can be
+    /// ignored with --insecure.
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[clap(short = 'u', long, value_name = "URL")]
     #[clap(conflicts_with = "stream", conflicts_with = "image-file")]
     pub image_url: Option<Url>,
     /// Manually specify a local image file
+    ///
+    /// coreos-installer appends ".sig" to find the GPG signature for the
+    /// image, which must exist and be valid.  A missing signature can be
+    /// ignored with --insecure.
     #[clap(short = 'f', long, value_name = "path")]
     #[clap(conflicts_with = "stream", conflicts_with = "image-url")]
     pub image_file: Option<String>,
 
     // postprocessing options
     /// Embed an Ignition config from a file
+    ///
+    /// Embed the specified Ignition config in the installed system.
     // deprecated long name from <= 0.1.2
     #[clap(short, long, alias = "ignition", value_name = "path")]
     #[clap(conflicts_with = "ignition-url")]
@@ -169,6 +179,15 @@ pub struct InstallConfig {
     #[clap(hide_default_value = true)]
     pub network_dir: DefaultedString<NetworkDir>,
     /// Save partitions with this label glob
+    ///
+    /// Preserve any existing partitions on the destination device whose
+    /// partition label (not filesystem label) matches the specified glob
+    /// pattern.  Multiple patterns can be specified in multiple options, or
+    /// in a single option separated by commas.
+    ///
+    /// Saved partitions will be renumbered if necessary.  If partitions
+    /// overlap with the install image, or installation fails for any other
+    /// reason, the specified partitions will still be preserved.
     #[serde(skip_serializing_if = "is_default")]
     #[clap(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
@@ -177,6 +196,16 @@ pub struct InstallConfig {
     #[clap(value_delimiter = ',')]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
+    ///
+    /// Preserve any existing partitions on the destination device whose
+    /// partition number matches the specified value or range.  Ranges can
+    /// be bounded on both ends ("5-7", inclusive) or one end ("5-" or "-7").
+    /// Multiple numbers or ranges can be specified in multiple options, or
+    /// in a single option separated by commas.
+    ///
+    /// Saved partitions will be renumbered if necessary.  If partitions
+    /// overlap with the install image, or installation fails for any other
+    /// reason, the specified partitions will still be preserved.
     #[serde(skip_serializing_if = "is_default")]
     #[clap(long, value_name = "id")]
     // Allow argument multiple times, but one value each.  Allow "1-5,7" in
@@ -193,6 +222,9 @@ pub struct InstallConfig {
     #[clap(long, help_heading = ADVANCED)]
     pub offline: bool,
     /// Allow unsigned image
+    ///
+    /// Allow the signature to be absent.  Does not allow an existing
+    /// signature to be invalid.
     #[serde(skip_serializing_if = "is_default")]
     #[clap(long, help_heading = ADVANCED)]
     pub insecure: bool,

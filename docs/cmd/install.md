@@ -38,11 +38,19 @@ OPTIONS:
     -u, --image-url <URL>
             Manually specify the image URL
 
+            coreos-installer appends ".sig" to find the GPG signature for the image, which must
+            exist and be valid.  A missing signature can be ignored with --insecure.
+
     -f, --image-file <path>
             Manually specify a local image file
 
+            coreos-installer appends ".sig" to find the GPG signature for the image, which must
+            exist and be valid.  A missing signature can be ignored with --insecure.
+
     -i, --ignition-file <path>
             Embed an Ignition config from a file
+
+            Embed the specified Ignition config in the installed system.
 
     -I, --ignition-url <URL>
             Embed an Ignition config from a URL
@@ -100,8 +108,25 @@ OPTIONS:
         --save-partlabel <lx>
             Save partitions with this label glob
 
+            Preserve any existing partitions on the destination device whose partition label
+            (not filesystem label) matches the specified glob pattern.  Multiple patterns can
+            be specified in multiple options, or in a single option separated by commas.
+
+            Saved partitions will be renumbered if necessary.  If partitions overlap with the
+            install image, or installation fails for any other reason, the specified partitions
+            will still be preserved.
+
         --save-partindex <id>
             Save partitions with this number or range
+
+            Preserve any existing partitions on the destination device whose partition number
+            matches the specified value or range.  Ranges can be bounded on both ends ("5-7",
+            inclusive) or one end ("5-" or "-7"). Multiple numbers or ranges can be specified
+            in multiple options, or in a single option separated by commas.
+
+            Saved partitions will be renumbered if necessary.  If partitions overlap with the
+            install image, or installation fails for any other reason, the specified partitions
+            will still be preserved.
 
     -h, --help
             Print help information
@@ -112,6 +137,9 @@ ADVANCED OPTIONS:
 
         --insecure
             Allow unsigned image
+
+            Allow the signature to be absent.  Does not allow an existing signature to be
+            invalid.
 
         --insecure-ignition
             Allow Ignition URL without HTTPS or hash
