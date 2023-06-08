@@ -15,7 +15,7 @@
 //! Support for generating docs.
 
 use anyhow::{bail, Context, Result};
-use clap::{crate_version, Command, CommandFactory};
+use clap::{crate_version, ArgAction, Command, CommandFactory};
 use serde::{de, forward_to_deserialize_any, Deserialize};
 use std::collections::{hash_map::RandomState, HashMap};
 use std::fmt::Write as _;
@@ -78,13 +78,15 @@ pub fn pack_example_config(_config: PackExampleConfigConfig) -> Result<()> {
     let cmd = InstallConfig::command();
     // argument name -> clap::Arg
     let arg_map: HashMap<_, _, RandomState> =
-        HashMap::from_iter(cmd.get_arguments().map(|arg| (arg.get_id(), arg)));
+        HashMap::from_iter(cmd.get_arguments().map(|arg| (arg.get_id().as_str(), arg)));
     for field in &fields {
-        if let Some(arg) = arg_map.get(&**field) {
+        if let Some(arg) = arg_map.get(&*field.replace('-', "_")) {
             // output help comment
             // we can't serialize through serde_yaml because it doesn't
             // support comments
             if let Some(help) = arg.get_help() {
+                // strip StyledStr
+                let help = format!("{}", help);
                 let help = match field.as_ref() {
                     // clarify YAML syntax for "infinite"
                     "fetch-retries" => r#"Fetch retries, or string "infinite""#,
@@ -93,33 +95,37 @@ pub fn pack_example_config(_config: PackExampleConfigConfig) -> Result<()> {
                     // "arg" => "arguments"
                     "append-karg" => "Append default kernel arguments",
                     "delete-karg" => "Delete default kernel arguments",
-                    _ => help,
+                    _ => &help,
                 };
                 writeln!(out, "# {help}").unwrap();
             }
 
             // output "field: argument-description"
-            let value_names = arg.get_value_names().map(|v| v[0]);
-            let desc = if arg.is_multiple_occurrences_set() {
-                // value array
-                let value_name = match field.as_ref() {
-                    // more verbose than 80 columns will allow
-                    "save-partlabel" => "glob",
-                    "save-partindex" => "id-or-range",
-                    _ => value_names.expect("missing value name"),
-                };
-                format!("[{0}, {0}]", value_name)
-            } else if arg.is_takes_value_set() {
-                // option with argument
-                match field.as_ref() {
-                    // positional arguments have different formatting
-                    "dest-device" => "path",
-                    _ => value_names.expect("missing value name"),
+            let value_names = arg.get_value_names().map(|v| v[0].as_str());
+            let desc = match arg.get_action() {
+                ArgAction::Set => {
+                    // option with argument
+                    match field.as_ref() {
+                        // positional arguments have different formatting
+                        "dest-device" => "path",
+                        _ => value_names.expect("missing value name"),
+                    }
+                    .into()
                 }
-                .into()
-            } else {
-                // option flag
-                "true".into()
+                ArgAction::Append => {
+                    // value array
+                    let value_name = match field.as_ref() {
+                        // more verbose than 80 columns will allow
+                        "save-partlabel" => "glob",
+                        "save-partindex" => "id-or-range",
+                        _ => value_names.expect("missing value name"),
+                    };
+                    format!("[{0}, {0}]", value_name)
+                }
+                _ => {
+                    // option flag
+                    "true".into()
+                }
             };
             writeln!(out, "{field}: {desc}").unwrap();
         } else {

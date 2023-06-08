@@ -15,7 +15,7 @@
 // For consistency, have all parse_*() functions return Result.
 #![allow(clippy::unnecessary_wraps)]
 
-use clap::{AppSettings, Parser};
+use clap::Parser;
 
 #[cfg(target_arch = "s390x")]
 use libcoreinst::s390x;
@@ -23,11 +23,10 @@ use libcoreinst::s390x;
 // Args are listed in --help in the order declared in these structs/enums.
 
 #[derive(Debug, Parser)]
-#[clap(name = "rdcore", version)]
-#[clap(global_setting(AppSettings::DeriveDisplayOrder))]
-#[clap(args_conflicts_with_subcommands = true)]
-#[clap(disable_help_subcommand = true)]
-#[clap(help_expected = true)]
+#[command(name = "rdcore", version)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(disable_help_subcommand = true)]
+#[command(help_expected = true)]
 pub enum Cmd {
     /// Generate rootmap kargs and optionally inject into BLS configs
     Rootmap(RootmapConfig),
@@ -52,23 +51,23 @@ pub struct RootmapConfig {
     // for changing implementation details on the OS side without having to
     // respin rdcore
     /// Boot device containing BLS entries to modify
-    #[clap(long, value_name = "DEVPATH", conflicts_with = "boot-mount")]
+    #[arg(long, value_name = "DEVPATH", conflicts_with = "boot_mount")]
     pub boot_device: Option<String>,
     /// Boot mount containing BLS entries to modify
-    #[clap(long, value_name = "BOOT_MOUNT", conflicts_with = "boot-device")]
+    #[arg(long, value_name = "BOOT_MOUNT", conflicts_with = "boot_device")]
     pub boot_mount: Option<String>,
     /// Path to rootfs mount
-    #[clap(value_name = "ROOT_MOUNT")]
+    #[arg(value_name = "ROOT_MOUNT")]
     pub root_mount: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct BindBootConfig {
     /// Path to rootfs mount
-    #[clap(value_name = "ROOT_MOUNT")]
+    #[arg(value_name = "ROOT_MOUNT")]
     pub root_mount: String,
     /// Path to bootfs mount
-    #[clap(value_name = "BOOT_MOUNT")]
+    #[arg(value_name = "BOOT_MOUNT")]
     pub boot_mount: String,
 }
 
@@ -76,52 +75,52 @@ pub struct BindBootConfig {
 pub struct KargsConfig {
     // see comment block in rootmap command above
     /// Boot device containing BLS entries to modify
-    #[clap(long, value_name = "DEVPATH")]
-    #[clap(conflicts_with = "boot-mount", conflicts_with = "current")]
+    #[arg(long, value_name = "DEVPATH")]
+    #[arg(conflicts_with_all = ["boot_mount", "current"])]
     pub boot_device: Option<String>,
     /// Boot mount containing BLS entries to modify
-    #[clap(long, value_name = "BOOT_MOUNT")]
-    #[clap(conflicts_with = "boot-device", conflicts_with = "current")]
+    #[arg(long, value_name = "BOOT_MOUNT")]
+    #[arg(conflicts_with_all = ["boot_device", "current"])]
     pub boot_mount: Option<String>,
     /// Dry run using kargs from this boot
-    #[clap(long)]
-    #[clap(conflicts_with = "boot-device", conflicts_with = "boot-mount")]
+    #[arg(long)]
+    #[arg(conflicts_with_all = ["boot_device", "boot_mount"])]
     pub current: bool,
     /// Modify this option string instead of fetching from BLS entry
     // this is purely for dev testing
-    #[clap(long, value_name = "OPTIONS", hide = true)]
+    #[arg(long, value_name = "OPTIONS", hide = true)]
     pub override_options: Option<String>,
     /// File to create if BLS entry was modified
-    #[clap(long, value_name = "PATH")]
+    #[arg(long, value_name = "PATH")]
     pub create_if_changed: Option<String>,
     /// Append kernel arg
-    #[clap(long, value_name = "ARG")]
+    #[arg(long, value_name = "ARG")]
     pub append: Vec<String>,
     /// Append kernel arg if missing
-    #[clap(long, value_name = "ARG")]
-    #[clap(alias = "should-exist")]
+    #[arg(long, value_name = "ARG")]
+    #[arg(alias = "should-exist")]
     pub append_if_missing: Vec<String>,
     /// Delete kernel arg
-    #[clap(long, value_name = "ARG")]
-    #[clap(alias = "should-not-exist")]
+    #[arg(long, value_name = "ARG")]
+    #[arg(alias = "should-not-exist")]
     pub delete: Vec<String>,
 }
 
 #[derive(Debug, Parser)]
 pub struct StreamHashConfig {
     /// Path to the piecewise hash file
-    #[clap(value_name = "hash-file")]
+    #[arg(value_name = "hash-file")]
     pub hash_file: String,
 }
 
 #[derive(Debug, Parser)]
 pub struct VerifyUniqueFsLabelConfig {
     /// Filesystem's label
-    #[clap(value_name = "LABEL")]
+    #[arg(value_name = "LABEL")]
     pub label: String,
 
     /// Force rereading of partition table
-    #[clap(long)]
+    #[arg(long)]
     pub rereadpt: bool,
 }
 
@@ -129,32 +128,31 @@ pub struct VerifyUniqueFsLabelConfig {
 #[derive(Debug, Parser)]
 pub struct ZiplConfig {
     /// Boot device containing BLS entries to use
-    #[clap(long, value_name = "BOOT_MOUNT")]
+    #[arg(long, value_name = "BOOT_MOUNT")]
     pub boot_mount: String,
 
     /// Zipl mode for Secure Execution
-    #[clap(arg_enum)]
-    #[clap(long, default_value = "auto")]
+    #[arg(long, value_enum, default_value = "auto")]
     pub secex_mode: s390x::ZiplSecexMode,
 
     /// Path to hostkey
-    #[clap(long, value_name = "HOSTKEY")]
+    #[arg(long, value_name = "HOSTKEY")]
     pub hostkey: Option<String>,
 
     /// Append kernel argument
-    #[clap(long, value_name = "KARG")]
-    #[clap(alias = "kargs")]
+    #[arg(long, value_name = "KARG")]
+    #[arg(alias = "kargs")]
     pub append_karg: Option<Vec<String>>,
 
     /// Append file to sdboot image
-    #[clap(long, value_name = "FILE")]
+    #[arg(long, value_name = "FILE")]
     pub append_file: Option<Vec<String>>,
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use clap::IntoApp;
+    use clap::CommandFactory;
 
     #[test]
     fn clap_app() {

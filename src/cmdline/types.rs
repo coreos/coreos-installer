@@ -67,7 +67,7 @@ impl Default for FetchRetries {
 
 /// A String wrapper that takes a parameterized type defining the default
 /// value of the String.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DefaultedString<S: DefaultString> {
     value: String,
     default: PhantomData<S>,
@@ -133,7 +133,7 @@ pub trait DefaultString {
 }
 
 /// A default string of `uname -m`.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Architecture {}
 impl DefaultString for Architecture {
     fn default() -> String {
@@ -147,7 +147,7 @@ impl DefaultString for Architecture {
 }
 
 /// The default path to NetworkManager connection files.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NetworkDir {}
 impl DefaultString for NetworkDir {
     fn default() -> String {

@@ -4,16 +4,10 @@
 .SH NAME
 coreos\-installer\-pxe\-customize \- Create a custom live PXE boot config
 .SH SYNOPSIS
-\fBcoreos\-installer\-pxe\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-console\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] <\fB\-o\fR|\fB\-\-output\fR> <\fIpath\fR> 
+\fBcoreos\-installer\-pxe\-customize\fR [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-console\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] <\fB\-o\fR|\fB\-\-output\fR> [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIpath\fR> 
 .SH DESCRIPTION
 Create a custom live PXE boot config
 .SH OPTIONS
-.TP
-\fB\-h\fR, \fB\-\-help\fR
-Print help information
-.TP
-\fB\-V\fR, \fB\-\-version\fR
-Print version information
 .TP
 \fB\-\-dest\-ignition\fR=\fIpath\fR
 Ignition config fragment for dest sys
@@ -77,6 +71,12 @@ Merge the specified Ignition config into the config for the live environment.
 .TP
 \fB\-o\fR, \fB\-\-output\fR=\fIpath\fR
 Output file
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
 .TP
 <\fIpath\fR>
 CoreOS live initramfs image

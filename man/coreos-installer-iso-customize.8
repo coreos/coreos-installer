@@ -4,16 +4,10 @@
 .SH NAME
 coreos\-installer\-iso\-customize \- Customize a CoreOS live ISO image
 .SH SYNOPSIS
-\fBcoreos\-installer\-iso\-customize\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-console\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] [\fB\-\-live\-karg\-append\fR] [\fB\-\-live\-karg\-delete\fR] [\fB\-\-live\-karg\-replace\fR] [\fB\-f\fR|\fB\-\-force\fR] [\fB\-o\fR|\fB\-\-output\fR] <\fIISO\fR> 
+\fBcoreos\-installer\-iso\-customize\fR [\fB\-\-dest\-ignition\fR] [\fB\-\-dest\-device\fR] [\fB\-\-dest\-console\fR] [\fB\-\-dest\-karg\-append\fR] [\fB\-\-dest\-karg\-delete\fR] [\fB\-\-network\-keyfile\fR] [\fB\-\-network\-nmstate\fR] [\fB\-\-ignition\-ca\fR] [\fB\-\-pre\-install\fR] [\fB\-\-post\-install\fR] [\fB\-\-installer\-config\fR] [\fB\-\-live\-ignition\fR] [\fB\-\-live\-karg\-append\fR] [\fB\-\-live\-karg\-delete\fR] [\fB\-\-live\-karg\-replace\fR] [\fB\-f\fR|\fB\-\-force\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIISO\fR> 
 .SH DESCRIPTION
 Customize a CoreOS live ISO image
 .SH OPTIONS
-.TP
-\fB\-h\fR, \fB\-\-help\fR
-Print help information
-.TP
-\fB\-V\fR, \fB\-\-version\fR
-Print version information
 .TP
 \fB\-\-dest\-ignition\fR=\fIpath\fR
 Ignition config fragment for dest sys
@@ -95,6 +89,12 @@ Overwrite existing customizations
 .TP
 \fB\-o\fR, \fB\-\-output\fR=\fIpath\fR
 Write ISO to a new output file
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
 .TP
 <\fIISO\fR>
 ISO image

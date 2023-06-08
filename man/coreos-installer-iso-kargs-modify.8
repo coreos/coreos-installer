@@ -4,16 +4,10 @@
 .SH NAME
 coreos\-installer\-iso\-kargs\-modify \- Modify kernel args in an ISO image
 .SH SYNOPSIS
-\fBcoreos\-installer\-iso\-kargs\-modify\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fB\-a\fR|\fB\-\-append\fR] [\fB\-d\fR|\fB\-\-delete\fR] [\fB\-r\fR|\fB\-\-replace\fR] [\fB\-o\fR|\fB\-\-output\fR] <\fIISO\fR> 
+\fBcoreos\-installer\-iso\-kargs\-modify\fR [\fB\-a\fR|\fB\-\-append\fR] [\fB\-d\fR|\fB\-\-delete\fR] [\fB\-r\fR|\fB\-\-replace\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIISO\fR> 
 .SH DESCRIPTION
 Modify kernel args in an ISO image
 .SH OPTIONS
-.TP
-\fB\-h\fR, \fB\-\-help\fR
-Print help information
-.TP
-\fB\-V\fR, \fB\-\-version\fR
-Print version information
 .TP
 \fB\-a\fR, \fB\-\-append\fR=\fIKARG\fR
 Kernel argument to append
@@ -26,6 +20,12 @@ Kernel argument to replace
 .TP
 \fB\-o\fR, \fB\-\-output\fR=\fIPATH\fR
 Write ISO to a new output file
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
 .TP
 <\fIISO\fR>
 ISO image

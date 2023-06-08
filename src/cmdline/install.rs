@@ -33,15 +33,15 @@ use super::Cmd;
 // Args are listed in --help in the order declared in these structs/enums.
 // Please keep the entire help text to 80 columns.
 
-const ADVANCED: &str = "ADVANCED OPTIONS";
+const ADVANCED: &str = "Advanced Options";
 
 // As a special case, this struct supports Serialize and Deserialize for
 // config file parsing.  Here are the rules.  Build or test should fail if
 // you break anything too badly.
-// - Defaults cannot be specified using #[clap(default_value = "x")]
+// - Defaults cannot be specified using #[arg(default_value = "x")]
 //   because serde won't see them otherwise.  Instead, use
-//   #[clap(default_value_t)], implement Default, and derive PartialEq
-//   for the type.  (For string-typed defaults, you can use
+//   #[arg(default_value_t)], implement Default, and derive Clone and
+//   PartialEq for the type.  (For string-typed defaults, you can use
 //   DefaultedString<T> where T is a custom type implementing
 //   DefaultString.)
 // - Add #[serde(skip_serializing_if = "is_default")] for all fields that
@@ -57,7 +57,7 @@ const ADVANCED: &str = "ADVANCED OPTIONS";
 #[skip_serializing_none]
 #[derive(Debug, Default, Parser, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
-#[clap(args_override_self = true)]
+#[command(args_override_self = true)]
 pub struct InstallConfig {
     /// YAML config file with install options
     ///
@@ -70,7 +70,7 @@ pub struct InstallConfig {
     /// repeatable options, and "true" for flags.  The destination device
     /// can be specified with the "dest-device" key.
     #[serde(skip)]
-    #[clap(short, long, value_name = "path")]
+    #[arg(short, long, value_name = "path")]
     pub config_file: Vec<String>,
 
     // ways to specify the image source
@@ -78,8 +78,8 @@ pub struct InstallConfig {
     ///
     /// The name of the Fedora CoreOS stream to install, such as "stable",
     /// "testing", or "next".
-    #[clap(short, long, value_name = "name")]
-    #[clap(conflicts_with = "image-file", conflicts_with = "image-url")]
+    #[arg(short, long, value_name = "name")]
+    #[arg(conflicts_with_all = ["image_file", "image_url"])]
     pub stream: Option<String>,
     /// Manually specify the image URL
     ///
@@ -87,16 +87,16 @@ pub struct InstallConfig {
     /// image, which must exist and be valid.  A missing signature can be
     /// ignored with --insecure.
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[clap(short = 'u', long, value_name = "URL")]
-    #[clap(conflicts_with = "stream", conflicts_with = "image-file")]
+    #[arg(short = 'u', long, value_name = "URL")]
+    #[arg(conflicts_with_all = ["stream", "image_file"])]
     pub image_url: Option<Url>,
     /// Manually specify a local image file
     ///
     /// coreos-installer appends ".sig" to find the GPG signature for the
     /// image, which must exist and be valid.  A missing signature can be
     /// ignored with --insecure.
-    #[clap(short = 'f', long, value_name = "path")]
-    #[clap(conflicts_with = "stream", conflicts_with = "image-url")]
+    #[arg(short = 'f', long, value_name = "path")]
+    #[arg(conflicts_with_all = ["stream", "image_url"])]
     pub image_file: Option<String>,
 
     // postprocessing options
@@ -104,68 +104,68 @@ pub struct InstallConfig {
     ///
     /// Embed the specified Ignition config in the installed system.
     // deprecated long name from <= 0.1.2
-    #[clap(short, long, alias = "ignition", value_name = "path")]
-    #[clap(conflicts_with = "ignition-url")]
+    #[arg(short, long, alias = "ignition", value_name = "path")]
+    #[arg(conflicts_with = "ignition_url")]
     pub ignition_file: Option<String>,
     /// Embed an Ignition config from a URL
     ///
     /// Immediately fetch the Ignition config from the URL and embed it in
     /// the installed system.
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[clap(short = 'I', long, value_name = "URL")]
-    #[clap(conflicts_with = "ignition-file")]
+    #[arg(short = 'I', long, value_name = "URL")]
+    #[arg(conflicts_with = "ignition_file")]
     pub ignition_url: Option<Url>,
     /// Digest (type-value) of the Ignition config
     ///
     /// Verify that the Ignition config matches the specified digest,
     /// formatted as <type>-<hexvalue>.  <type> can be sha256 or sha512.
-    #[clap(long, value_name = "digest")]
+    #[arg(long, value_name = "digest")]
     pub ignition_hash: Option<IgnitionHash>,
     /// Target CPU architecture
     ///
     /// Create an install disk for a different CPU architecture than the
     /// host.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(short, long, default_value_t, value_name = "name")]
+    #[arg(short, long, default_value_t, value_name = "name")]
     pub architecture: DefaultedString<Architecture>,
     /// Override the Ignition platform ID
     ///
     /// Install a system that will run on the specified cloud or
     /// virtualization platform, such as "vmware".
-    #[clap(short, long, value_name = "name")]
+    #[arg(short, long, value_name = "name")]
     pub platform: Option<String>,
     /// Kernel and bootloader console
     ///
     /// Set the kernel and bootloader console, using the same syntax as the
     /// parameter to the "console=" kernel argument.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "spec")]
+    #[arg(long, value_name = "spec")]
     pub console: Vec<Console>,
     /// Additional kernel args for the first boot
     // This used to be for configuring networking from the cmdline, but it has
     // been obsoleted by the nicer `--copy-network` approach. We still need it
     // for now though. It's used at least by `coreos-installer.service`.
     #[serde(skip)]
-    #[clap(long, hide = true, value_name = "args")]
+    #[arg(long, hide = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
     ///
     /// Add a kernel argument to the installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "arg")]
+    #[arg(long, value_name = "arg")]
     pub append_karg: Vec<String>,
     /// Delete default kernel arg
     ///
     /// Delete a default kernel argument from the installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "arg")]
+    #[arg(long, value_name = "arg")]
     pub delete_karg: Vec<String>,
     /// Copy network config from install environment
     ///
     /// Copy NetworkManager keyfiles from the install environment to the
     /// installed system.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(short = 'n', long)]
+    #[arg(short = 'n', long)]
     pub copy_network: bool,
     /// Override NetworkManager keyfile dir for -n
     ///
@@ -174,9 +174,9 @@ pub struct InstallConfig {
     ///
     /// [default: /etc/NetworkManager/system-connections/]
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "path", default_value_t)]
+    #[arg(long, value_name = "path", default_value_t)]
     // showing the default converts every option to multiline help
-    #[clap(hide_default_value = true)]
+    #[arg(hide_default_value = true)]
     pub network_dir: DefaultedString<NetworkDir>,
     /// Save partitions with this label glob
     ///
@@ -189,11 +189,10 @@ pub struct InstallConfig {
     /// overlap with the install image, or installation fails for any other
     /// reason, the specified partitions will still be preserved.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "lx")]
+    #[arg(long, value_name = "lx")]
     // Allow argument multiple times, but one value each.  Allow "a,b" in
     // one argument.
-    #[clap(number_of_values = 1, require_value_delimiter = true)]
-    #[clap(value_delimiter = ',')]
+    #[arg(value_delimiter = ',')]
     pub save_partlabel: Vec<String>,
     /// Save partitions with this number or range
     ///
@@ -207,37 +206,36 @@ pub struct InstallConfig {
     /// overlap with the install image, or installation fails for any other
     /// reason, the specified partitions will still be preserved.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "id")]
+    #[arg(long, value_name = "id")]
     // Allow argument multiple times, but one value each.  Allow "1-5,7" in
     // one argument.
-    #[clap(number_of_values = 1, require_value_delimiter = true)]
-    #[clap(value_delimiter = ',')]
+    #[arg(value_delimiter = ',')]
     // Allow ranges like "-2".
-    #[clap(allow_hyphen_values = true)]
+    #[arg(allow_hyphen_values = true)]
     pub save_partindex: Vec<String>,
 
     // obscure options without short names
     /// Force offline installation
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, help_heading = ADVANCED)]
+    #[arg(long, help_heading = ADVANCED)]
     pub offline: bool,
     /// Allow unsigned image
     ///
     /// Allow the signature to be absent.  Does not allow an existing
     /// signature to be invalid.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, help_heading = ADVANCED)]
+    #[arg(long, help_heading = ADVANCED)]
     pub insecure: bool,
     /// Allow Ignition URL without HTTPS or hash
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, help_heading = ADVANCED)]
+    #[arg(long, help_heading = ADVANCED)]
     pub insecure_ignition: bool,
     /// Base URL for CoreOS stream metadata
     ///
     /// Override the base URL for fetching CoreOS stream metadata.
     /// The default is "https://builds.coreos.fedoraproject.org/streams/".
     #[serde_as(as = "Option<DisplayFromStr>")]
-    #[clap(long, value_name = "URL", help_heading = ADVANCED)]
+    #[arg(long, value_name = "URL", help_heading = ADVANCED)]
     pub stream_base_url: Option<Url>,
     /// Don't clear partition table on error
     ///
@@ -245,14 +243,14 @@ pub struct InstallConfig {
     /// destination's partition table to prevent booting from invalid
     /// boot media.  Skip clearing the partition table as a debugging aid.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, help_heading = ADVANCED)]
+    #[arg(long, help_heading = ADVANCED)]
     pub preserve_on_error: bool,
     /// Fetch retries, or "infinite"
     ///
     /// Number of times to retry network fetches, or the string "infinite"
     /// to retry indefinitely.
     #[serde(skip_serializing_if = "is_default")]
-    #[clap(long, value_name = "N", default_value_t, help_heading = ADVANCED)]
+    #[arg(long, value_name = "N", default_value_t, help_heading = ADVANCED)]
     pub fetch_retries: FetchRetries,
 
     // positional args
@@ -260,7 +258,7 @@ pub struct InstallConfig {
     ///
     /// Path to the device node for the destination disk.  The beginning of
     /// the device will be overwritten without further confirmation.
-    #[clap(required_unless_present = "config-file")]
+    #[arg(required_unless_present = "config_file")]
     pub dest_device: Option<String>,
 }
 

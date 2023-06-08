@@ -19,6 +19,7 @@ Internal changes:
 
 Packaging changes:
 
+- Require `clap` ≥ 4.1
 - Update container to Fedora 38
 
 

@@ -22,7 +22,7 @@ checklen() {
         fail=1
     fi
 
-    subcommands=$(help $* | awk 'BEGIN {subcommands=0} {if (subcommands) print $1} /SUBCOMMANDS:/ {subcommands=1}')
+    subcommands=$(help $* | awk 'BEGIN {subcommands=0} /^$/ {if (subcommands) exit} {if (subcommands) print $1} /^Commands:$/ {subcommands=1}')
     for subcommand in ${subcommands}; do
         checklen $* ${subcommand}
     done
