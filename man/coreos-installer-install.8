@@ -29,12 +29,18 @@ The name of the Fedora CoreOS stream to install, such as "stable", "testing", or
 .TP
 \fB\-u\fR, \fB\-\-image\-url\fR=\fIURL\fR
 Manually specify the image URL
+
+coreos\-installer appends ".sig" to find the GPG signature for the image, which must exist and be valid.  A missing signature can be ignored with \-\-insecure.
 .TP
 \fB\-f\fR, \fB\-\-image\-file\fR=\fIpath\fR
 Manually specify a local image file
+
+coreos\-installer appends ".sig" to find the GPG signature for the image, which must exist and be valid.  A missing signature can be ignored with \-\-insecure.
 .TP
 \fB\-i\fR, \fB\-\-ignition\-file\fR=\fIpath\fR
 Embed an Ignition config from a file
+
+Embed the specified Ignition config in the installed system.
 .TP
 \fB\-I\fR, \fB\-\-ignition\-url\fR=\fIURL\fR
 Embed an Ignition config from a URL
@@ -85,15 +91,25 @@ Specify the path to NetworkManager keyfiles to be copied with \-\-copy\-network.
 .TP
 \fB\-\-save\-partlabel\fR=\fIlx\fR
 Save partitions with this label glob
+
+Preserve any existing partitions on the destination device whose partition label (not filesystem label) matches the specified glob pattern.  Multiple patterns can be specified in multiple options, or in a single option separated by commas.
+
+Saved partitions will be renumbered if necessary.  If partitions overlap with the install image, or installation fails for any other reason, the specified partitions will still be preserved.
 .TP
 \fB\-\-save\-partindex\fR=\fIid\fR
 Save partitions with this number or range
+
+Preserve any existing partitions on the destination device whose partition number matches the specified value or range.  Ranges can be bounded on both ends ("5\-7", inclusive) or one end ("5\-" or "\-7"). Multiple numbers or ranges can be specified in multiple options, or in a single option separated by commas.
+
+Saved partitions will be renumbered if necessary.  If partitions overlap with the install image, or installation fails for any other reason, the specified partitions will still be preserved.
 .TP
 \fB\-\-offline\fR
 Force offline installation
 .TP
 \fB\-\-insecure\fR
 Allow unsigned image
+
+Allow the signature to be absent.  Does not allow an existing signature to be invalid.
 .TP
 \fB\-\-insecure\-ignition\fR
 Allow Ignition URL without HTTPS or hash
