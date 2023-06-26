@@ -970,9 +970,9 @@ dependencies = [
 
 [[package]]
 name = "nmstate"
-version = "2.2.8"
+version = "2.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e04a87cb5cc0f3f585061b00d036207f54977009d777a333565a71df62cd8c0b"
+checksum = "aed0d2759c0d30516581b830d24a487a0b2e925f70dbd8b59c841b56b2b2486c"
 dependencies = [
  "ipnet",
  "log",
