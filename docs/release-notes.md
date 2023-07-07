@@ -8,6 +8,7 @@ nav_order: 8
 
 Major changes:
 
+- iso: Support kargs modification on s390x by using `kargs.json` if present
 
 Minor changes:
 

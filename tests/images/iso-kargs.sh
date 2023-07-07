@@ -22,9 +22,13 @@ grepq() {
 iso=$1; shift
 iso=$(realpath "${iso}")
 
+s390x=
 if [[ "${iso}" == *.s390x.* ]]; then
-    echo "Skipped; kargs not supported on s390x"
-    exit 0
+    s390x=1
+    if [[ "${iso}" == *2023-03.s390x.* ]]; then
+        echo "Skipped; kargs not supported on s390x before July 2023"
+        exit 0
+    fi
 fi
 
 tmpd=$(mktemp -d)
@@ -120,9 +124,22 @@ offset=$(coreos-installer dev show iso --kargs "${iso}" | jq -r .kargs[0].offset
 length=$(coreos-installer dev show iso --kargs "${iso}" | jq -r .kargs[0].length)
 expected_args="$(coreos-installer iso kargs show --default "${iso}") foobar=val"
 expected_args_len="$(echo -n "${expected_args}" | wc -c)"
-filler="$(printf '%*s' $((${length} - ${expected_args_len} - 1)) | tr ' ' '#')"
-if ! echo -en "${expected_args}\n${filler}" | cmp -s <(dd if=${iso} skip=${offset} count=${length} bs=1 status=none) -; then
-    fatal "Failed to manually round-trip kargs"
+if [[ -n "${s390x}" ]]; then
+    # There is no filler or newline character on s390x's kargs line, but null bytes:
+    #    $ hexdump -C -s 138457 -n 896 builds/latest/s390x/*.iso
+    #    00021cd9  69 67 6e 69 74 69 6f 6e  2e 70 6c 61 74 66 6f 72  |ignition.platfor|
+    #    00021ce9  6d 2e 69 64 3d 6d 65 74  61 6c 00 00 00 00 00 00  |m.id=metal......|
+    # Create temp file with kargs and nulls and compare it to bytes of the iso image:
+    echo -n "${expected_args}" > cmdline.s390x
+    truncate -s "${length}" cmdline.s390x
+    if ! cmp -s <(dd if=${iso} skip=${offset} count=${length} bs=1 status=none) cmdline.s390x; then
+        fatal "Failed to manually round-trip kargs"
+    fi
+else
+    filler="$(printf '%*s' $((${length} - ${expected_args_len} - 1)) | tr ' ' '#')"
+    if ! echo -en "${expected_args}\n${filler}" | cmp -s <(dd if=${iso} skip=${offset} count=${length} bs=1 status=none) -; then
+        fatal "Failed to manually round-trip kargs"
+    fi
 fi
 
 # Done

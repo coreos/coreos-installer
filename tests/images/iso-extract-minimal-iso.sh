@@ -22,8 +22,8 @@ grepq() {
 iso=$1; shift
 iso=$(realpath "${iso}")
 
-if [[ "${iso}" == *.s390x.* ]]; then
-    echo "Skipped; minimal ISO not supported on s390x"
+if [[ "${iso}" == *2023-03.s390x.* ]]; then
+    echo "Skipped; minimal ISO not supported on s390x before July 2023"
     exit 0
 fi
 

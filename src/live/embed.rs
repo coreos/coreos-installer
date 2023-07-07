@@ -162,10 +162,20 @@ struct Region {
     pub contents: Vec<u8>,
     #[serde(skip_serializing)]
     pub modified: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pad: Option<char>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end: Option<char>,
 }
 
 impl Region {
-    pub fn read(file: &mut File, offset: u64, length: usize) -> Result<Self> {
+    pub fn read(
+        file: &mut File,
+        offset: u64,
+        length: usize,
+        pad: Option<char>,
+        end: Option<char>,
+    ) -> Result<Self> {
         let mut contents = vec![0; length];
         file.seek(SeekFrom::Start(offset))
             .with_context(|| format!("seeking to offset {offset}"))?;
@@ -176,6 +186,8 @@ impl Region {
             length,
             contents,
             modified: false,
+            pad,
+            end,
         })
     }
 
@@ -280,6 +292,10 @@ struct KargEmbedInfo {
 struct KargEmbedLocation {
     path: String,
     offset: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pad: Option<char>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end: Option<char>,
 }
 
 impl KargEmbedInfo {
@@ -361,6 +377,8 @@ impl KargEmbedAreas {
                     iso.as_file()?,
                     iso_file.address.as_offset() + loc.offset,
                     info.size,
+                    loc.pad,
+                    loc.end,
                 )
                 .context("reading kargs embed area")?,
             );
@@ -381,6 +399,8 @@ impl KargEmbedAreas {
             file,
             32768 - COREOS_INITRD_HEADER_SIZE - COREOS_KARG_EMBED_AREA_HEADER_SIZE,
             COREOS_KARG_EMBED_AREA_HEADER_SIZE as usize,
+            None,
+            None,
         )
         .context("reading karg embed header")?;
         let mut header = &region.contents[..];
@@ -407,7 +427,8 @@ impl KargEmbedAreas {
 
         // default kargs
         let offset = header.get_u64_le();
-        let default_region = Region::read(file, offset, length).context("reading default kargs")?;
+        let default_region =
+            Region::read(file, offset, length, None, None).context("reading default kargs")?;
         let default = Self::parse(&default_region)?;
 
         // writable regions
@@ -417,7 +438,10 @@ impl KargEmbedAreas {
             if offset == 0 {
                 break;
             }
-            regions.push(Region::read(file, offset, length).context("reading kargs embed area")?);
+            regions.push(
+                Region::read(file, offset, length, None, None)
+                    .context("reading kargs embed area")?,
+            );
         }
 
         Some(Self::build(length, default, regions)).transpose()
@@ -454,7 +478,8 @@ impl KargEmbedAreas {
     fn parse(region: &Region) -> Result<String> {
         Ok(String::from_utf8(region.contents.clone())
             .context("invalid UTF-8 in karg area")?
-            .trim_end_matches('#')
+            .trim_end_matches(region.pad.unwrap_or('#'))
+            .trim_end_matches(region.end.unwrap_or('\n'))
             .trim()
             .into())
     }
@@ -469,17 +494,20 @@ impl KargEmbedAreas {
 
     pub fn set_kargs(&mut self, kargs: &str) -> Result<()> {
         let unformatted = kargs.trim();
-        let formatted = unformatted.to_string() + "\n";
-        if formatted.len() > self.length {
+        if unformatted.len() >= self.length {
             bail!(
                 "kargs too large for area: {} vs {}",
-                formatted.len(),
+                unformatted.len() + 1,
                 self.length
             );
         }
-        let mut contents = vec![b'#'; self.length];
-        contents[..formatted.len()].copy_from_slice(formatted.as_bytes());
+
         for region in &mut self.regions {
+            let mut formatted = unformatted.to_string();
+            formatted.push(region.end.unwrap_or('\n'));
+            let pad = region.pad.unwrap_or('#');
+            let mut contents = vec![pad as u8; self.length];
+            contents[..formatted.len()].copy_from_slice(formatted.as_bytes());
             region.contents = contents.clone();
             region.modified = true;
         }
@@ -538,7 +566,7 @@ impl InitrdEmbedArea {
             .length
             .unwrap_or(f.length as usize - file_offset as usize);
         // read (checks offset/length as a side effect)
-        let mut region = Region::read(iso.as_file()?, iso_offset, length)
+        let mut region = Region::read(iso.as_file()?, iso_offset, length, None, None)
             .context("reading initrd embed area")?;
         let initrd = if region.contents.iter().any(|v| *v != 0) {
             Initrd::from_reader(&*region.contents).context("decoding initrd embed area")?

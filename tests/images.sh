@@ -29,6 +29,8 @@ fixtures=(
     embed-areas-2022-09.iso.xz
     embed-areas-2023-03.x86_64.iso.xz
     embed-areas-2023-03.s390x.iso.xz
+    embed-areas-2023-07.x86_64.iso.xz
+    embed-areas-2023-07.s390x.iso.xz
 )
 
 msg() {
