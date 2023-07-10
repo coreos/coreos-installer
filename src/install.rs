@@ -18,7 +18,7 @@ use regex::{Captures, Regex};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, Permissions};
-use std::io::{self, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -45,8 +45,8 @@ pub fn install(config: InstallConfig) -> Result<()> {
         .as_deref()
         .context("destination device must be specified")?;
 
-    // find Ignition config
-    let ignition = if let Some(file) = &config.ignition_file {
+    // find Ignition config and do some simple validation
+    let mut ignition = if let Some(file) = &config.ignition_file {
         Some(
             OpenOptions::new()
                 .read(true)
@@ -68,6 +68,17 @@ pub fn install(config: InstallConfig) -> Result<()> {
     } else {
         None
     };
+    if let Some(mut file) = ignition.as_mut() {
+        // make sure we have valid JSON and not e.g. an HTML page.
+        // we don't parse with the ignition-config crate because its parser
+        // rejects unrecognized config versions, and we want to allow those.
+        // iso/pxe customize are more restrictive because they want to
+        // manipulate the config, but for us it's an opaque blob.
+        let reader = BufReader::with_capacity(BUFFER_SIZE, &mut file);
+        serde_json::from_reader::<_, serde_json::Value>(reader)
+            .context("parsing specified Ignition config")?;
+        file.rewind().context("rewinding Ignition config file")?;
+    }
 
     // find network config
     // If the user requested us to copy networking config by passing

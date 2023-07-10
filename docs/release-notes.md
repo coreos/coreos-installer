@@ -11,6 +11,7 @@ Major changes:
 
 Minor changes:
 
+- install: Verify that Ignition config is valid JSON
 - install: Add long help for several options
 - download/install: Clarify help text for `--insecure`
 
