@@ -48,3 +48,19 @@ embed-areas-2023-03.s390x.iso.xz
     features.json: installer-config, installer-config-directives,
         live-initrd-network
     installer-config-directives from 0.16.0
+
+embed-areas-2023-07.x86_64.iso.xz
+    igninfo.json pointing to ignition.img (no offset and no length)
+    kargs.json pointing to kargs areas and embedding defaults (with pad and end)
+    miniso.dat version 1
+    features.json: installer-config, installer-config-directives,
+        live-initrd-network
+    installer-config-directives from 0.16.0
+
+embed-areas-2023-07.s390x.iso.xz
+    igninfo.json pointing to cdboot.img (offset and length)
+    kargs.json pointing to kargs areas and embedding defaults (with pad and end)
+    miniso.dat version 1
+    features.json: installer-config, installer-config-directives,
+        live-initrd-network
+    installer-config-directives from 0.16.0
