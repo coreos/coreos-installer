@@ -14,6 +14,7 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use gptman::{GPTPartitionEntry, GPT};
+use mbrman::{MBRPartitionEntry, MBR};
 use nix::sys::stat::{major, minor};
 use nix::{errno::Errno, mount, sched};
 use regex::Regex;
@@ -32,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
 use std::time::Duration;
-use uuid::Uuid;
+use uuid::{uuid, Uuid};
 
 use crate::cmdline::PartitionFilter;
 use crate::util::*;
@@ -519,6 +520,41 @@ pub struct SavedPartitions {
     partitions: Vec<(u32, GPTPartitionEntry)>,
 }
 
+fn mbr_type_to_gpt_type_guid(sys: u8) -> Uuid {
+    // non inclusive mapping of MBR types to GPT types using the below references
+    // https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_type_GUIDs
+    // https://tldp.org/HOWTO/Partition-Mass-Storage-Definitions-Naming-HOWTO/x190.html
+    // https://en.wikipedia.org/wiki/Microsoft_basic_data_partition
+    // https://wiki.archlinux.org/title/GPT_fdisk
+
+    match sys {
+        // Linux filesystem
+        0x01 => uuid!("EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"),
+        0x04 => uuid!("EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"),
+        0x06 => uuid!("EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"),
+        // Linux Swap
+        0x82 => uuid!("0657FD6D-A4AB-43C4-84E5-0933C84B4F4F"),
+        // Linux Filesystem Data
+        0x83 => uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4"),
+        // Linux LVM
+        0x8e => uuid!("E6D6D379-F507-44C2-A23C-238F2A3DF928"), 
+        // Linux Raid
+        0xfd => uuid!("A19D880F-05FC-4D3B-A006-743F0F84911E"),
+        _ => uuid!("0FC63DAF-8483-4772-8E79-3D69D8477DE4"),
+    }
+}
+
+fn translate_mbr_partition_entry_to_gpt(mbr_partition: &MBRPartitionEntry) -> GPTPartitionEntry {
+    GPTPartitionEntry {
+        partition_name: "".into(),
+        partition_type_guid: mbr_type_to_gpt_type_guid(mbr_partition.sys).to_bytes_le(),
+        unique_partition_guid: Uuid::new_v4().to_bytes_le(),
+        starting_lba: u64::try_from(mbr_partition.starting_lba).expect("Convert u32 to u64"),
+        ending_lba: u64::try_from(mbr_partition.starting_lba + mbr_partition.sectors).expect("Convert u32 to u64") - 1,
+        attribute_bits: 0,
+    }
+}
+
 impl SavedPartitions {
     /// Create a SavedPartitions for a block device with a sector size.
     pub fn new_from_disk(disk: &mut File, filters: &[PartitionFilter]) -> Result<Self> {
@@ -566,39 +602,57 @@ impl SavedPartitions {
             });
         }
 
+        // Create a vector of the partitions
+        let mut partitions = Vec::new();
+
         // read GPT
-        let gpt = match GPT::find_from(disk) {
-            Ok(gpt) => gpt,
+        match GPT::find_from(disk) {
+            Ok(gpt) => {
+                // cross-check GPT sector size
+                Self::verify_gpt_sector_size(&gpt, sector_size)?;
+
+                // save partitions accepted by filters
+                for (i, p) in gpt.iter() {
+                    if Self::matches_filters(i, p, filters) {
+                        partitions.push((i, p.clone()));
+                    }
+                }
+            }
             Err(gptman::Error::InvalidSignature) => {
-                // ensure no indexes are listed to be saved from a MBR disk
-                // we don't need to check for labels since MBR does not support them
+                // no GPT, check for MBR
                 if filters
                     .iter()
                     .any(|f| matches!(f, PartitionFilter::Index(_, _)))
                     && disk_has_mbr(disk).context("checking if disk has an MBR")?
                 {
-                    bail!("saving partitions from an MBR disk is not yet supported");
-                }
+                    let mbr = MBR::read_from(disk, u32::try_from(sector_size)?)
+                        .context("reading disk as MBR")?;
 
+                    // cross-check MBR sector size
+                    Self::verify_mbr_sector_size(&mbr, sector_size)?;
+
+                    for (i, p) in mbr.iter() {
+                        // skip extended partitions
+                        if p.is_extended() {
+                            continue;
+                        }
+                        if Self::matches_filters_mbr(i.try_into().context("Convert usize into u32")?, p, filters) {
+                            partitions.push((
+                                i.try_into().context("convert usize into u32")?,
+                                translate_mbr_partition_entry_to_gpt(p),
+                            ));
+                        }
+                    }
+                }
                 // no GPT on this disk, so no partitions to save
                 return Ok(Self {
                     sector_size,
-                    partitions: Vec::new(),
+                    partitions: partitions,
                 });
             }
             Err(e) => return Err(e).context("reading partition table"),
         };
 
-        // cross-check GPT sector size
-        Self::verify_gpt_sector_size(&gpt, sector_size)?;
-
-        // save partitions accepted by filters
-        let mut partitions = Vec::new();
-        for (i, p) in gpt.iter() {
-            if Self::matches_filters(i, p, filters) {
-                partitions.push((i, p.clone()));
-            }
-        }
         let result = Self {
             sector_size,
             partitions,
@@ -654,6 +708,17 @@ impl SavedPartitions {
         Ok(())
     }
 
+    fn verify_mbr_sector_size(mbr: &MBR, sector_size: u64) -> Result<()> {
+        if u64::from(mbr.sector_size) != sector_size {
+            bail!(
+                "MBR sector size {} doesn't match expected {}",
+                mbr.sector_size,
+                sector_size
+            );
+        }
+        Ok(())
+    }
+
     fn matches_filters(i: u32, p: &GPTPartitionEntry, filters: &[PartitionFilter]) -> bool {
         use PartitionFilter::*;
         if !p.is_used() {
@@ -664,6 +729,19 @@ impl SavedPartitions {
             Index(_, Some(last)) if last.get() < i => false,
             Index(_, _) => true,
             Label(glob) if glob.matches(p.partition_name.as_str()) => true,
+            _ => false,
+        })
+    }
+
+    fn matches_filters_mbr(i: u32, p: &MBRPartitionEntry, filters: &[PartitionFilter]) -> bool {
+        use PartitionFilter::*;
+        if !p.is_used() {
+            return false;
+        }
+        filters.iter().any(|f| match f {
+            Index(Some(first), _) if first.get() > i => false,
+            Index(_, Some(last)) if last.get() < i => false,
+            Index(_, _) => true,
             _ => false,
         })
     }
@@ -1337,12 +1415,11 @@ mod tests {
             );
         }
     }
-
     #[test]
     fn test_saved_partitions() {
         use PartitionFilter::*;
 
-        let make_part = |i: u32, name: &str, start: u64, end: u64| {
+        let make_gpt_part = |i: u32, name: &str, start: u64, end: u64| {
             (
                 i,
                 GPTPartitionEntry {
@@ -1355,25 +1432,34 @@ mod tests {
                 },
             )
         };
-
+        let make_mbr_part = |sys: u8, start: u32, size: u32| {
+            MBRPartitionEntry {
+                boot: mbrman::BOOT_INACTIVE,
+                first_chs: mbrman::CHS::empty(),
+                sys: sys,
+                last_chs: mbrman::CHS::empty(),
+                starting_lba: start,
+                sectors: size,
+            }
+        };
         let base_parts = vec![
-            make_part(1, "one", 1, 1024),
-            make_part(2, "two", 1024, 2048),
-            make_part(3, "three", 2048, 3072),
-            make_part(4, "four", 3072, 4096),
-            make_part(5, "five", 4096, 5120),
-            make_part(7, "seven", 5120, 6144),
-            make_part(8, "eight", 6144, 7168),
-            make_part(9, "nine", 7168, 8192),
-            make_part(10, "", 8192, 8193),
-            make_part(11, "", 8193, 8194),
+            make_gpt_part(1, "one", 1, 1024),
+            make_gpt_part(2, "two", 1024, 2048),
+            make_gpt_part(3, "three", 2048, 3072),
+            make_gpt_part(4, "four", 3072, 4096),
+            make_gpt_part(5, "five", 4096, 5120),
+            make_gpt_part(7, "seven", 5120, 6144),
+            make_gpt_part(8, "eight", 6144, 7168),
+            make_gpt_part(9, "nine", 7168, 8192),
+            make_gpt_part(10, "", 8192, 8193),
+            make_gpt_part(11, "", 8193, 8194),
         ];
         let image_parts = vec![
-            make_part(1, "boot", 1, 384),
-            make_part(2, "EFI-SYSTEM", 384, 512),
-            make_part(4, "root", 1024, 2200),
+            make_gpt_part(1, "boot", 1, 384),
+            make_gpt_part(2, "EFI-SYSTEM", 384, 512),
+            make_gpt_part(4, "root", 1024, 2200),
         ];
-        let merge_base_parts = vec![make_part(2, "unused", 500, 3500)];
+        let merge_base_parts = vec![make_gpt_part(2, "unused", 500, 3500)];
 
         let index = |i| Some(NonZeroU32::new(i).unwrap());
         let label = |l| Label(glob::Pattern::new(l).unwrap());
@@ -1382,40 +1468,40 @@ mod tests {
             (
                 vec![Index(index(5), None)],
                 vec![
-                    make_part(5, "five", 4096, 5120),
-                    make_part(7, "seven", 5120, 6144),
-                    make_part(8, "eight", 6144, 7168),
-                    make_part(9, "nine", 7168, 8192),
-                    make_part(10, "", 8192, 8193),
-                    make_part(11, "", 8193, 8194),
+                    make_gpt_part(5, "five", 4096, 5120),
+                    make_gpt_part(7, "seven", 5120, 6144),
+                    make_gpt_part(8, "eight", 6144, 7168),
+                    make_gpt_part(9, "nine", 7168, 8192),
+                    make_gpt_part(10, "", 8192, 8193),
+                    make_gpt_part(11, "", 8193, 8194),
                 ],
                 vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                    make_part(5, "five", 4096, 5120),
-                    make_part(7, "seven", 5120, 6144),
-                    make_part(8, "eight", 6144, 7168),
-                    make_part(9, "nine", 7168, 8192),
-                    make_part(10, "", 8192, 8193),
-                    make_part(11, "", 8193, 8194),
+                    make_gpt_part(1, "boot", 1, 384),
+                    make_gpt_part(2, "EFI-SYSTEM", 384, 512),
+                    make_gpt_part(4, "root", 1024, 2200),
+                    make_gpt_part(5, "five", 4096, 5120),
+                    make_gpt_part(7, "seven", 5120, 6144),
+                    make_gpt_part(8, "eight", 6144, 7168),
+                    make_gpt_part(9, "nine", 7168, 8192),
+                    make_gpt_part(10, "", 8192, 8193),
+                    make_gpt_part(11, "", 8193, 8194),
                 ],
             ),
             // Glob
             (
                 vec![label("*i*")],
                 vec![
-                    make_part(5, "five", 4096, 5120),
-                    make_part(8, "eight", 6144, 7168),
-                    make_part(9, "nine", 7168, 8192),
+                    make_gpt_part(5, "five", 4096, 5120),
+                    make_gpt_part(8, "eight", 6144, 7168),
+                    make_gpt_part(9, "nine", 7168, 8192),
                 ],
                 vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                    make_part(5, "five", 4096, 5120),
-                    make_part(8, "eight", 6144, 7168),
-                    make_part(9, "nine", 7168, 8192),
+                    make_gpt_part(1, "boot", 1, 384),
+                    make_gpt_part(2, "EFI-SYSTEM", 384, 512),
+                    make_gpt_part(4, "root", 1024, 2200),
+                    make_gpt_part(5, "five", 4096, 5120),
+                    make_gpt_part(8, "eight", 6144, 7168),
+                    make_gpt_part(9, "nine", 7168, 8192),
                 ],
             ),
             // Missing label, single partition, irrelevant range
@@ -1425,49 +1511,49 @@ mod tests {
                     Index(index(7), index(7)),
                     Index(index(15), None),
                 ],
-                vec![make_part(7, "seven", 5120, 6144)],
+                vec![make_gpt_part(7, "seven", 5120, 6144)],
                 vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                    make_part(7, "seven", 5120, 6144),
+                    make_gpt_part(1, "boot", 1, 384),
+                    make_gpt_part(2, "EFI-SYSTEM", 384, 512),
+                    make_gpt_part(4, "root", 1024, 2200),
+                    make_gpt_part(7, "seven", 5120, 6144),
                 ],
             ),
             // Empty label match, multiple results
             (
                 vec![label("")],
-                vec![make_part(10, "", 8192, 8193), make_part(11, "", 8193, 8194)],
+                vec![make_gpt_part(10, "", 8192, 8193), make_gpt_part(11, "", 8193, 8194)],
                 vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                    make_part(10, "", 8192, 8193),
-                    make_part(11, "", 8193, 8194),
+                    make_gpt_part(1, "boot", 1, 384),
+                    make_gpt_part(2, "EFI-SYSTEM", 384, 512),
+                    make_gpt_part(4, "root", 1024, 2200),
+                    make_gpt_part(10, "", 8192, 8193),
+                    make_gpt_part(11, "", 8193, 8194),
                 ],
             ),
             // Partition renumbering
             (
                 vec![Index(index(4), None)],
                 vec![
-                    make_part(4, "four", 3072, 4096),
-                    make_part(5, "five", 4096, 5120),
-                    make_part(7, "seven", 5120, 6144),
-                    make_part(8, "eight", 6144, 7168),
-                    make_part(9, "nine", 7168, 8192),
-                    make_part(10, "", 8192, 8193),
-                    make_part(11, "", 8193, 8194),
+                    make_gpt_part(4, "four", 3072, 4096),
+                    make_gpt_part(5, "five", 4096, 5120),
+                    make_gpt_part(7, "seven", 5120, 6144),
+                    make_gpt_part(8, "eight", 6144, 7168),
+                    make_gpt_part(9, "nine", 7168, 8192),
+                    make_gpt_part(10, "", 8192, 8193),
+                    make_gpt_part(11, "", 8193, 8194),
                 ],
                 vec![
-                    make_part(1, "boot", 1, 384),
-                    make_part(2, "EFI-SYSTEM", 384, 512),
-                    make_part(4, "root", 1024, 2200),
-                    make_part(5, "four", 3072, 4096),
-                    make_part(6, "five", 4096, 5120),
-                    make_part(7, "seven", 5120, 6144),
-                    make_part(8, "eight", 6144, 7168),
-                    make_part(9, "nine", 7168, 8192),
-                    make_part(10, "", 8192, 8193),
-                    make_part(11, "", 8193, 8194),
+                    make_gpt_part(1, "boot", 1, 384),
+                    make_gpt_part(2, "EFI-SYSTEM", 384, 512),
+                    make_gpt_part(4, "root", 1024, 2200),
+                    make_gpt_part(5, "four", 3072, 4096),
+                    make_gpt_part(6, "five", 4096, 5120),
+                    make_gpt_part(7, "seven", 5120, 6144),
+                    make_gpt_part(8, "eight", 6144, 7168),
+                    make_gpt_part(9, "nine", 7168, 8192),
+                    make_gpt_part(10, "", 8192, 8193),
+                    make_gpt_part(11, "", 8193, 8194),
                 ],
             ),
             // No saved partitions
@@ -1567,30 +1653,6 @@ mod tests {
             err
         );
 
-        // test trying to save partitions from a MBR disk
-        let mut disk = make_unformatted_disk();
-        gptman::GPT::write_protective_mbr_into(&mut disk, 512).unwrap();
-        // label only
-        SavedPartitions::new(&mut disk, 512, &vec![label("*i*")]).unwrap();
-        // index only
-        assert_eq!(
-            SavedPartitions::new(&mut disk, 512, &vec![Index(index(1), index(1))])
-                .unwrap_err()
-                .to_string(),
-            "saving partitions from an MBR disk is not yet supported"
-        );
-        // label and index
-        assert_eq!(
-            SavedPartitions::new(
-                &mut disk,
-                512,
-                &vec![Index(index(1), index(1)), label("*i*")]
-            )
-            .unwrap_err()
-            .to_string(),
-            "saving partitions from an MBR disk is not yet supported"
-        );
-
         // test sector size mismatch
         let saved = SavedPartitions::new_from_file(&mut base, 512, &vec![label("*i*")]).unwrap();
         let mut image_4096 = make_disk(4096, &image_parts);
@@ -1609,7 +1671,7 @@ mod tests {
                 .to_string(),
             "GPT sector size 4096 doesn't match expected 512"
         );
-
+        
         // test copying invalid partitions
         let mut disk = make_unformatted_disk();
         let data = include_bytes!("../fixtures/gpt-512-duplicate-partition-guids.xz");
@@ -1620,6 +1682,22 @@ mod tests {
                 .to_string(),
             "failed dry run restoring saved partitions; input partition table may be invalid"
         );
+
+        let mut disk = make_unformatted_disk();
+        let mut mbr = mbrman::MBR::new_from(&mut disk, 512 as u32, [0xff; 4])
+            .expect("could not create partition table");
+        // create a MBR with 2 partitions
+        mbr[1] = make_mbr_part(0x80, 1, 5000);
+        mbr[2] = make_mbr_part(0x0f, 5001, 5000);
+        mbr.write_into(&mut disk).unwrap();
+
+        // Save regular partition
+        let saved = SavedPartitions::new(&mut disk, 512, &vec![Index(index(1), index(1))]).unwrap();
+        assert!(saved.is_saved());
+
+        // Attempt to save an extended partition
+        let saved = SavedPartitions::new(&mut disk, 512, &vec![Index(index(2), index(2))]).unwrap();
+        assert!(!saved.is_saved());
 
         // test corrupt input partition table
         for sector_size in &[512, 4096] {

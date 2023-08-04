@@ -66,6 +66,7 @@ hex = "^0.4"
 ignition-config = "0.2"
 lazy_static = "^1.4"
 libc = "^0.2"
+mbrman = ">= 0.5, < 0.6"
 nix = ">= 0.24, < 0.26"
 nmstate = "2.1.2"
 openssl = "^0.10"
@@ -86,7 +87,6 @@ xz2 = "^0.1"
 zstd = { version = ">= 0.10.0, < 0.12.0", features = ["pkg-config"] }
 
 [target.'cfg(target_arch = "s390x")'.dependencies]
-mbrman = ">= 0.5, < 0.6"
 rand = ">= 0.7, < 0.9"
 
 [dev-dependencies]

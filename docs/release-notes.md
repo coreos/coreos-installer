@@ -8,6 +8,8 @@ nav_order: 8
 
 Major changes:
 
+- install: Add support for MBR partition tables to `--save-partindex`
+
 Minor changes:
 
 - install: Avoid osmet performance regression in debug builds on Rust 1.64+
