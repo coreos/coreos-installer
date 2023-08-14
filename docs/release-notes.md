@@ -9,6 +9,7 @@ nav_order: 8
 Major changes:
 
 - iso: Support kargs modification on s390x by using `kargs.json` if present
+- Add Fedora 40 signing key; drop Fedora 37 signing key
 
 Minor changes:
 
