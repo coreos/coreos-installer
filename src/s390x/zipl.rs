@@ -14,9 +14,9 @@
 
 use crate::blockdev::Mount;
 use crate::io::{visit_bls_entry, visit_bls_entry_options, Initrd, KargsEditor};
-use crate::runcmd;
 use crate::s390x::ZiplSecexMode;
 use crate::util::cmd_output;
+use crate::{runcmd, runcmd_output};
 use anyhow::{anyhow, Context, Result};
 use nix::mount::MsFlags;
 use regex::Regex;
@@ -28,8 +28,11 @@ use tempfile::{Builder, NamedTempFile};
 
 /// Sets the boot device to `dev` using `chreipl`.
 pub fn chreipl<P: AsRef<Path>>(dev: P) -> Result<()> {
-    eprintln!("Updating re-IPL device");
-    runcmd!("chreipl", dev.as_ref())?;
+    let vm = runcmd_output!("systemd-detect-virt")?;
+    if vm == "zvm" {
+        eprintln!("Updating re-IPL device");
+        runcmd!("chreipl", dev.as_ref())?;
+    }
     Ok(())
 }
 
