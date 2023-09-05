@@ -885,11 +885,18 @@ fn split_blkid_line(line: &str) -> HashMap<String, String> {
 }
 
 fn blkid() -> Result<Vec<HashMap<String, String>>> {
-    // Run once to gather the list of devices, and then run again with -p so
-    // that we don't rely on blkid cache:
+    // Run blkid with a clean cache to avoid collecting old devices which no
+    // longer exist.
+    // https://github.com/coreos/coreos-installer/pull/1288#discussion_r1312008111
+
+    // Run once to gather the list of devices, which we need to specify for
+    // the blkid -p below, which we use to probe the devices to not rely on
+    // the blkid cache:
     // https://github.com/coreos/fedora-coreos-config/pull/2181#issuecomment-1397386896
     let devices = {
         let mut cmd = Command::new("blkid");
+        cmd.arg("--cache-file");
+        cmd.arg("/dev/null");
         cmd.arg("-o");
         cmd.arg("device");
         cmd_output(&mut cmd)?

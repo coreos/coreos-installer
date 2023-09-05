@@ -19,6 +19,7 @@ Minor changes:
 
 Internal changes:
 
+- verify-unique-fs-label: Run `blkid` with a clean cache to avoid stale devices
 
 Packaging changes:
 
