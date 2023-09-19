@@ -19,31 +19,18 @@ cosaPod(buildroot: true, runAsUser: 0) {
     // Make sure cosa is using the binary we just built.
     shwrap("rsync -rlv install/usr/ /usr/")
 
-    // XXX: temporarily build FCOS manually until virtiofs can work with uid 0
-    // https://gitlab.com/virtio-fs/virtiofsd/-/merge_requests/197
-    //cosaBuild(skipKola: true, overlays: ["install"])
-    shwrap("""
-        if [ "\$(id -u)" = 0 ]; then
-            exec runuser -u builder -- bash "\$0" "\$@"
-        fi
-        mkdir -p /srv/coreos && cd /srv/coreos
-        cosa init https://github.com/coreos/fedora-coreos-config
-        rsync -av ${env.WORKSPACE}/install/ /srv/coreos/overrides/rootfs
-        cosa fetch --strict
-        cosa build --strict --force
-    """)
-
+    cosaBuild(skipKola: true, overlays: ["install"])
     // Skipping kdump.crash due to CI failure in coreos-installer repo
     // https://github.com/coreos/fedora-coreos-tracker/issues/1075
     kola(extraArgs: "--denylist-test ext.config.kdump.crash")
 
     stage("Build metal+live") {
-        shwrap("cd /srv/coreos && runuser -u builder -- cosa buildextend-metal")
-        shwrap("cd /srv/coreos && runuser -u builder -- cosa buildextend-metal4k")
-        shwrap("cd /srv/coreos && runuser -u builder -- cosa buildextend-live --fast")
+        shwrap("cd /srv/coreos && cosa buildextend-metal")
+        shwrap("cd /srv/coreos && cosa buildextend-metal4k")
+        shwrap("cd /srv/coreos && cosa buildextend-live --fast")
         // Test metal with an uncompressed image and metal4k with a
         // compressed one
-        shwrap("cd /srv/coreos && runuser -u builder -- cosa compress --fast --artifact=metal4k")
+        shwrap("cd /srv/coreos && cosa compress --fast --artifact=metal4k")
     }
     stage("Test ISO") {
         // No need to run the iso-live-login/iso-as-disk scenarios
