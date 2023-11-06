@@ -26,10 +26,17 @@ use libcoreinst::runcmd_output;
 
 use crate::cmdline::*;
 
+/// In the ostree model this will be the physical root mount.  When using
+/// composefs, the mount of / and /sysroot will be distinct.
+const PHYSICAL_ROOT_MOUNT: &str = "sysroot";
+
 pub fn rootmap(config: RootmapConfig) -> Result<()> {
-    // get the backing device for the root mount
-    let mount = Mount::from_existing(&config.root_mount)?;
-    let device = PathBuf::from(mount.device());
+    // Get the mount point for the deployment root, which will have e.g. /etc which we might parse
+    let rootfs_mount = Mount::from_existing(&config.root_mount)?;
+    // get the backing device for the "physical" root
+    let physical_root_path = format!("{}/{PHYSICAL_ROOT_MOUNT}", config.root_mount);
+    let physical_mount = Mount::from_existing(&physical_root_path)?;
+    let device = PathBuf::from(physical_mount.device());
 
     // and from that we can collect all the parent backing devices too
     let mut backing_devices = get_blkdev_deps_recursing(&device)?;
@@ -38,7 +45,7 @@ pub fn rootmap(config: RootmapConfig) -> Result<()> {
     // for each of those, convert them to kargs
     let mut kargs = Vec::new();
     for backing_device in backing_devices {
-        if let Some(dev_kargs) = device_to_kargs(&mount, backing_device)? {
+        if let Some(dev_kargs) = device_to_kargs(&rootfs_mount, backing_device)? {
             kargs.extend(dev_kargs);
         }
     }
@@ -46,7 +53,10 @@ pub fn rootmap(config: RootmapConfig) -> Result<()> {
     // we push the root kargs last, this has the nice property that the final order of kargs goes
     // from lowest level to highest; see also
     // https://github.com/coreos/fedora-coreos-tracker/issues/465
-    kargs.push(format!("root=UUID={}", mount.get_filesystem_uuid()?));
+    kargs.push(format!(
+        "root=UUID={}",
+        physical_mount.get_filesystem_uuid()?
+    ));
 
     // we need this because with root= it's systemd that takes care of mounting via
     // systemd-fstab-generator, and it defaults to read-only otherwise
@@ -224,7 +234,9 @@ fn get_luks_uuid(device: &Path) -> Result<String> {
 
 pub fn bind_boot(config: BindBootConfig) -> Result<()> {
     let boot_mount = Mount::from_existing(&config.boot_mount)?;
-    let root_mount = Mount::from_existing(&config.root_mount)?;
+    // We always operate here on the physical root
+    let physical_root_path = format!("{}/{PHYSICAL_ROOT_MOUNT}", config.root_mount);
+    let root_mount = Mount::from_existing(&physical_root_path)?;
     let boot_uuid = boot_mount.get_filesystem_uuid()?;
     let root_uuid = root_mount.get_filesystem_uuid()?;
 

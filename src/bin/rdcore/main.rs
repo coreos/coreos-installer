@@ -18,7 +18,7 @@ mod rootmap;
 mod stream_hash;
 mod unique_fs;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 
 use crate::cmdline::*;
@@ -26,8 +26,8 @@ use crate::cmdline::*;
 fn main() -> Result<()> {
     match Cmd::parse() {
         Cmd::Kargs(c) => kargs::kargs(c),
-        Cmd::Rootmap(c) => rootmap::rootmap(c),
-        Cmd::BindBoot(c) => rootmap::bind_boot(c),
+        Cmd::Rootmap(c) => rootmap::rootmap(c).context("Configuring rootmap"),
+        Cmd::BindBoot(c) => rootmap::bind_boot(c).context("Failed to bind boot"),
         Cmd::StreamHash(c) => stream_hash::stream_hash(c),
         Cmd::VerifyUniqueFsLabel(c) => unique_fs::verify_unique_fs(c),
         #[cfg(target_arch = "s390x")]
