@@ -10,6 +10,8 @@ Major changes:
 
 Minor changes:
 
+- install: Don't require the network by default
+
 Internal changes:
 
 - install: Simplify firstboot-args handling in config file expansion
