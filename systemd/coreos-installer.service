@@ -1,8 +1,8 @@
 [Unit]
 Description=CoreOS Installer
 Before=coreos-installer.target
-After=network-online.target
-Wants=network-online.target
+After=NetworkManager.service
+Wants=NetworkManager.service
 # Until we retry HTTP requests let's wait here until
 # systemd-resolved comes up if enabled.
 # https://github.com/coreos/coreos-installer/issues/283
