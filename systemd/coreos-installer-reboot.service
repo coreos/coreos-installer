@@ -5,6 +5,7 @@ After=coreos-installer.target
 OnFailure=emergency.target
 OnFailureJobMode=replace-irreversibly
 ConditionPathExists=/run/coreos-installer-reboot
+ConditionKernelCommandLine=!coreos.inst.secure_ipl
 
 [Service]
 Type=simple

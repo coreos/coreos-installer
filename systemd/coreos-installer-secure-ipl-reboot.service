@@ -1,0 +1,15 @@
+[Unit]
+Description=Reboot in Secure IPL mode after CoreOS Installer
+Requires=coreos-installer.target
+After=coreos-installer.target
+OnFailure=emergency.target
+OnFailureJobMode=replace-irreversibly
+ConditionPathExists=/run/coreos-installer-reboot
+ConditionKernelCommandLine=coreos.inst.secure_ipl
+
+[Service]
+Type=simple
+# On z/VM, we need to use 'vmcp ipl loaddev'. Otherwise, for the LPAR case, we can just reboot as usual.
+ExecStart=/bin/sh -c '[ -e /dev/vmcp ] && vmcp ipl loaddev || systemctl --no-block reboot'
+StandardOutput=kmsg+console
+StandardError=kmsg+console

@@ -4,7 +4,7 @@
 .SH NAME
 coreos\-installer\-install \- Install Fedora CoreOS or RHEL CoreOS
 .SH SYNOPSIS
-\fBcoreos\-installer\-install\fR [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-f\fR|\fB\-\-image\-file\fR] [\fB\-i\fR|\fB\-\-ignition\-file\fR] [\fB\-I\fR|\fB\-\-ignition\-url\fR] [\fB\-\-ignition\-hash\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-\-console\fR] [\fB\-\-append\-karg\fR] [\fB\-\-delete\-karg\fR] [\fB\-n\fR|\fB\-\-copy\-network\fR] [\fB\-\-network\-dir\fR] [\fB\-\-save\-partlabel\fR] [\fB\-\-save\-partindex\fR] [\fB\-\-offline\fR] [\fB\-\-insecure\fR] [\fB\-\-insecure\-ignition\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-preserve\-on\-error\fR] [\fB\-\-fetch\-retries\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIDEST_DEVICE\fR] 
+\fBcoreos\-installer\-install\fR [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-s\fR|\fB\-\-stream\fR] [\fB\-u\fR|\fB\-\-image\-url\fR] [\fB\-f\fR|\fB\-\-image\-file\fR] [\fB\-i\fR|\fB\-\-ignition\-file\fR] [\fB\-I\fR|\fB\-\-ignition\-url\fR] [\fB\-\-ignition\-hash\fR] [\fB\-a\fR|\fB\-\-architecture\fR] [\fB\-p\fR|\fB\-\-platform\fR] [\fB\-\-console\fR] [\fB\-\-append\-karg\fR] [\fB\-\-delete\-karg\fR] [\fB\-n\fR|\fB\-\-copy\-network\fR] [\fB\-\-network\-dir\fR] [\fB\-\-save\-partlabel\fR] [\fB\-\-save\-partindex\fR] [\fB\-\-offline\fR] [\fB\-\-insecure\fR] [\fB\-\-insecure\-ignition\fR] [\fB\-\-stream\-base\-url\fR] [\fB\-\-preserve\-on\-error\fR] [\fB\-\-fetch\-retries\fR] [\fB\-\-secure\-ipl\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIDEST_DEVICE\fR] 
 .SH DESCRIPTION
 Install Fedora CoreOS or RHEL CoreOS
 .SH OPTIONS
@@ -122,6 +122,9 @@ If installation fails, coreos\-installer normally clears the destination\*(Aqs p
 Fetch retries, or "infinite"
 
 Number of times to retry network fetches, or the string "infinite" to retry indefinitely.
+.TP
+\fB\-\-secure\-ipl\fR
+Enable IBM Secure IPL
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help (see a summary with \*(Aq\-h\*(Aq)

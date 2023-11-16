@@ -454,6 +454,9 @@ fn write_disk(
                 None,
             )?;
             s390x::chreipl(device)?;
+            if config.secure_ipl {
+                s390x::set_loaddev(device)?;
+            }
         }
     }
 

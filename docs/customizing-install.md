@@ -168,6 +168,8 @@ stream-base-url: URL
 preserve-on-error: true
 # Fetch retries, or string "infinite"
 fetch-retries: N
+# Enable IBM Secure IPL
+secure-ipl: true
 # Destination device
 dest-device: path
 ```
