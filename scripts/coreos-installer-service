@@ -121,6 +121,11 @@ if karg_bool coreos.inst.insecure; then
     args+=("--insecure")
 fi
 
+# zVM Secure IPL support
+if karg_bool coreos.inst.secure_ipl; then
+    args+=("--secure-ipl")
+fi
+
 # Always retry HTTP requests; we've got nothing to lose since we fail anyway.
 args+=("--fetch-retries" "infinite")
 

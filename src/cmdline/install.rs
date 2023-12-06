@@ -252,6 +252,10 @@ pub struct InstallConfig {
     #[serde(skip_serializing_if = "is_default")]
     #[arg(long, value_name = "N", default_value_t, help_heading = ADVANCED)]
     pub fetch_retries: FetchRetries,
+    /// Enable IBM Secure IPL
+    #[serde(skip_serializing_if = "is_default")]
+    #[arg(long, help_heading = ADVANCED)]
+    pub secure_ipl: bool,
 
     // positional args
     /// Destination device
@@ -361,6 +365,7 @@ mod test {
             stream_base_url: Some(Url::parse("http://example.com/t").unwrap()),
             preserve_on_error: true,
             fetch_retries: FetchRetries::from_str("3").unwrap(),
+            secure_ipl: true,
             dest_device: Some("u".into()),
         };
         let expected = vec![
@@ -412,6 +417,7 @@ mod test {
             "--preserve-on-error",
             "--fetch-retries",
             "3",
+            "--secure-ipl",
             "u",
         ];
         assert_eq!(config.to_args().unwrap(), expected);
@@ -484,6 +490,7 @@ dest-device: u
             stream_base_url: Some(Url::parse("http://example.com/t").unwrap()),
             preserve_on_error: true,
             fetch_retries: FetchRetries::from_str("3").unwrap(),
+            secure_ipl: false,
             dest_device: Some("u".into()),
         };
         let config = InstallConfig::from_args(&["--config-file", f.path().to_str().unwrap()])

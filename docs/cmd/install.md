@@ -163,4 +163,7 @@ Advanced Options:
           indefinitely.
 
           [default: 0]
+
+      --secure-ipl
+          Enable IBM Secure IPL
 ```

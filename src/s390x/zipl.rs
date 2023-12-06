@@ -14,10 +14,11 @@
 
 use crate::blockdev::Mount;
 use crate::io::{visit_bls_entry, visit_bls_entry_options, Initrd, KargsEditor};
-use crate::runcmd;
 use crate::s390x::ZiplSecexMode;
 use crate::util::cmd_output;
-use anyhow::{anyhow, Context, Result};
+use crate::{runcmd, runcmd_output};
+use anyhow::{anyhow, bail, Context, Result};
+use lazy_static::lazy_static;
 use nix::mount::MsFlags;
 use regex::Regex;
 use std::fs::{copy, create_dir_all, read_dir, DirEntry, File};
@@ -33,11 +34,116 @@ pub fn chreipl<P: AsRef<Path>>(dev: P) -> Result<()> {
     Ok(())
 }
 
+/// Secure boot (Secure IPL) includes support of SCSI and ECKD DASD boot devices
+enum Loaddev {
+    Eckd(String),
+    Scsi(String, String, String),
+}
+
+fn parse_lszdev_eckd(line: &str) -> Result<Loaddev> {
+    // ECKD ID looks like: 0.0.5223, we need only last part of it (5223)
+    lazy_static! {
+        static ref REGEX: Regex = Regex::new(r#"[[:digit:]].[[:digit:]].([[:xdigit:]]+)"#).unwrap();
+    }
+    if let Some(cap) = REGEX.captures_iter(line).next() {
+        return Ok(Loaddev::Eckd(cap[1].to_string()));
+    }
+    bail!("bad ECKD id: {}", line);
+}
+
+fn parse_lszdev_zfcp(line: &str) -> Result<Loaddev> {
+    // SCSI ID looks like: 0.0.8000:0x500507630400d1e3:0x4000401d00000000
+    // So here is regex to parse required ids: 8000,500507630400d1e3,4000401d00000000
+    lazy_static! {
+        static ref REGEX: Regex = Regex::new(
+            r#"[[:digit:]].[[:digit:]].([[:xdigit:]]+):0x([[:xdigit:]]+):0x([[:xdigit:]]+)"#
+        )
+        .unwrap();
+    }
+    if let Some(cap) = REGEX.captures_iter(line).next() {
+        return Ok(Loaddev::Scsi(
+            cap[1].to_string(),
+            cap[2].to_string(),
+            cap[3].to_string(),
+        ));
+    }
+    bail!("bad zFCP id: {}", line);
+}
+
+fn parse_lszdev<P: AsRef<Path>>(dev: P) -> Result<Loaddev> {
+    // We don't want to traverse sysfs and do same stuff lszdev does,
+    // so just call it to get required info. Here is sample output:
+    // $ lszdev -c TYPE,ID -n
+    // dasd-eckd    0.0.0190
+    // zfcp-lun     0.0.8007:0x500507630400d1e3:0x4001404c00000000
+    // qeth         0.0.bdd0:0.0.bdd1:0.0.bdd2
+    // generic-ccw  0.0.000c
+    let output = runcmd_output!(
+        "lszdev",
+        "-n",
+        "--columns",
+        "TYPE,ID",
+        "--by-node",
+        dev.as_ref()
+    )?;
+    let (devtype, id) = output
+        .trim()
+        .split_once(' ')
+        .with_context(|| format!("parsing lszdev {output}"))?;
+    match devtype {
+        "dasd-eckd" => parse_lszdev_eckd(id),
+        "zfcp-lun" => parse_lszdev_zfcp(id),
+        _ => bail!("unsupported device: {} id: {}", devtype, id),
+    }
+}
+
+/// Sets zVM Secure Boot (Secure IPL) boot device to `dev`.
+pub fn set_loaddev<P: AsRef<Path>>(dev: P) -> Result<()> {
+    if !secure_ipl_is_supported()? {
+        bail!("Secure IPL is not supported");
+    }
+    // check if system is zVM guest
+    if !Path::new("/dev/vmcp").exists() {
+        return Ok(());
+    }
+    eprintln!("Setting LOADDEV");
+    let mut cmd = Command::new("vmcp");
+    cmd.arg("set").arg("loaddev");
+    match parse_lszdev(dev)? {
+        Loaddev::Eckd(d) => cmd.arg("eckd").arg("dev").arg(d),
+        Loaddev::Scsi(d, p, l) =>
+        // CP tool wants portname/lun to be splitted at 8th character:
+        // $ vmcp set loaddev dev 8007 portname 500507630400d1e3 lun 4001404c00000000 secure
+        // HCPZPM002E Invalid operand - 500507630400D1E3
+        // $ vmcp set loaddev dev 8007 portname 50050763 0400d1e3 lun 4001404c 00000000 secure
+        {
+            cmd.arg("dev")
+                .arg(d)
+                .arg("portname")
+                .arg(&p[0..8])
+                .arg(&p[8..])
+                .arg("lun")
+                .arg(&l[0..8])
+                .arg(&l[8..])
+        }
+    };
+    cmd.arg("secure");
+    cmd_output(&mut cmd)?;
+    Ok(())
+}
+
 fn secure_execution_is_enabled() -> Result<bool> {
-    let sysfs_flag = "/sys/firmware/uv/prot_virt_guest";
-    match File::open(sysfs_flag) {
+    sysfs_flag_enabled("/sys/firmware/uv/prot_virt_guest")
+}
+
+fn secure_ipl_is_supported() -> Result<bool> {
+    sysfs_flag_enabled("/sys/firmware/ipl/has_secure")
+}
+
+fn sysfs_flag_enabled<P: AsRef<Path>>(path: P) -> Result<bool> {
+    match File::open(&path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e).with_context(|| format!("reading {sysfs_flag}")),
+        Err(e) => Err(e).with_context(|| format!("reading {}", path.as_ref().display())),
         Ok(mut f) => {
             let mut buffer = String::new();
             f.read_to_string(&mut buffer)?;

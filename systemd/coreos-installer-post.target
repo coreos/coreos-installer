@@ -5,3 +5,4 @@ AllowIsolate=yes
 Requires=coreos-installer.target
 Requires=coreos-installer-reboot.service
 Requires=coreos-installer-noreboot.service
+Requires=coreos-installer-secure-ipl-reboot.service

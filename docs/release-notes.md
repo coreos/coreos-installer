@@ -8,6 +8,7 @@ nav_order: 8
 
 Major changes:
 
+- install: Add z/VM Secure IPL support
 
 Minor changes:
 
