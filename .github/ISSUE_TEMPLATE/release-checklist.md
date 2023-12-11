@@ -141,6 +141,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] get the PR reviewed and merge it
   - [ ] update your local repo and run `rhpkg build`
   - [ ] file ticket similar to [this one](https://issues.redhat.com/browse/ART-3772) to sync the new version to mirror.openshift.com
+  - [ ] wait until mirror.openshift.com is updated and confirm the new version is correct
 
 CentOS Stream 9 packaging:
   - [ ] Create a `rebase-c9s-coreos-installer` issue in the internal team-operations repo and follow the steps there
