@@ -4,21 +4,30 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.19.0 (unreleased)
+## Upcoming coreos-installer 0.20.0 (unreleased)
 
 Major changes:
 
-- install: Add z/VM Secure IPL support
 
 Minor changes:
 
 
 Internal changes:
 
-- rootmap/bind-boot: Support root devices using composefs
 
 Packaging changes:
 
+
+
+## coreos-installer 0.19.0 (2023-12-11)
+
+Major changes:
+
+- install: Add z/VM Secure IPL support
+
+Internal changes:
+
+- rootmap/bind-boot: Support root devices using composefs
 
 
 ## coreos-installer 0.18.0 (2023-08-24)
