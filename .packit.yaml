@@ -2,7 +2,7 @@
 # https://packit.dev/docs/configuration/
 actions:
     changelog-entry:
-        - "New upstream release"
+        - bash -c 'echo "- New upstream release"'
     post-upstream-clone:
         - "wget https://src.fedoraproject.org/rpms/rust-coreos-installer/raw/rawhide/f/rust-coreos-installer.spec -O rust-coreos-installer.spec"
 
