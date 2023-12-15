@@ -8,6 +8,7 @@ nav_order: 8
 
 Major changes:
 
+- Support alternative grub2/30_console.cfg location for grub console configuration
 
 Minor changes:
 

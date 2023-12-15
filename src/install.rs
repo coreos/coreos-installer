@@ -636,11 +636,17 @@ fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]
 
     // set grub commands
     if grub_commands != metal_spec.grub_commands {
-        let path = mountpoint.join("grub2/grub.cfg");
-        let grub_cfg = fs::read_to_string(&path).context("reading grub.cfg")?;
+        // prefer the new grub2/30_console.cfg, but fallback to grub2/grub.cfg
+        let mut name = "grub2/30_console.cfg";
+        let mut path = mountpoint.join(name);
+        if !path.exists() {
+            name = "grub2/grub.cfg";
+            path = mountpoint.join(name);
+        }
+        let grub_cfg = fs::read_to_string(&path).with_context(|| format!("reading {}", name))?;
         let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &grub_commands)
-            .context("updating grub.cfg")?;
-        fs::write(&path, new_grub_cfg).context("writing grub.cfg")?;
+            .with_context(|| format!("updating {}", name))?;
+        fs::write(&path, new_grub_cfg).with_context(|| format!("writing {}", name))?;
     }
     Ok(())
 }
