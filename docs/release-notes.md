@@ -17,6 +17,7 @@ Internal changes:
 
 Packaging changes:
 
+- Fix Packit changelog entry generation
 
 
 ## coreos-installer 0.19.0 (2023-12-11)
@@ -28,6 +29,10 @@ Major changes:
 Internal changes:
 
 - rootmap/bind-boot: Support root devices using composefs
+
+Packaging changes:
+
+- Add Packit support for Fedora packaging
 
 
 ## coreos-installer 0.18.0 (2023-08-24)
