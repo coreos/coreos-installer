@@ -4,7 +4,21 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.20.0 (unreleased)
+## Upcoming coreos-installer 0.21.0 (unreleased)
+
+Major changes:
+
+
+Minor changes:
+
+
+Internal changes:
+
+
+Packaging changes:
+
+
+## coreos-installer 0.20.0 (2023-12-19)
 
 Major changes:
 
