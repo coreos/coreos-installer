@@ -17,6 +17,8 @@ Internal changes:
 
 Packaging changes:
 
+- Update container to Fedora 39
+
 
 ## coreos-installer 0.20.0 (2023-12-19)
 
