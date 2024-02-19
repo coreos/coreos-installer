@@ -14,6 +14,7 @@ Minor changes:
 
 Internal changes:
 
+- zipl: Directly pass kernel, initrd and kargs instead of BLS entry
 
 Packaging changes:
 
