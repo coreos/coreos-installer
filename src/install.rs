@@ -636,8 +636,8 @@ fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]
 
     // set grub commands
     if grub_commands != metal_spec.grub_commands {
-        // prefer the new grub2/30_console.cfg, but fallback to grub2/grub.cfg
-        let mut name = "grub2/30_console.cfg";
+        // prefer the new grub2/console.cfg, but fallback to grub2/grub.cfg
+        let mut name = "grub2/console.cfg";
         let mut path = mountpoint.join(name);
         if !path.exists() {
             name = "grub2/grub.cfg";
