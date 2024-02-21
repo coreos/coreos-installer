@@ -9,6 +9,7 @@ nav_order: 8
 Major changes:
 
 - Add Fedora 41 signing key; drop Fedora 38 signing key
+- Switch alternative grub console config location to grub2/console.cfg
 
 Minor changes:
 
