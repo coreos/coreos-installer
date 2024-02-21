@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::blockdev::Mount;
-use crate::io::{visit_bls_entry, visit_bls_entry_options, Initrd, KargsEditor};
+use crate::io::{visit_bls_entry, Initrd};
 use crate::s390x::ZiplSecexMode;
 use crate::util::cmd_output;
 use crate::{runcmd, runcmd_output};
@@ -21,7 +21,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use lazy_static::lazy_static;
 use nix::mount::MsFlags;
 use regex::Regex;
-use std::fs::{copy, create_dir_all, read_dir, DirEntry, File};
+use std::fs::{read_dir, DirEntry, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -330,73 +330,37 @@ pub fn zipl<P: AsRef<Path>>(
         )
     } else {
         // This branch could be also executed during installation, that's why
-        // we have to take care of ignition.firstboot karg and copy bls config
-        // files for further modification
-        let tempdir = Builder::new()
-            .prefix("coreos-installer-zipl-bls-")
-            .tempdir()
-            .context("creating temporary directory")?;
+        // we have to take care of ignition.firstboot karg
         let firstboot_file = boot.join("ignition.firstboot");
-        let blsdir = if kargs.is_some() || firstboot_file.exists() {
-            let blsdir = tempdir.path().join("loader/entries");
-            create_dir_all(&blsdir).with_context(|| format!("creating {}", blsdir.display()))?;
-            read_dir(boot.join("loader/entries"))
-                .with_context(|| format!("reading {}", boot.display()))?
-                .filter_map(Result::ok)
-                .filter(|p| p.file_type().unwrap().is_file())
-                .for_each(|src| {
-                    copy(src.path(), blsdir.join(src.file_name())).unwrap();
-                });
+        let (kernel, initrd, mut options) = get_info_from_bls(boot)?;
+        // we need a full path to kernel and initrd
+        let kernel = boot.join(&kernel[1..]);
+        let initrd = boot.join(&initrd[1..]);
 
-            let mut extra = Vec::new();
-            if firstboot_file.exists() {
-                extra.push("ignition.firstboot".to_string());
-                let firstboot_contents = std::fs::read_to_string(&firstboot_file)
-                    .with_context(|| format!("reading \"{}\"", firstboot_file.display()))?;
-                if let Some(firstboot_kargs) = extract_firstboot_kargs(&firstboot_contents)? {
-                    extra.extend_from_slice(
-                        &firstboot_kargs
-                            .split_whitespace()
-                            .map(|s| s.to_string())
-                            .collect::<Vec<String>>(),
-                    );
-                }
+        if firstboot_file.exists() {
+            options.push_str(" ignition.firstboot");
+            let firstboot_contents = std::fs::read_to_string(&firstboot_file)
+                .with_context(|| format!("reading \"{}\"", firstboot_file.display()))?;
+            if let Some(firstboot_kargs) = extract_firstboot_kargs(&firstboot_contents)? {
+                options = format!("{options} {firstboot_kargs}");
             }
-            if let Some(kargs) = kargs {
-                extra.extend_from_slice(
-                    &kargs
-                        .split_whitespace()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>(),
-                );
-            }
+        }
+        if let Some(kargs) = kargs {
+            options = format!("{options} {kargs}");
+        }
 
-            visit_bls_entry_options(tempdir.path(), |orig_options: &str| {
-                KargsEditor::new()
-                    .append_if_missing(extra.as_slice())
-                    .maybe_apply_to(orig_options)
-            })
-            .with_context(|| format!("appending {extra:?}"))?;
-
-            blsdir
-        } else {
-            boot.join("loader/entries")
-        };
-
-        // create dummy config for zipl
-        let mut conffile = Builder::new()
-            .prefix("coreos-installer-zipl.")
-            .tempfile()
-            .context("creating zipl config")?;
-        let data = format!(
-            "[defaultboot]\ndefaultauto\nprompt=1\ntimeout=5\nsecure=auto\ntarget={}\n",
-            boot.to_str().unwrap()
-        );
-        conffile
-            .write_all(data.as_bytes())
-            .context("writing zipl config")?;
-
-        runcmd!("zipl", "--blsdir", blsdir, "--config", conffile.path())
+        runcmd!(
+            "zipl",
+            "-V",
+            "--target",
+            boot,
+            "--image",
+            kernel,
+            "--ramdisk",
+            initrd,
+            "--parameters",
+            options
+        )
     }
 }
 
