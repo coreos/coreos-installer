@@ -4,15 +4,26 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.21.0 (unreleased)
+## Upcoming coreos-installer 0.22.0 (unreleased)
+
+Major changes:
+
+
+Minor changes:
+
+
+Internal changes:
+
+
+Packaging changes:
+
+
+## coreos-installer 0.21.0 (2024-02-22)
 
 Major changes:
 
 - Add Fedora 41 signing key; drop Fedora 38 signing key
 - Switch alternative grub console config location to grub2/console.cfg
-
-Minor changes:
-
 
 Internal changes:
 
@@ -28,12 +39,6 @@ Packaging changes:
 Major changes:
 
 - Support alternative grub2/30_console.cfg location for grub console configuration
-
-Minor changes:
-
-
-Internal changes:
-
 
 Packaging changes:
 
