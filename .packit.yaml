@@ -25,16 +25,14 @@ jobs:
 - job: propose_downstream
   trigger: release
   dist_git_branches:
-    - fedora-rawhide
-    - fedora-stable
+    - fedora-all
 
 - job: koji_build
   trigger: commit
   dist_git_branches:
-    - fedora-rawhide
-    - fedora-stable
+    - fedora-all
 
 - job: bodhi_update
   trigger: commit
   dist_git_branches:
-    - fedora-stable
+    - fedora-all
