@@ -1,13 +1,5 @@
 # See the documentation for more information:
 # https://packit.dev/docs/configuration/
-actions:
-    changelog-entry:
-        - bash -c 'echo "- New upstream release"'
-    post-upstream-clone:
-        - "wget https://src.fedoraproject.org/rpms/rust-coreos-installer/raw/rawhide/f/rust-coreos-installer.spec -O rust-coreos-installer.spec"
-
-specfile_path: rust-coreos-installer.spec
-
 upstream_tag_template: v{version}
 
 # add or remove files that should be synced
@@ -20,19 +12,46 @@ upstream_package_name: coreos-installer
 # downstream (Fedora) RPM package name
 downstream_package_name: rust-coreos-installer
 
+packages:
+  coreos-installer-fedora:
+    specfile_path: rust-coreos-installer.spec
+    actions:
+      post-upstream-clone:
+        - wget https://src.fedoraproject.org/rpms/rust-coreos-installer/raw/rawhide/f/rust-coreos-installer.spec
+      changelog-entry:
+        - bash -c 'echo "- New upstream release"'
+  coreos-installer-centos:
+    pkg_tool: centpkg
+    specfile_path: rust-coreos-installer.spec
+    actions:
+      post-upstream-clone:
+        - wget https://gitlab.com/redhat/centos-stream/rpms/rust-coreos-installer/-/raw/c9s/rust-coreos-installer.spec
+      changelog-entry:
+        - bash -c 'echo "- New upstream release"'
+
 jobs: 
 
 - job: propose_downstream
   trigger: release
+  packages: [coreos-installer-fedora]
   dist_git_branches:
-    - fedora-all
+    - fedora-rawhide
 
 - job: koji_build
   trigger: commit
+  packages: [coreos-installer-fedora]
   dist_git_branches:
     - fedora-all
 
 - job: bodhi_update
   trigger: commit
+  packages: [coreos-installer-fedora]
   dist_git_branches:
     - fedora-all
+
+- job: propose_downstream
+  trigger: release
+  packages: [coreos-installer-centos]
+  dist_git_branches:
+    - c9s
+    - c10s
