@@ -18,6 +18,7 @@ Internal changes:
 Packaging changes:
 
 - Update packit's downstream targets to be `fedora-all`
+- Add Packit support for c9s packaging
 
 
 ## coreos-installer 0.21.0 (2024-02-22)
