@@ -17,6 +17,7 @@ Internal changes:
 
 Packaging changes:
 
+- Require Rust ≥ 1.75.0
 - Update packit's downstream targets to be `fedora-all`
 
 
