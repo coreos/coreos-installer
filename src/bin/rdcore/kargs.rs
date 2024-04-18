@@ -81,6 +81,7 @@ fn modify_and_print(config: &KargsConfig, orig_options: &str) -> Result<Option<S
                 std::fs::OpenOptions::new()
                     .write(true)
                     .create(true)
+                    .truncate(true)
                     .open(path)
                     .with_context(|| format!("creating {path}"))?;
             }

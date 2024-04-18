@@ -3,7 +3,7 @@ name = "coreos-installer"
 repository = "https://github.com/coreos/coreos-installer"
 license = "Apache-2.0"
 edition = "2021"
-rust-version = "1.70.0"
+rust-version = "1.75.0"
 exclude = ["/.cci.jenkinsfile", "/.github", "/.gitignore", "/Dockerfile"]
 authors = [ "Benjamin Gilbert <bgilbert@redhat.com>" ]
 description = "Installer for Fedora CoreOS and RHEL CoreOS"
@@ -52,7 +52,7 @@ base64 = ">= 0.21, < 0.22"
 bincode = "^1.3"
 bytes = ">= 1.0.1, < 2"
 byte-unit = ">= 3.1.0, < 5.0.0"
-clap = { version = ">= 4.1, < 4.5", default-features = false, features = ["std", "cargo", "derive", "error-context", "help", "suggestions", "usage", "wrap_help"] }
+clap = { version = ">= 4.1, < 5", default-features = false, features = ["std", "cargo", "derive", "error-context", "help", "suggestions", "usage", "wrap_help"] }
 clap_mangen = { version = "0.2", optional = true }
 cpio = ">= 0.2.1, < 0.3"
 flate2 = "^1.0"

@@ -53,7 +53,7 @@ mod tests {
     fn tee_reader() {
         const COUNT: usize = 100;
         let src: Vec<u8> = (0..COUNT as u8).collect();
-        let mut buf = vec![0; 2 * COUNT];
+        let mut buf = [0; 2 * COUNT];
         let mut off = 0;
         let mut tee = TeeReader::new(&*src, Vec::new());
         for i in 2.. {
