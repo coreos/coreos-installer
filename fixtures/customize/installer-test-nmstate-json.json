@@ -1,7 +1,7 @@
 {
   "interfaces": [
     {
-      "name": "nmstate-json-eth1",
+      "name": "nmstate-js-eth1",
       "type": "ethernet",
       "state": "up",
       "ipv4": {
@@ -10,7 +10,7 @@
       }
     },
     {
-      "name": "nmstate-json-eth2",
+      "name": "nmstate-js-eth2",
       "type": "ethernet",
       "state": "up",
       "ipv4": {

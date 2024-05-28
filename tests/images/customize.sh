@@ -278,19 +278,19 @@ coreos-installer pxe customize src-initrd -o initrd
     --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-json-eth1.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-js-eth1.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-json.json" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-json-eth2.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-js-eth2.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-json.json" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-yaml-eth1.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-yl-eth1.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-yaml.yaml" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-yaml-eth2.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-yl-eth2.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-yaml.yaml" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \

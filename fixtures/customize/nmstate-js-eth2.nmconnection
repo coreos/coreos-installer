@@ -1,5 +1,5 @@
 [connection]
-id=nmstate-json-eth2
+id=nmstate-js-eth2
 type=ethernet
 
 [ipv4]

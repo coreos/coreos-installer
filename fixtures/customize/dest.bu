@@ -9,10 +9,10 @@ systemd:
         Description=Dest Ignition Applied
         Before=multi-user.target
         ConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-json-eth1.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-json-eth2.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yaml-eth1.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yaml-eth2.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-js-eth1.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-js-eth2.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yl-eth1.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yl-eth2.nmconnection
         ConditionKernelCommandLine=install-config-karg-1
         ConditionKernelCommandLine=install-config-karg-2
         ConditionKernelCommandLine=dest-karg
