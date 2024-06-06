@@ -1,11 +1,11 @@
 interfaces:
-  - name: nmstate-yaml-eth1
+  - name: nmstate-yl-eth1
     type: ethernet
     state: up
     ipv4:
       enabled: true
       dhcp: true
-  - name: nmstate-yaml-eth2
+  - name: nmstate-yl-eth2
     type: ethernet
     state: up
     ipv4:

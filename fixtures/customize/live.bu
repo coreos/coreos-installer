@@ -10,10 +10,10 @@ systemd:
         Before=coreos-installer.target
         Before=multi-user.target
         ConditionPathExists=/etc/NetworkManager/system-connections/installer-test.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-json-eth1.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-json-eth2.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yaml-eth1.nmconnection
-        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yaml-eth2.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-js-eth1.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-js-eth2.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yl-eth1.nmconnection
+        ConditionPathExists=/etc/NetworkManager/system-connections/nmstate-yl-eth2.nmconnection
 
         [Service]
         Type=oneshot

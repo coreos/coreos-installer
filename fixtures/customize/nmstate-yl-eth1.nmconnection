@@ -1,5 +1,5 @@
 [connection]
-id=nmstate-yaml-eth2
+id=nmstate-yl-eth1
 type=ethernet
 
 [ipv4]

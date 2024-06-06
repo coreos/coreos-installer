@@ -145,28 +145,44 @@ qemu_disk() {
 }
 
 assert() {
-    grep -Fq "$1" log
+    if grep -Fq "$1" log; then
+        echo "Assertion passed: '$1' found in log"
+        return 0
+    else
+        echo "Assertion failed: '$1' not found in log"
+        return 1
+    fi
+}
+
+assert_not() {
+    if grep -Fq "$1" log; then
+        echo "Assertion failed: '$1' found in log"
+        return 1
+    else
+        echo "Assertion passed: '$1' not found in log"
+        return 0
+    fi
 }
 
 check_live_noinstall() {
     assert @applied-live-ign@
     assert @applied-live-2-ign@
-    ! assert @applied-dest-ign@
-    ! assert @applied-dest-2-ign@
+    assert_not @applied-dest-ign@
+    assert_not @applied-dest-2-ign@
     assert @did-not-install@
-    ! assert @preinst-1@
-    ! assert @preinst-2@
-    ! assert @postinst-1@
-    ! assert @postinst-2@
+    assert_not @preinst-1@
+    assert_not @preinst-2@
+    assert_not @postinst-1@
+    assert_not @postinst-2@
     assert 'Adding "coreos-installer test certificate" to list of CAs'
 }
 
 check_live_install() {
     assert @applied-live-ign@
     assert @applied-live-2-ign@
-    ! assert @applied-dest-ign@
-    ! assert @applied-dest-2-ign@
-    ! assert @did-not-install@
+    assert_not @applied-dest-ign@
+    assert_not @applied-dest-2-ign@
+    assert_not @did-not-install@
     assert @preinst-1@
     assert @preinst-2@
     assert @postinst-1@
@@ -175,14 +191,14 @@ check_live_install() {
 }
 
 check_dest() {
-    ! assert @applied-live-ign@
-    ! assert @applied-live-2-ign@
+    assert_not @applied-live-ign@
+    assert_not @applied-live-2-ign@
     assert @applied-dest-ign@
     assert @applied-dest-2-ign@
-    ! assert @preinst-1@
-    ! assert @preinst-2@
-    ! assert @postinst-1@
-    ! assert @postinst-2@
+    assert_not @preinst-1@
+    assert_not @preinst-2@
+    assert_not @postinst-1@
+    assert_not @postinst-2@
     assert 'Adding "coreos-installer test certificate" to list of CAs'
 }
 
@@ -278,19 +294,19 @@ coreos-installer pxe customize src-initrd -o initrd
     --network-keyfile "${fixtures}/installer-test.nmconnection" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-json-eth1.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-js-eth1.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-json.json" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-json-eth2.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-js-eth2.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-json.json" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-yaml-eth1.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-yl-eth1.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-yaml.yaml" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
-    --network-keyfile "${fixtures}/nmstate-yaml-eth2.nmconnection" \
+    --network-keyfile "${fixtures}/nmstate-yl-eth2.nmconnection" \
     --network-nmstate "${fixtures}/installer-test-nmstate-yaml.yaml" 2>&1 ||:) |
     grepq "already specifies keyfile"
 (iso_customize \
