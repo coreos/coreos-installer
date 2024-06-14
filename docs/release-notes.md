@@ -19,7 +19,7 @@ Packaging changes:
 
 - Require Rust ≥ 1.75.0
 - Update packit's downstream targets to be `fedora-all`
-
+- Update container to Fedora 40
 
 ## coreos-installer 0.21.0 (2024-02-22)
 
