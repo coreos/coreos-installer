@@ -447,7 +447,7 @@ impl Mount {
         })
     }
 
-    pub fn from_existing(path: &str) -> Result<Mount> {
+    pub fn from_existing<P: AsRef<Path>>(path: P) -> Result<Mount> {
         let mounts = read_to_string("/proc/self/mounts").context("reading mount table")?;
         for line in mounts.lines() {
             let mount: Vec<&str> = line.split_whitespace().collect();
@@ -455,15 +455,15 @@ impl Mount {
             if mount.len() != 6 {
                 bail!("invalid line in /proc/self/mounts: {}", line);
             }
-            if mount[1] == path {
+            if Path::new(mount[1]) == path.as_ref() {
                 return Ok(Mount {
                     device: mount[0].to_string(),
-                    mountpoint: path.into(),
+                    mountpoint: path.as_ref().into(),
                     owned: false,
                 });
             }
         }
-        bail!("mountpoint {} not found", path);
+        bail!("mountpoint {} not found", path.as_ref().display());
     }
 
     pub fn device(&self) -> &str {

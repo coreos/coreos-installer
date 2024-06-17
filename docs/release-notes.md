@@ -14,6 +14,7 @@ Minor changes:
 
 Internal changes:
 
+- rootmap: Fix support for LUKS on multipath
 
 Packaging changes:
 

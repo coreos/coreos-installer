@@ -31,11 +31,12 @@ use crate::cmdline::*;
 const PHYSICAL_ROOT_MOUNT: &str = "sysroot";
 
 pub fn rootmap(config: RootmapConfig) -> Result<()> {
+    let root_mount_path = Path::new(&config.root_mount);
     // Get the mount point for the deployment root, which will have e.g. /etc which we might parse
-    let rootfs_mount = Mount::from_existing(&config.root_mount)?;
+    let rootfs_mount = Mount::from_existing(root_mount_path)?;
     // get the backing device for the "physical" root
-    let physical_root_path = format!("{}/{PHYSICAL_ROOT_MOUNT}", config.root_mount);
-    let physical_mount = Mount::from_existing(&physical_root_path)?;
+    let physical_root_path = root_mount_path.join(PHYSICAL_ROOT_MOUNT);
+    let physical_mount = Mount::from_existing(physical_root_path)?;
     let device = PathBuf::from(physical_mount.device());
 
     // and from that we can collect all the parent backing devices too
@@ -218,7 +219,7 @@ fn get_luks_uuid(device: &Path) -> Result<String> {
     match deps.as_slice() {
         [] => bail!("missing parent device for {}", device.display()),
         [device] => {
-            if Disk::new(device)?.is_dm_device() {
+            if Disk::new(device)?.is_luks_integrity()? {
                 return get_luks_uuid(device);
             }
             Ok(runcmd_output!("cryptsetup", "luksUUID", device)?
@@ -233,10 +234,11 @@ fn get_luks_uuid(device: &Path) -> Result<String> {
 }
 
 pub fn bind_boot(config: BindBootConfig) -> Result<()> {
+    let root_mount_path = Path::new(&config.root_mount);
     let boot_mount = Mount::from_existing(&config.boot_mount)?;
     // We always operate here on the physical root
-    let physical_root_path = format!("{}/{PHYSICAL_ROOT_MOUNT}", config.root_mount);
-    let root_mount = Mount::from_existing(&physical_root_path)?;
+    let physical_root_path = root_mount_path.join(PHYSICAL_ROOT_MOUNT);
+    let root_mount = Mount::from_existing(physical_root_path)?;
     let boot_uuid = boot_mount.get_filesystem_uuid()?;
     let root_uuid = root_mount.get_filesystem_uuid()?;
 
