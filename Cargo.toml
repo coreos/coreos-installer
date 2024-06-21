@@ -63,7 +63,7 @@ hex = "^0.4"
 ignition-config = ">= 0.3, < 0.4"
 lazy_static = "^1.4"
 libc = "^0.2"
-nix = { version = ">= 0.24, < 0.28", "default_features" = false, "features" = [ "dir", "ioctl", "mount", "process", "sched", "signal", "user"] }
+nix = { version = ">= 0.24, < 0.30", "default_features" = false, "features" = [ "dir", "ioctl", "mount", "process", "sched", "signal", "user"] }
 nmstate = { version = ">= 2.2.3, < 3", default-features = false, features = ["gen_conf"] }
 openssl = "^0.10"
 pipe = ">= 0.3, < 0.5"
