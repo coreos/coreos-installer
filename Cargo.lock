@@ -246,7 +246,7 @@ name = "coreos-installer"
 version = "0.21.0"
 dependencies = [
  "anyhow",
- "base64 0.21.7",
+ "base64 0.22.0",
  "bincode",
  "byte-unit",
  "bytes",
