@@ -17,6 +17,11 @@ Internal changes:
 
 Packaging changes:
 
+
+## coreos-installer 0.22.1 (2024-07-24)
+
+Packaging changes:
+
 - add downstream_package_name for each package in packit.yaml
 
 
