@@ -9,12 +9,11 @@ files_to_sync:
 
 # name in upstream package repository or registry (e.g. in PyPI)
 upstream_package_name: coreos-installer
-# downstream (Fedora) RPM package name
-downstream_package_name: rust-coreos-installer
 
 packages:
   coreos-installer-fedora:
     specfile_path: rust-coreos-installer.spec
+    downstream_package_name: rust-coreos-installer
     actions:
       post-upstream-clone:
         - wget https://src.fedoraproject.org/rpms/rust-coreos-installer/raw/rawhide/f/rust-coreos-installer.spec
@@ -23,6 +22,7 @@ packages:
   coreos-installer-centos:
     pkg_tool: centpkg
     specfile_path: rust-coreos-installer.spec
+    downstream_package_name: rust-coreos-installer
     actions:
       post-upstream-clone:
         - wget https://gitlab.com/redhat/centos-stream/rpms/rust-coreos-installer/-/raw/c9s/rust-coreos-installer.spec
