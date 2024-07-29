@@ -739,9 +739,9 @@ dependencies = [
 
 [[package]]
 name = "ignition-config"
-version = "0.3.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45a7bd804ef0f44ce4f9cebf9f3e3334502e6ba5d053f01417fcbbbdf4307f28"
+checksum = "665bdc5dd24d0f47a2379307774b3e3bd7cfe2f8c8aab8d10fc659fa14887193"
 dependencies = [
  "anyhow",
  "semver",
