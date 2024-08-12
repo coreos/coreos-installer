@@ -14,6 +14,7 @@ Minor changes:
 
 Internal changes:
 
+- osmet: Use blkid to get partition information if udev is unavailable
 
 Packaging changes:
 
