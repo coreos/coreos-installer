@@ -18,13 +18,14 @@ Internal changes:
 
 Packaging changes:
 
+- Drop Packit support for c9s packaging
+
 
 ## coreos-installer 0.22.1 (2024-07-24)
 
 Packaging changes:
 
 - add downstream_package_name for each package in packit.yaml
-
 
 ## coreos-installer 0.22.0 (2024-07-23)
 
