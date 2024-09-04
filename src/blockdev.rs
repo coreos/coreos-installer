@@ -109,19 +109,34 @@ impl Disk {
                 if devinfo.get("TYPE").map(|s| s.as_str()) != Some("part") {
                     continue;
                 }
-                let (mountpoint, swap) = match devinfo.get("MOUNTPOINT") {
-                    Some(mp) if mp == "[SWAP]" => (None, true),
-                    Some(mp) => (Some(mp.to_string()), false),
-                    None => (None, false),
-                };
-                result.push(Partition {
-                    path: name.to_owned(),
-                    label: devinfo.get("LABEL").map(<_>::to_string),
-                    fstype: devinfo.get("FSTYPE").map(<_>::to_string),
-                    parent: self.path.to_owned(),
-                    mountpoint,
-                    swap,
-                });
+                // only trust lsblk output for the following fields if we have udev
+                if have_udev() {
+                    let (mountpoint, swap) = match devinfo.get("MOUNTPOINT") {
+                        Some(mp) if mp == "[SWAP]" => (None, true),
+                        Some(mp) => (Some(mp.to_string()), false),
+                        None => (None, false),
+                    };
+                    result.push(Partition {
+                        path: name.to_owned(),
+                        label: devinfo.get("LABEL").map(<_>::to_string),
+                        fstype: devinfo.get("FSTYPE").map(<_>::to_string),
+                        parent: self.path.to_owned(),
+                        mountpoint,
+                        swap,
+                    });
+                } else {
+                    let devinfo = blkid_single(Path::new(name))?;
+                    // note TYPE here: blkid uses TYPE instead of FSTYPE
+                    let fstype = devinfo.get("TYPE").map(<_>::to_string);
+                    result.push(Partition {
+                        path: name.to_owned(),
+                        label: devinfo.get("LABEL").map(<_>::to_string),
+                        fstype: fstype.to_owned(),
+                        parent: self.path.to_owned(),
+                        mountpoint: None,
+                        swap: fstype.is_some_and(|s| s == "swap"),
+                    });
+                }
             }
         }
         Ok(result)
@@ -800,6 +815,17 @@ pub fn lsblk_single(dev: &Path) -> Result<HashMap<String, String>> {
     Ok(devinfos.remove(0))
 }
 
+pub fn blkid_single(dev: &Path) -> Result<HashMap<String, String>> {
+    let mut devinfos = blkid(Some(vec![dev]))?;
+    if devinfos.len() != 1 {
+        bail!(
+            "expected one blkid result for {}, got: {:?}",
+            dev.display(),
+            devinfos
+        );
+    }
+    Ok(devinfos.remove(0))
+}
 /// Returns all available filesystems.
 /// rereadpt mitigates possible issue with outdated UUIDs on different
 /// paths to the same disk: after 'ignition-ostree-firstboot-uuid'
@@ -822,7 +848,7 @@ fn get_all_filesystems(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
         }
         udev_settle()?;
     }
-    blkid()
+    blkid(None)
 }
 
 /// Returns filesystems with given label.
@@ -884,7 +910,7 @@ fn split_blkid_line(line: &str) -> HashMap<String, String> {
     fields
 }
 
-fn blkid() -> Result<Vec<HashMap<String, String>>> {
+fn blkid(devices: Option<Vec<&Path>>) -> Result<Vec<HashMap<String, String>>> {
     // Run blkid with a clean cache to avoid collecting old devices which no
     // longer exist.
     // https://github.com/coreos/coreos-installer/pull/1288#discussion_r1312008111
@@ -893,19 +919,27 @@ fn blkid() -> Result<Vec<HashMap<String, String>>> {
     // the blkid -p below, which we use to probe the devices to not rely on
     // the blkid cache:
     // https://github.com/coreos/fedora-coreos-config/pull/2181#issuecomment-1397386896
-    let devices = {
-        let mut cmd = Command::new("blkid");
-        cmd.arg("--cache-file");
-        cmd.arg("/dev/null");
-        cmd.arg("-o");
-        cmd.arg("device");
-        cmd_output(&mut cmd)?
+    let found_devices; // need this for &Path refs to outlive the else block
+    let devices: Vec<&Path> = if let Some(paths) = devices {
+        paths
+    } else {
+        found_devices = {
+            let mut cmd = Command::new("blkid");
+            cmd.arg("--cache-file");
+            cmd.arg("/dev/null");
+            cmd.arg("-o");
+            cmd.arg("device");
+            cmd_output(&mut cmd)?
+        };
+        found_devices
+            .lines()
+            .map(|line| Path::new(line.trim()))
+            .collect()
     };
-
     let output = {
         let mut cmd = Command::new("blkid");
         cmd.arg("-p");
-        cmd.args(devices.lines());
+        cmd.args(devices);
         cmd_output(&mut cmd)?
     };
 
@@ -1141,10 +1175,14 @@ fn disk_has_mbr(file: &mut (impl Read + Seek)) -> Result<bool> {
     Ok(sig == [0x55, 0xaa])
 }
 
+pub fn have_udev() -> bool {
+    Path::new("/run/udev/control").exists()
+}
+
 pub fn udev_settle() -> Result<()> {
     // "udevadm settle" silently no-ops if the udev socket is missing, and
     // then lsblk can't find partition labels.  Catch this early.
-    if !Path::new("/run/udev/control").exists() {
+    if !have_udev() {
         bail!("udevd socket missing; are we running in a container without /run/udev mounted?");
     }
 
