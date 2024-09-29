@@ -12,6 +12,7 @@ Major changes:
 
 Minor changes:
 
+- install: Don't require the network by default
 
 Internal changes:
 
