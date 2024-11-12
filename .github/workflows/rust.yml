@@ -52,7 +52,7 @@ jobs:
           # Specify additional fields not implied by the job name.
           key: ${{ matrix.arch }}
       - name: Install dependencies
-        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz gpg
       - name: Configure cargo
         run: |
           # Avoid OOM on emulated s390x
@@ -109,7 +109,7 @@ jobs:
           # MSRV changes.
           key: ${{ matrix.arch }}-${{ env.MSRV }}
       - name: Install dependencies
-        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz gpg
       - name: Configure cargo
         run: |
           # Avoid OOM on emulated s390x
@@ -204,7 +204,7 @@ jobs:
           # Specify additional fields not implied by the job name.
           key: ${{ matrix.arch }}-${{ matrix.channel }}
       - name: Install dependencies
-        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel cpio diffutils jq xz gpg
       - name: Configure cargo
         run: |
           # Avoid OOM on emulated s390x
