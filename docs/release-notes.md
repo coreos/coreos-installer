@@ -4,14 +4,25 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.23.0 (unreleased)
+## Upcoming coreos-installer 0.24.0 (unreleased)
+
+Major changes:
+
+
+Minor changes:
+
+
+Internal changes:
+
+
+Packaging changes:
+
+
+## coreos-installer 0.23.0 (2024-11-12)
 
 Major changes:
 
 - Add Fedora 42 signing key; drop Fedora 39 signing key
-
-Minor changes:
-
 
 Internal changes:
 
