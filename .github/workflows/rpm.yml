@@ -27,7 +27,7 @@ jobs:
       - name: Install packages
         run: dnf install -y git make mock
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         # fetch tags for versioning
         with:
           fetch-depth: 0
@@ -41,7 +41,7 @@ jobs:
           mock --rebuild --enablerepo=updates-testing rpms/*.src.rpm
           find /var/lib/mock -wholename '*/result/*.rpm' | xargs mv -t rpms
       - name: Archive RPMs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rpms
           path: rpms/
