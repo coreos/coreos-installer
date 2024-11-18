@@ -41,7 +41,7 @@ jobs:
           mock --rebuild --enablerepo=updates-testing rpms/*.src.rpm
           find /var/lib/mock -wholename '*/result/*.rpm' | xargs mv -t rpms
       - name: Archive RPMs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rpms
           path: rpms/
