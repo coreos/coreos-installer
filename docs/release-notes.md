@@ -17,6 +17,8 @@ Internal changes:
 
 Packaging changes:
 
+- Update container to Fedora 41
+
 
 ## coreos-installer 0.23.0 (2024-11-12)
 
