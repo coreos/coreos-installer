@@ -18,7 +18,7 @@ concurrency:
 jobs:
   test-rpm-build:
     name: "Build (Fedora)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     container:
       image: registry.fedoraproject.org/fedora:latest
       options: --privileged
