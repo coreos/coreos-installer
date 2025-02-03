@@ -281,6 +281,13 @@ fn generate_sdboot(
 
     // finally, Secure Execution sd-boot image
     let sdboot = mountpoint.join("sdboot");
+
+    // C 'genprotimg' tool no longer exists and was replaced by symlink to Rust 'pvimg create',
+    // which by default doesn't overwrite the output image.
+    // For backward compatibility let's silently remove the 'sdboot'.
+    let _ = std::fs::remove_file(&sdboot);
+
+    // FIXME: in F42/el10 switch to 'pvimg create' with '--overwrite' flag.
     let mut cmd = Command::new("genprotimg");
     cmd.arg("--verbose")
         .arg("--image")
