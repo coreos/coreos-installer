@@ -282,15 +282,15 @@ fn generate_sdboot(
     // finally, Secure Execution sd-boot image
     let sdboot = mountpoint.join("sdboot");
     let mut cmd = Command::new("genprotimg");
-    cmd.arg("-V")
-        .arg("-i")
+    cmd.arg("--verbose")
+        .arg("--image")
         .arg(kernel)
-        .arg("-r")
+        .arg("--ramdisk")
         .arg(initrd)
-        .arg("-p")
+        .arg("--parmfile")
         .arg(cmdline.path())
         .arg("--no-verify")
-        .arg("-o")
+        .arg("--output")
         .arg(&sdboot);
     for k in hostkeys {
         cmd.arg("-k").arg(k);
