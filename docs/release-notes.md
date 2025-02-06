@@ -13,7 +13,7 @@ Minor changes:
 
 
 Internal changes:
-
+- s390x: Use options and logic compatible with both C-based `genprotimg` and Rust-based `pvimg`
 
 Packaging changes:
 
