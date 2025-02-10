@@ -84,7 +84,7 @@ zstd = { version = ">= 0.10.0, < 0.14.0", features = ["pkg-config"] }
 
 [target.'cfg(target_arch = "s390x")'.dependencies]
 mbrman = ">= 0.5, < 0.6"
-rand = ">= 0.7, < 0.9"
+rand = ">= 0.7, < 0.10"
 
 [dev-dependencies]
 maplit = "^1.0"
