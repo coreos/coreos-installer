@@ -158,7 +158,7 @@ impl Sha256Digest {
         if unsafe { libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL) } < 0 {
             eprintln!(
                 "posix_fadvise(SEQUENTIAL) failed (errno {}) -- ignoring...",
-                nix::errno::errno()
+                nix::errno::Errno::last_raw()
             );
         }
 
