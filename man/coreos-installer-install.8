@@ -97,6 +97,18 @@ Preserve any existing partitions on the destination device whose partition numbe
 
 Saved partitions will be renumbered if necessary.  If partitions overlap with the install image, or installation fails for any other reason, the specified partitions will still be preserved.
 .TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+[\fIDEST_DEVICE\fR]
+Destination device
+
+Path to the device node for the destination disk.  The beginning of the device will be overwritten without further confirmation.
+.SH "ADVANCED OPTIONS"
+.TP
 \fB\-\-offline\fR
 Force offline installation
 .TP
@@ -125,16 +137,5 @@ Number of times to retry network fetches, or the string "infinite" to retry inde
 .TP
 \fB\-\-secure\-ipl\fR
 Enable IBM Secure IPL
-.TP
-\fB\-h\fR, \fB\-\-help\fR
-Print help (see a summary with \*(Aq\-h\*(Aq)
-.TP
-\fB\-V\fR, \fB\-\-version\fR
-Print version
-.TP
-[\fIDEST_DEVICE\fR]
-Destination device
-
-Path to the device node for the destination disk.  The beginning of the device will be overwritten without further confirmation.
 .SH VERSION
 v0.23.0
