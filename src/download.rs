@@ -456,9 +456,9 @@ impl<'a, R: Read> ProgressReader<'a, R> {
 
     /// Format a size in bytes.
     fn format_bytes(count: u64) -> String {
-        Byte::from_bytes(count.into())
-            .get_appropriate_unit(true)
-            .format(1)
+        Byte::from_u64(count)
+            .get_appropriate_unit(byte_unit::UnitType::Binary)
+            .to_string()
     }
 }
 
