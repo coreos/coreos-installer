@@ -28,6 +28,9 @@ all-features = true
 # rdcore is only useful inside the initrd of a CoreOS system
 rdcore = []
 docgen = ["clap/string", "dep:clap_mangen"]
+# nmstate has deprecated deps and cannot be used in f42 in its current state
+# nmstate/nmstate#2820 should make allow for this feature to be removed.
+use-nmstate = ["nmstate"]
 
 [lib]
 name = "libcoreinst"
@@ -64,7 +67,7 @@ ignition-config = ">= 0.3, < 0.6"
 lazy_static = "^1.4"
 libc = "^0.2"
 nix = { version = ">= 0.24, < 0.28", "default_features" = false, "features" = [ "dir", "ioctl", "mount", "process", "sched", "signal", "user"] }
-nmstate = { version = ">= 2.2.3, < 3", default-features = false, features = ["gen_conf"] }
+nmstate = { version = ">= 2.2.3, < 3", default-features = false, features = ["gen_conf"], optional = true }
 openssl = "^0.10"
 pipe = ">= 0.3, < 0.5"
 regex = ">= 1.4, < 2"

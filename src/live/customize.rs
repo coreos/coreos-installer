@@ -15,10 +15,12 @@
 //! Infrastructure for high-level ISO/PXE customizations
 
 use anyhow::{bail, Context, Result};
+#[cfg(feature = "use-nmstate")]
 use nmstate::NetworkState;
 use serde::Deserialize;
 use serde_json;
 use std::fs::read;
+#[cfg(feature = "use-nmstate")]
 use std::path::Path;
 
 use crate::cmdline::*;
@@ -122,6 +124,7 @@ impl LiveInitrd {
         for path in &common.network_keyfile {
             conf.network_keyfile(path)?;
         }
+        #[cfg(feature = "use-nmstate")]
         for path in &common.network_nmstate {
             conf.network_nmstate(path)?;
         }
@@ -201,7 +204,7 @@ impl LiveInitrd {
         self.installer_copy_network = true;
         Ok(())
     }
-
+    #[cfg(feature = "use-nmstate")]
     pub fn network_nmstate(&mut self, path: &str) -> Result<()> {
         if !self.features.live_initrd_network {
             bail!("This OS image does not support customizing network settings.");

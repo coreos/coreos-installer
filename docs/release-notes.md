@@ -15,6 +15,7 @@ Minor changes:
 
 Internal changes:
 - s390x: Use options and logic compatible with both C-based `genprotimg` and Rust-based `pvimg`
+- nmstate: add feature-flag to remove hard dependency
 
 Packaging changes:
 

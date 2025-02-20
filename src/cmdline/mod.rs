@@ -299,6 +299,7 @@ pub struct CommonCustomizeConfig {
     /// environment, including when Ignition is run.  If installer is enabled
     /// via additional options, network settings will also be applied in the
     /// destination system, including when Ignition is run.
+    #[cfg(feature = "use-nmstate")]
     #[arg(long, value_name = "path")]
     pub network_nmstate: Vec<String>,
     /// Ignition PEM CA bundle for live & dest
