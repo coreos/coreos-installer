@@ -17,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   # Pinned toolchain for linting
-  ACTIONS_LINTS_TOOLCHAIN: 1.77.2
+  ACTIONS_LINTS_TOOLCHAIN: 1.84.1
 
 defaults:
   run:
