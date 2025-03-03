@@ -169,7 +169,7 @@ mod ffi {
         pub fn new() -> Self {
             let mut r: Self = unsafe { zeroed() };
             r.fm_extent_count = EXTENT_COUNT as u32;
-            r.fm_length = std::u64::MAX;
+            r.fm_length = u64::MAX;
             r
         }
     }

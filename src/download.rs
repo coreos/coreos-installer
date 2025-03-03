@@ -462,7 +462,7 @@ impl<'a, R: Read> ProgressReader<'a, R> {
     }
 }
 
-impl<'a, R: Read> Read for ProgressReader<'a, R> {
+impl<R: Read> Read for ProgressReader<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let count = self.source.read(buf)?;
         self.position += count as u64;
@@ -494,7 +494,7 @@ impl<'a, R: Read> Read for ProgressReader<'a, R> {
     }
 }
 
-impl<'a, R: Read> Drop for ProgressReader<'a, R> {
+impl<R: Read> Drop for ProgressReader<'_, R> {
     fn drop(&mut self) {
         // if we reported progress using CRs, log final newline
         if self.tty {

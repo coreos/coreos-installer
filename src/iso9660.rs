@@ -371,14 +371,14 @@ pub struct IsoFsWalkIterator<'a> {
     dirpath: PathBuf,
 }
 
-impl<'a> Iterator for IsoFsWalkIterator<'a> {
+impl Iterator for IsoFsWalkIterator<'_> {
     type Item = Result<(String, DirectoryRecord)>;
     fn next(&mut self) -> Option<Self::Item> {
         self.walk_iterator_next().transpose()
     }
 }
 
-impl<'a> IsoFsWalkIterator<'a> {
+impl IsoFsWalkIterator<'_> {
     // This is simply split out of next() above for easier error-handling
     fn walk_iterator_next(&mut self) -> Result<Option<(String, DirectoryRecord)>> {
         while let Some(ref mut current_dir) = self.current_dir {
