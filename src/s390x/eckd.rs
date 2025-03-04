@@ -80,7 +80,7 @@ fn partition_ranges(device: &mut File, first_mb: &[u8]) -> Result<(Vec<Range>, V
             out_offset: start_track * blocks_per_track * bytes_per_block,
             length: blocks * bytes_per_block,
         });
-        let end_track = start_track + (blocks + blocks_per_track - 1) / blocks_per_track - 1;
+        let end_track = start_track + blocks.div_ceil(blocks_per_track) - 1;
 
         if idx == last {
             entries.push(format!("[{start_track}, last, native]"));

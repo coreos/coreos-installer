@@ -84,7 +84,7 @@ impl Serializer {
 // - String/number primitives => add option argument, then value
 // https://serde.rs/impl-serializer.html
 // https://docs.serde.rs/serde/trait.Serializer.html
-impl<'a> ser::Serializer for &'a mut Serializer {
+impl ser::Serializer for &mut Serializer {
     type Ok = ();
     type Error = SerializeError;
     type SerializeSeq = Self;
@@ -260,7 +260,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeSeq for &'a mut Serializer {
+impl ser::SerializeSeq for &mut Serializer {
     type Ok = ();
     type Error = SerializeError;
 
@@ -276,7 +276,7 @@ impl<'a> ser::SerializeSeq for &'a mut Serializer {
     }
 }
 
-impl<'a> ser::SerializeStruct for &'a mut Serializer {
+impl ser::SerializeStruct for &mut Serializer {
     type Ok = ();
     type Error = SerializeError;
 

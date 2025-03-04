@@ -39,6 +39,7 @@ pub(crate) struct Range {
 ///   - ECKD (Extended Count Key Data) - is regular DASD of type 3390
 ///   - FBA (Fixed Block Access) - is used for emulated device that represents a real SCSI device
 ///   - Virt - ECKD on LPAR/zKVM as virtio-device
+///
 /// Only ECKD disks require `dasdfmt, fdasd` linux tools to be configured.
 enum DasdType {
     Eckd,
