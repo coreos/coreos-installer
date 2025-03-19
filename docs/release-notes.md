@@ -12,6 +12,7 @@ Major changes:
 
 Minor changes:
 
+- install: Don't require the network by default
 
 Internal changes:
 - s390x: Use options and logic compatible with both C-based `genprotimg` and Rust-based `pvimg`
