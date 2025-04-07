@@ -55,7 +55,7 @@ byte-unit = ">= 5.1.6, < 6.0.0"
 clap = { version = ">= 4.1, < 5", default-features = false, features = ["std", "cargo", "derive", "error-context", "help", "suggestions", "usage", "wrap_help"] }
 clap_mangen = { version = "0.2", optional = true }
 cpio = ">= 0.2.1, < 0.5"
-flate2 = "^1.0"
+flate2 = "^1.1"
 glob = "^0.3"
 # disable default-enabled cli in gptman 0.x
 gptman = { version = ">= 0.7, < 2", default-features = false }
