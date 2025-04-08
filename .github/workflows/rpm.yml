@@ -18,10 +18,10 @@ concurrency:
 jobs:
   test-rpm-build:
     name: "Build (Fedora)"
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     container:
       image: registry.fedoraproject.org/fedora:latest
-      options: --privileged
+      options: --privileged --security-opt=seccomp=unconfined
     steps:
       # need to install git before checkout to get a git repo
       - name: Install packages
