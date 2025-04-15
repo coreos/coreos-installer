@@ -4,16 +4,27 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.24.0 (unreleased)
+## Upcoming coreos-installer 0.25.0 (unreleased)
 
 Major changes:
 
-- Add Fedora 43 signing key; drop Fedora 40 signing key
 
 Minor changes:
 
 
 Internal changes:
+
+Packaging changes:
+
+
+## coreos-installer 0.24.0 (2025-04-14)
+
+Major changes:
+
+- Add Fedora 43 signing key; drop Fedora 40 signing key
+
+Internal changes:
+
 - s390x: Use options and logic compatible with both C-based `genprotimg` and Rust-based `pvimg`
 
 Packaging changes:
