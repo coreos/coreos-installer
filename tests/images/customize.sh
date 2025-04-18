@@ -12,10 +12,10 @@ trap 'rm -rf "${tmpd}"' EXIT
 cd "${tmpd}"
 
 artifactdir=$1; shift
-ln -s "${artifactdir}"/*-live-kernel-x86_64 src-kernel
+ln -s "${artifactdir}"/*-live-kernel.x86_64 src-kernel
 ln -s "${artifactdir}"/*-live-initramfs.x86_64.img src-initrd
 ln -s "${artifactdir}"/*-live-rootfs.x86_64.img src-rootfs
-ln -s "${artifactdir}"/*-live.x86_64.iso src-iso
+ln -s "${artifactdir}"/*-live-iso.x86_64.iso src-iso
 
 digest() {
     # Ignore filename
