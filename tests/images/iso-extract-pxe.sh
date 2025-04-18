@@ -40,11 +40,11 @@ base=$(basename "${iso}" .iso)
 # check that the files are the same
 
 # shellcheck disable=SC2086
-compare_digests "${base}-vmlinuz" ${builddir}/*-kernel-*
+compare_digests "${base}-vmlinuz" ${builddir}/*live-kernel*
 # shellcheck disable=SC2086
-compare_digests "${base}-initrd.img" ${builddir}/*-initramfs.*.img
+compare_digests "${base}-initrd.img" ${builddir}/*live-initramfs.*.img
 # shellcheck disable=SC2086
-compare_digests "${base}-rootfs.img" ${builddir}/*-rootfs.*.img
+compare_digests "${base}-rootfs.img" ${builddir}/*live-rootfs.*.img
 
 # Done
 echo "Success."
