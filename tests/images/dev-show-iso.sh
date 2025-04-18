@@ -35,7 +35,6 @@ jq -e '.header.descriptors[]|select(.type == "boot")|.boot_system_id|contains("E
 jq -e '.records|index("EFI") >= 0' inspect.json
 jq -e '.records|index("IMAGES/PXEBOOT") >= 0' inspect.json
 jq -e '.records|index("IMAGES/PXEBOOT/ROOTFS.IMG") >= 0' inspect.json
-jq -e '.records|index("ZIPL.PRM") >= 0' inspect.json
 
 # Done
 echo "Success."

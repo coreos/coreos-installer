@@ -30,9 +30,7 @@ cosaPod(buildroot: true, runAsUser: 0) {
     kola(extraArgs: "--denylist-test ext.config.kdump.crash")
 
     stage("Build metal+live") {
-        shwrap("cd /srv/coreos && cosa buildextend-metal")
-        shwrap("cd /srv/coreos && cosa buildextend-metal4k")
-        shwrap("cd /srv/coreos && cosa buildextend-live --fast")
+        shwrap("cd /srv/coreos && cosa osbuild metal metal4k live")
         // Test metal with an uncompressed image and metal4k with a
         // compressed one
         shwrap("cd /srv/coreos && cosa compress --fast --artifact=metal4k")
