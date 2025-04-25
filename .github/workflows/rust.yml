@@ -240,7 +240,7 @@ jobs:
       - name: Cache build artifacts
         uses: Swatinem/rust-cache@v2
       - name: Install dependencies
-        run: dnf install -y gcc git-core libzstd-devel openssl-devel util-linux awk
+        run: dnf install -y gcc git-core libzstd-devel openssl-devel util-linux util-linux-script awk
       - name: cargo build
         run: cargo build
       - name: Help text line length
