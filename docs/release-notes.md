@@ -29,7 +29,7 @@ Internal changes:
 
 Packaging changes:
 
-- Update container to Fedora 41
+- Update container to Fedora 42
 - Require `byte-unit` ≥ 5.1.6
 - Require Rust ≥ 1.84.1
 
