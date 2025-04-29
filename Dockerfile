@@ -14,8 +14,8 @@ RUN mkdir -p .cargo && echo -e '[net]\ngit-fetch-with-cli = true' > .cargo/confi
 RUN cargo build --release
 
 FROM quay.io/fedora/fedora:42
-RUN dnf install -y /usr/bin/gpg /usr/sbin/kpartx /usr/bin/lsblk \
-    /usr/sbin/udevadm && \
+RUN dnf install -y /usr/bin/gpg /usr/bin/kpartx /usr/bin/lsblk \
+    /usr/bin/udevadm && \
     dnf clean all
-COPY --from=builder /build/target/release/coreos-installer /usr/sbin
-ENTRYPOINT ["/usr/sbin/coreos-installer"]
+COPY --from=builder /build/target/release/coreos-installer /usr/bin
+ENTRYPOINT ["/usr/bin/coreos-installer"]
