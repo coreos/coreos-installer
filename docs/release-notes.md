@@ -8,9 +8,9 @@ nav_order: 8
 
 Major changes:
 
-
 Minor changes:
 
+- Restore formatting of progress reporting to pre 0.24.0 behavior.
 
 Internal changes:
 
