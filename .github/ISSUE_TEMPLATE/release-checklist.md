@@ -114,13 +114,13 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] run `kinit your_fas_account@FEDORAPROJECT.ORG`
   - [ ] run `fedpkg new-sources $(spectool -S rust-coreos-installer.spec | sed 's:.*/::')`
   - [ ] PR the changes in [Fedora](https://src.fedoraproject.org/rpms/rust-coreos-installer)
-  - [ ] once the PR merges to rawhide, merge rawhide into the other relevant branches (e.g. f41) then push those, for example:
+  - [ ] once the PR merges to rawhide, merge rawhide into the other relevant branches (e.g. f42) then push those, for example:
     ```bash
     git checkout rawhide
     git pull --ff-only
-    git checkout f41
+    git checkout f42
     git merge --ff-only rawhide
-    git push origin f41
+    git push origin f42
     ```
   - [ ] on each of those branches run `fedpkg build`
   - [ ] once the builds have finished, submit them to [bodhi](https://bodhi.fedoraproject.org/updates/new), filling in:
