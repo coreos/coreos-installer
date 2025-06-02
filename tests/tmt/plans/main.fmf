@@ -1,0 +1,35 @@
+---
+# This prepare is used to control when the coreos-installer is installed using
+# the distribution package or when it is built from source in the test environment
+prepare:
+  - name: Set COS_INSTALLER_BIN_DIR when built from source
+    when: use_built_from_src is defined and use_built_from_src == true
+    how: shell
+    script: |
+      # This is a workaround script for the fact that the coreos-installer binary is not in the PATH
+      # when running the tests in the tmt environment when it is built from source.
+      # The coreos-installer binary is located in the tmt run instance directory and it needed
+      # to set a environment variable to point to the coreos-installer binary location.
+      set -x -e -o pipefail
+      echo "Preparing the test environment"
+      COS_INSTALLER_BIN_NAME="coreos-installer"
+      PARENT_DIR=$(dirname "${TMT_TREE}")
+      COS_INSTALLER_BIN_FULL_PATH=$(find "${PARENT_DIR}" -type f -name "${COS_INSTALLER_BIN_NAME}")
+      if [ -z "${COS_INSTALLER_BIN_FULL_PATH}" ]; then
+          echo "coreos-installer file not found."
+          exit 1
+      fi
+      COS_INSTALLER_BIN_DIR=$(dirname "${COS_INSTALLER_BIN_FULL_PATH}")
+      echo "COS_INSTALLER_BIN_DIR=${COS_INSTALLER_BIN_DIR}" > /tmp/cos_installer_bin_dir
+  
+  - name: Install coreos-installer package
+    when: use_built_from_src is not defined or use_built_from_src == false
+    how: install
+    package: coreos-installer
+  
+  - name: Set COS_INSTALLER_BIN_DIR when installed package
+    when: use_built_from_src is not defined or use_built_from_src == false
+    how: shell
+    script: |
+      set -x -e -o pipefail
+      echo "COS_INSTALLER_BIN_DIR=/usr/bin" > /tmp/cos_installer_bin_dir

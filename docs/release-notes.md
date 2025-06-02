@@ -14,6 +14,8 @@ Minor changes:
 
 Internal changes:
 
+- Add initial TMT tests and a new workflow to execute tests on PRs
+
 Packaging changes:
 
 
