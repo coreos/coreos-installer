@@ -1,0 +1,8 @@
+---
+summary: runs coreos-installer --version and checks return code
+tag: 
+  - smoke
+test: |
+  set -x -e -o pipefail
+  source /tmp/cos_installer_bin_dir
+  ${COS_INSTALLER_BIN_DIR}/coreos-installer --version
