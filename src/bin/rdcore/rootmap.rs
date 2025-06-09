@@ -124,7 +124,9 @@ fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>>
         } else {
             Ok(Some(get_luks_kargs(root, &device)?))
         }
-    } else if blktype == "part" || blktype == "disk" || blktype == "mpath" {
+    } else if blktype == "mpath" {
+        Ok(Some(get_multipath_kargs(&device)?))
+    } else if blktype == "part" || blktype == "disk" {
         Ok(None)
     } else {
         bail!("unknown block device type {}", blktype)
@@ -307,3 +309,38 @@ fn write_boot_uuid_grub2_dropin<P: AsRef<Path>>(uuid: &str, p: P) -> Result<()> 
     std::fs::write(p, format!("set BOOT_UUID=\"{uuid}\"\n"))
         .with_context(|| format!("writing {}", p.display()))
 }
+
+fn get_multipath_kargs(device: &Path) -> Result<Vec<String>> {
+    let mut kargs = Vec::new();
+
+    let canonical = std::fs::canonicalize(device)
+        .with_context(|| format!("failed to canonicalize device path: {}", device.display()))?;
+
+    let device_name = canonical
+        .file_name()
+        .and_then(|s| s.to_str())
+        .with_context(|| format!("failed to extract device name from canonical path: {}", canonical.display()))?;
+
+    let mpathd_output = runcmd_output!("multipathd", "show", "maps", "raw", "format", "%d %w")?;
+    let mut found_wwid = None;
+
+    for line in mpathd_output.lines() {
+        let line = line.trim();
+        let mut parts = line.split_whitespace();
+
+        if let (Some(name), Some(wwid)) = (parts.next(), parts.next()) {
+            if name == device_name {
+                found_wwid = Some(wwid.to_string());
+                break;
+            }
+        }
+    }
+
+    let wwid = found_wwid
+        .with_context(|| format!("failed to find WWID in multipathd output for {}", device_name))?;
+
+    kargs.push(format!("mpath.wwid={}", wwid));
+    println!("Multipath WWID detected and added to kernel args: {}", wwid);
+    Ok(kargs)
+}
+
