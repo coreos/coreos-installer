@@ -135,7 +135,9 @@ fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>>
         } else {
             Ok(Some(get_luks_kargs(root, &device)?))
         }
-    } else if blktype == "part" || blktype == "disk" || blktype == "mpath" {
+    } else if blktype == "mpath" {
+        Ok(Some(get_multipath_kargs(&device)?))
+    } else if blktype == "part" || blktype == "disk" {
         Ok(None)
     } else {
         bail!("unknown block device type {}", blktype)
@@ -326,4 +328,42 @@ fn is_on_multipath(backing_devices: &[PathBuf]) -> Result<bool> {
     };
 
     Ok(blkinfo.get("TYPE").is_some_and(|t| t == "mpath"))
+}
+
+fn get_multipath_kargs(device: &Path) -> Result<Vec<String>> {
+    let mut kargs = Vec::new();
+
+    let canonical = std::fs::canonicalize(device)
+        .with_context(|| format!("failed to canonicalize device path: {}", device.display()))?;
+    let device_name = canonical
+        .file_name()
+        .and_then(|s| s.to_str())
+        .with_context(|| {
+            format!(
+                "failed to extract device name from canonical path: {}",
+                canonical.display()
+            )
+        })?;
+
+    let mpathd_output = runcmd_output!("multipathd", "show", "maps", "raw", "format", "%d %w")?;
+    let devices: HashMap<&str, &str> = mpathd_output
+        .lines()
+        .filter_map(|s| {
+            let mut parts = s.trim().split_whitespace();
+            Some((parts.next()?, parts.next()?))
+        })
+        .collect();
+
+    let wwid = devices
+        .get(device_name)
+        .map(|w| w.to_string())
+        .with_context(|| {
+            format!(
+                "failed to find WWID in multipathd output for {}",
+                device_name
+            )
+        })?;
+
+    kargs.push(format!("mpath.wwid={}", wwid));
+    Ok(kargs)
 }
