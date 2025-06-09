@@ -125,6 +125,9 @@ fn device_to_kargs(root: &Mount, device: PathBuf) -> Result<Option<Vec<String>>>
             Ok(Some(get_luks_kargs(root, &device)?))
         }
     } else if blktype == "part" || blktype == "disk" || blktype == "mpath" {
+        if blktype == "mpath" {
+            get_multipath_kargs(&blkinfo)?;
+        }
         Ok(None)
     } else {
         bail!("unknown block device type {}", blktype)
@@ -306,4 +309,35 @@ fn write_boot_uuid_grub2_dropin<P: AsRef<Path>>(uuid: &str, p: P) -> Result<()> 
     let p = p.as_ref();
     std::fs::write(p, format!("set BOOT_UUID=\"{uuid}\"\n"))
         .with_context(|| format!("writing {}", p.display()))
+}
+
+fn get_multipath_kargs(blkinfo: &HashMap<String, String>) -> Result<Vec<String>> {
+    let mut kargs = Vec::new();
+
+    let blkname = blkinfo
+        .get("NAME")
+        .and_then(|s| s.rsplit('/').next())
+        .with_context(|| format!("missing NAME in blkinfo: {:?}", blkinfo))?;
+
+    let mpathd_output = runcmd_output!("multipathd", "show", "maps", "format", "%n %w")?;
+    let mut found_wwid = None;
+
+    for line in mpathd_output.lines() {
+        let line = line.trim();
+        let mut parts = line.split_whitespace();
+
+        if let (Some(name), Some(wwid)) = (parts.next(), parts.next()) {
+            if name == blkname {
+                found_wwid = Some(wwid.to_string());
+                break;
+            }
+        }
+    }
+
+    let wwid = found_wwid
+        .with_context(|| format!("failed to find WWID in multipathd output for {}", blkname))?;
+
+    kargs.push(format!("mpath.wwid={}", wwid));
+    println!("Multipath WWID detected and added to kernel args: {}", wwid);
+    Ok(kargs)
 }
