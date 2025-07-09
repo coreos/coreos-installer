@@ -17,6 +17,7 @@ Internal changes:
 - Add initial TMT tests and a new workflow to execute tests on PRs
 - Use release profile for smaller binaries in CI testing
 - Support cryptsetup-2.8.0's UUIDs naming of dm-integrity devices
+- rootmap: Inject `root=/dev/disk/by-uuid/dm-mpath-$UUID` when on multipath
 
 Packaging changes:
 
