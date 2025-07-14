@@ -1164,9 +1164,9 @@ dependencies = [
 
 [[package]]
 name = "nmstate"
-version = "2.2.46"
+version = "2.2.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19957d05be4382adfc7cf425503f5fd730f607f8887fab8045b79f7fa43acb1a"
+checksum = "b37b6e601d51db85e44314a4c037374bbeadd754752af9a95a1c223e96d2b170"
 dependencies = [
  "log",
  "serde",
