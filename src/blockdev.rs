@@ -198,7 +198,7 @@ impl Disk {
         if !self.is_dm_device() {
             return Ok(false);
         }
-        Ok(runcmd_output!(
+        let dminfo = runcmd_output!(
             "dmsetup",
             "info",
             "--columns",
@@ -207,9 +207,11 @@ impl Disk {
             "uuid",
             &self.path
         )
-        .with_context(|| format!("checking if device {} is type LUKS integrity", self.path))?
-        .trim()
-        .starts_with("CRYPT-INTEGRITY-"))
+        .with_context(|| format!("checking if device {} is type LUKS integrity", self.path))?;
+
+        let uuid = dminfo.trim();
+        // since cryptsetup-2.8.0 SUBDEV is used
+        Ok(uuid.starts_with("CRYPT-INTEGRITY-") || uuid.starts_with("CRYPT-SUBDEV-"))
     }
 }
 
