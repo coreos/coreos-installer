@@ -8,7 +8,7 @@ ifeq ($(RELEASE),1)
 else
 	PROFILE ?= debug
 	CARGO_ARGS = --features docgen
-	# In debug mode (most often used by devs/CI), we default to stripping
+	# In debug mode (most often used by devs), we default to stripping
 	# `rdcore` because it's otherwise huge and in kola's default 1G VMs can
 	# cause ENOSPC. In release mode (most often used by Koji/Brew), we don't do
 	# this because the debuginfo gets split out anyway. In either profile,
