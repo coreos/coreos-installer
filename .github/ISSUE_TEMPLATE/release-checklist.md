@@ -105,15 +105,7 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] `git branch -d pre-release-${RELEASE_VER} release-${RELEASE_VER}`
 
 - Fedora packaging:
-  - [ ] update the `rust-coreos-installer` spec file in [Fedora](https://src.fedoraproject.org/rpms/rust-coreos-installer)
-    - bump the `Version`
-    - switch the `Release` back to `1%{?dist}`
-    - remove any patches obsoleted by the new release
-    - update changelog
-  - [ ] run `spectool -g -S rust-coreos-installer.spec`
-  - [ ] run `kinit your_fas_account@FEDORAPROJECT.ORG`
-  - [ ] run `fedpkg new-sources $(spectool -S rust-coreos-installer.spec | sed 's:.*/::')`
-  - [ ] PR the changes in [Fedora](https://src.fedoraproject.org/rpms/rust-coreos-installer)
+  - [ ] Review the proposed changes in the PR submitted by Packit in [Fedora](https://src.fedoraproject.org/rpms/rust-coreos-installer/pull-requests).
   - [ ] once the PR merges to rawhide, merge rawhide into the other relevant branches (e.g. f42) then push those, for example:
     ```bash
     git checkout rawhide
