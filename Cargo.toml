@@ -42,10 +42,6 @@ name = "rdcore"
 path = "src/bin/rdcore/main.rs"
 required-features = ["rdcore"]
 
-[profile.release]
-# We assume we're being delivered via e.g. RPM which supports split debuginfo
-debug = true
-
 [dependencies]
 anyhow = ">= 1.0.38, < 2"
 base64 = ">= 0.21, < 0.23"
