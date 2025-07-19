@@ -15,6 +15,7 @@ Minor changes:
 Internal changes:
 
 - Add initial TMT tests and a new workflow to execute tests on PRs
+- Use release profile for smaller binaries in CI testing
 
 Packaging changes:
 
