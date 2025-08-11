@@ -8,6 +8,8 @@ nav_order: 8
 
 Major changes:
 
+- Add Fedora 44 signing key
+
 Minor changes:
 
 - Restore formatting of progress reporting to pre 0.24.0 behavior.
