@@ -14,7 +14,7 @@
 
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
-use std::io::{self, copy, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{self, copy, Read, Seek, SeekFrom, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -78,10 +78,7 @@ impl Read for OsmetUnpacker {
             if let Some(thread_handle) = self.thread_handle.take() {
                 return match thread_handle.join().expect("joining thread") {
                     Ok(_) => Ok(0),
-                    Err(e) => Err(io::Error::new(
-                        ErrorKind::Other,
-                        format!("while unpacking: {e}"),
-                    )),
+                    Err(e) => Err(io::Error::other(format!("while unpacking: {e}"))),
                 };
             }
         }

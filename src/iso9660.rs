@@ -71,7 +71,7 @@ impl IsoFs {
         Ok(primary.root.clone())
     }
 
-    pub fn walk(&mut self) -> Result<IsoFsWalkIterator> {
+    pub fn walk(&mut self) -> Result<IsoFsWalkIterator<'_>> {
         let root_dir = self.get_root_directory()?;
         let buf = self.list_dir(&root_dir)?;
         Ok(IsoFsWalkIterator {

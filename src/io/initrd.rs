@@ -349,8 +349,8 @@ mod tests {
         assert_eq!(
             Initrd::from_reader(&*archive).unwrap().members,
             btreemap! {
-                "dir/hello".into() => std::iter::repeat(b'z').take(5000).collect(),
-                "dir/world".into() => std::iter::repeat(b'q').take(4500).collect(),
+                "dir/hello".into() => std::iter::repeat_n(b'z', 5000).collect(),
+                "dir/world".into() => std::iter::repeat_n(b'q', 4500).collect(),
             }
         );
     }

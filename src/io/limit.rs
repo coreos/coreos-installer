@@ -42,10 +42,10 @@ impl<R: Read> Read for LimitReader<R> {
             // reached the limit; only error if we're not at EOF
             return match self.source.read(&mut buf[..1]) {
                 Ok(0) => Ok(0),
-                Ok(_) => Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("collision with {} at offset {}", self.conflict, self.length),
-                )),
+                Ok(_) => Err(io::Error::other(format!(
+                    "collision with {} at offset {}",
+                    self.conflict, self.length
+                ))),
                 Err(e) => Err(e),
             };
         }
@@ -83,10 +83,10 @@ impl<W: Write> Write for LimitWriter<W> {
         }
         let allowed = self.remaining.min(buf.len() as u64);
         if allowed == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("collision with {} at offset {}", self.conflict, self.length),
-            ));
+            return Err(io::Error::other(format!(
+                "collision with {} at offset {}",
+                self.conflict, self.length
+            )));
         }
         let count = self.sink.write(&buf[..allowed as usize])?;
         self.remaining = self
