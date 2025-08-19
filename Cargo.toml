@@ -88,7 +88,7 @@ maplit = "^1.0"
 # In CoreOS CI we test installation from a compressed image created with
 # `cosa compress --fast`.  This is unacceptably slow if the gunzip inner
 # loops are compiled unoptimized.
-[profile.dev.package.adler]
+[profile.dev.package.adler2]
 opt-level = 3
 [profile.dev.package.crc32fast]
 opt-level = 3
