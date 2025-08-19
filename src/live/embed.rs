@@ -20,7 +20,6 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{copy, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::iter::repeat;
 
 use crate::io::*;
 use crate::iso9660::{self, IsoFs};
@@ -609,7 +608,7 @@ impl InitrdEmbedArea {
                 capacity
             )
         }
-        data.extend(repeat(0).take(capacity - data.len()));
+        data.extend(std::iter::repeat_n(0, capacity - data.len()));
         region.contents = data;
         Ok(region)
     }

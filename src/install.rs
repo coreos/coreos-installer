@@ -643,10 +643,10 @@ fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]
             name = "grub2/grub.cfg";
             path = mountpoint.join(name);
         }
-        let grub_cfg = fs::read_to_string(&path).with_context(|| format!("reading {}", name))?;
+        let grub_cfg = fs::read_to_string(&path).with_context(|| format!("reading {name}"))?;
         let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &grub_commands)
-            .with_context(|| format!("updating {}", name))?;
-        fs::write(&path, new_grub_cfg).with_context(|| format!("writing {}", name))?;
+            .with_context(|| format!("updating {name}"))?;
+        fs::write(&path, new_grub_cfg).with_context(|| format!("writing {name}"))?;
     }
     Ok(())
 }

@@ -349,7 +349,7 @@ fn get_multipath_kargs(device: &Path) -> Result<Vec<String>> {
     let devices: HashMap<&str, &str> = mpathd_output
         .lines()
         .filter_map(|s| {
-            let mut parts = s.trim().split_whitespace();
+            let mut parts = s.split_whitespace();
             Some((parts.next()?, parts.next()?))
         })
         .collect();
