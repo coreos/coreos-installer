@@ -121,6 +121,11 @@ pub struct InstallConfig {
     /// formatted as <type>-<hexvalue>.  <type> can be sha256 or sha512.
     #[arg(long, value_name = "digest")]
     pub ignition_hash: Option<IgnitionHash>,
+    /// Only perform post-processing (ignition, network copy, kernel args, etc.) without writing
+    /// the image to disk
+    #[clap(long)]
+    #[clap(conflicts_with_all = &["image-file", "image-url"])]
+    pub postprocess_only: bool,
     /// Target CPU architecture
     ///
     /// Create an install disk for a different CPU architecture than the
