@@ -21,6 +21,7 @@ Internal changes:
 - Support cryptsetup-2.8.0's UUIDs naming of dm-integrity devices
 - rootmap: Inject `root=/dev/disk/by-uuid/dm-mpath-$UUID` when on multipath
 - rootmap: Inject `mpath.wwid=$WWID` when on multipath
+- rootmap: Bypass cache when querying filesystem UUID for `root karg` 
 
 Packaging changes:
 
