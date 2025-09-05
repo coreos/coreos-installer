@@ -14,7 +14,6 @@ Minor changes:
 
 Internal changes:
 
-
 Packaging changes:
 
 
@@ -33,6 +32,7 @@ Internal changes:
 Packaging changes:
 
 - Fix Packit changelog entry generation
+- rootmap: Bypass cache when querying filesystem UUID for `root karg` 
 
 
 ## coreos-installer 0.19.0 (2023-12-11)

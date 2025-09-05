@@ -1,0 +1,51 @@
+From 5f15ba53433fadc0bd6b6737b2c7e3b3e415522c Mon Sep 17 00:00:00 2001
+From: yasminvalim <ydesouza@redhat.com>
+Date: Fri, 5 Sep 2025 17:50:32 -0300
+Subject: [PATCH] blockdev.rs: uses blkid -p instead of lsblk to bypass the
+ cache
+
+release-notes: add notes and comment for more context
+(cherry picked from commit d7b39b91268406e391f8fff246d81a7160cbc5d9)
+---
+ docs/release-notes.md | 2 +-
+ src/blockdev.rs       | 4 +++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/docs/release-notes.md b/docs/release-notes.md
+index 84d982a..13be7d2 100644
+--- a/docs/release-notes.md
++++ b/docs/release-notes.md
+@@ -14,7 +14,6 @@ Minor changes:
+ 
+ Internal changes:
+ 
+-
+ Packaging changes:
+ 
+ 
+@@ -33,6 +32,7 @@ Internal changes:
+ Packaging changes:
+ 
+ - Fix Packit changelog entry generation
++- rootmap: Bypass cache when querying filesystem UUID for `root karg` 
+ 
+ 
+ ## coreos-installer 0.19.0 (2023-12-11)
+diff --git a/src/blockdev.rs b/src/blockdev.rs
+index 9aa7129..6a09430 100644
+--- a/src/blockdev.rs
++++ b/src/blockdev.rs
+@@ -479,7 +479,9 @@ impl Mount {
+     }
+ 
+     pub fn get_filesystem_uuid(&self) -> Result<String> {
+-        let devinfo = lsblk_single(Path::new(&self.device))?;
++        // We used to use lsblk_single, but its cache may be stale after mkfs.
++        // blkid_single doesn't use cache.
++        let devinfo = blkid_single(Path::new(&self.device))?;
+         devinfo
+             .get("UUID")
+             .map(String::from)
+-- 
+2.51.0
+
