@@ -496,7 +496,9 @@ impl Mount {
     }
 
     pub fn get_filesystem_uuid(&self) -> Result<String> {
-        let devinfo = lsblk_single(Path::new(&self.device))?;
+        // We used to use lsblk_single, but its cache may be stale after mkfs.
+        // blkid_single doesn't use cache.
+        let devinfo = blkid_single(Path::new(&self.device))?;
         devinfo
             .get("UUID")
             .map(String::from)
