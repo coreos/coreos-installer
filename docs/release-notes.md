@@ -4,7 +4,17 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.25.0 (unreleased)
+## Upcoming coreos-installer 0.26.0 (unreleased)
+
+Major changes:
+
+Minor changes:
+
+Internal changes:
+
+Packaging changes:
+
+## coreos-installer 0.25.0 (2025-09-29)
 
 Major changes:
 
@@ -23,6 +33,8 @@ Internal changes:
 - rootmap: Inject `mpath.wwid=$WWID` when on multipath
 
 Packaging changes:
+
+- Updated core dependencies, including a major upgrade to `clap` from v3 to v4 and new versions of `nix`, `pnet`, and `sha2`.
 
 
 ## coreos-installer 0.24.0 (2025-04-14)
