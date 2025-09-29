@@ -447,7 +447,7 @@ impl Mount {
             .context("creating temporary directory")?;
         // avoid auto-cleanup of tempdir, which could recursively remove
         // the partition contents if umount failed
-        let mountpoint = tempdir.into_path();
+        let mountpoint = tempdir.keep();
 
         // Ensure we're in a private mount namespace so the mount isn't
         // visible to the rest of the system.  Multiple unshare calls
