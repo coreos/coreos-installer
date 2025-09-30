@@ -9,77 +9,77 @@ coreos\-installer\-iso\-customize \- Customize a CoreOS live ISO image
 Customize a CoreOS live ISO image
 .SH OPTIONS
 .TP
-\fB\-\-dest\-ignition\fR=\fIpath\fR
+\fB\-\-dest\-ignition\fR \fI<path>\fR
 Ignition config fragment for dest sys
 
 Automatically run installer and merge the specified Ignition config into the config for the destination system.
 .TP
-\fB\-\-dest\-device\fR=\fIpath\fR
+\fB\-\-dest\-device\fR \fI<path>\fR
 Install destination device
 
 Automatically run installer, installing to the specified destination device.  The resulting boot media will overwrite the destination device without confirmation.
 .TP
-\fB\-\-dest\-console\fR=\fIspec\fR
+\fB\-\-dest\-console\fR \fI<spec>\fR
 Kernel and bootloader console for dest
 
 Automatically run installer, configuring the specified kernel and bootloader console for the destination system.  The argument uses the same syntax as the parameter to the "console=" kernel argument.
 .TP
-\fB\-\-dest\-karg\-append\fR=\fIarg\fR
+\fB\-\-dest\-karg\-append\fR \fI<arg>\fR
 Destination kernel argument to append
 
 Automatically run installer, adding the specified kernel argument for every boot of the destination system.
 .TP
-\fB\-\-dest\-karg\-delete\fR=\fIarg\fR
+\fB\-\-dest\-karg\-delete\fR \fI<arg>\fR
 Destination kernel argument to delete
 
 Automatically run installer, deleting the specified kernel argument for every boot of the destination system.
 .TP
-\fB\-\-network\-keyfile\fR=\fIpath\fR
+\fB\-\-network\-keyfile\fR \fI<path>\fR
 NetworkManager keyfile for live & dest
 
 Configure networking using the specified NetworkManager keyfile. Network settings will be applied in the live environment, including when Ignition is run.  If installer is enabled via additional options, network settings will also be applied in the destination system, including when Ignition is run.
 .TP
-\fB\-\-network\-nmstate\fR=\fIpath\fR
+\fB\-\-network\-nmstate\fR \fI<path>\fR
 Nmstate file for live & dest
 
 Configure networking using NetworkManager keyfiles generated from the specified Nmstate files. Network settings will be applied in the live environment, including when Ignition is run.  If installer is enabled via additional options, network settings will also be applied in the destination system, including when Ignition is run.
 .TP
-\fB\-\-ignition\-ca\fR=\fIpath\fR
+\fB\-\-ignition\-ca\fR \fI<path>\fR
 Ignition PEM CA bundle for live & dest
 
 Specify additional TLS certificate authorities to be trusted by Ignition, in PEM format.  Authorities will be trusted by Ignition in the live environment and, if installer is enabled via additional options, in the destination system.
 .TP
-\fB\-\-pre\-install\fR=\fIpath\fR
+\fB\-\-pre\-install\fR \fI<path>\fR
 Script to run before installation
 
 If installer is run at boot, run this script before installation. If the script fails, the live environment will stop at an emergency shell.
 .TP
-\fB\-\-post\-install\fR=\fIpath\fR
+\fB\-\-post\-install\fR \fI<path>\fR
 Script to run after installation
 
 If installer is run at boot, run this script after installation. If the script fails, the live environment will stop at an emergency shell.
 .TP
-\fB\-\-installer\-config\fR=\fIpath\fR
+\fB\-\-installer\-config\fR \fI<path>\fR
 Installer config file
 
 Automatically run coreos\-installer and apply the specified installer config file.  Config files are applied in the order that they are specified.
 .TP
-\fB\-\-live\-ignition\fR=\fIpath\fR
+\fB\-\-live\-ignition\fR \fI<path>\fR
 Ignition config fragment for live env
 
 Merge the specified Ignition config into the config for the live environment.
 .TP
-\fB\-\-live\-karg\-append\fR=\fIarg\fR
+\fB\-\-live\-karg\-append\fR \fI<arg>\fR
 Live kernel argument to append
 
 Kernel argument to append to boots of the live environment.
 .TP
-\fB\-\-live\-karg\-delete\fR=\fIarg\fR
+\fB\-\-live\-karg\-delete\fR \fI<arg>\fR
 Live kernel argument to delete
 
 Kernel argument to delete from boots of the live environment.
 .TP
-\fB\-\-live\-karg\-replace\fR=\fIk=o=n\fR
+\fB\-\-live\-karg\-replace\fR \fI<k=o=n>\fR
 Live kernel argument to replace
 
 Kernel argument to replace for boots of the live environment, in the form key=old=new.  For a default argument "a=b", specifying "\-\-live\-karg\-replace a=b=c" will produce the argument "a=c".
@@ -87,7 +87,7 @@ Kernel argument to replace for boots of the live environment, in the form key=ol
 \fB\-f\fR, \fB\-\-force\fR
 Overwrite existing customizations
 .TP
-\fB\-o\fR, \fB\-\-output\fR=\fIpath\fR
+\fB\-o\fR, \fB\-\-output\fR \fI<path>\fR
 Write ISO to a new output file
 .TP
 \fB\-h\fR, \fB\-\-help\fR
