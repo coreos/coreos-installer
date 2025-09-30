@@ -9,22 +9,22 @@ coreos\-installer\-download \- Download a CoreOS image
 Download a CoreOS image
 .SH OPTIONS
 .TP
-\fB\-s\fR, \fB\-\-stream\fR=\fIname\fR [default: stable]
+\fB\-s\fR, \fB\-\-stream\fR \fI<name>\fR [default: stable]
 Fedora CoreOS stream
 .TP
-\fB\-a\fR, \fB\-\-architecture\fR=\fIname\fR [default: x86_64]
+\fB\-a\fR, \fB\-\-architecture\fR \fI<name>\fR [default: x86_64]
 Target CPU architecture
 .TP
-\fB\-p\fR, \fB\-\-platform\fR=\fIname\fR [default: metal]
+\fB\-p\fR, \fB\-\-platform\fR \fI<name>\fR [default: metal]
 Fedora CoreOS platform name
 .TP
-\fB\-f\fR, \fB\-\-format\fR=\fIname\fR [default: raw.xz]
+\fB\-f\fR, \fB\-\-format\fR \fI<name>\fR [default: raw.xz]
 Image format
 .TP
-\fB\-u\fR, \fB\-\-image\-url\fR=\fIURL\fR
+\fB\-u\fR, \fB\-\-image\-url\fR \fI<URL>\fR
 Manually specify the image URL
 .TP
-\fB\-C\fR, \fB\-\-directory\fR=\fIpath\fR [default: .]
+\fB\-C\fR, \fB\-\-directory\fR \fI<path>\fR [default: .]
 Destination directory
 .TP
 \fB\-d\fR, \fB\-\-decompress\fR
@@ -33,10 +33,10 @@ Decompress image and don\*(Aqt save signature
 \fB\-\-insecure\fR
 Allow unsigned image
 .TP
-\fB\-\-stream\-base\-url\fR=\fIURL\fR
+\fB\-\-stream\-base\-url\fR \fI<URL>\fR
 Base URL for Fedora CoreOS stream metadata
 .TP
-\fB\-\-fetch\-retries\fR=\fIN\fR [default: 0]
+\fB\-\-fetch\-retries\fR \fI<N>\fR [default: 0]
 Fetch retries, or "infinite"
 .TP
 \fB\-h\fR, \fB\-\-help\fR
