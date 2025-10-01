@@ -145,7 +145,7 @@ pub struct InstallConfig {
     // This used to be for configuring networking from the cmdline, but it has
     // been obsoleted by the nicer `--copy-network` approach. We still need it
     // for now though. It's used at least by `coreos-installer.service`.
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "is_default")]
     #[arg(long, hide = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
