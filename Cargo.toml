@@ -7,7 +7,7 @@ rust-version = "1.84.1"
 exclude = ["/.cci.jenkinsfile", "/.github", "/.gitignore", "/Dockerfile"]
 authors = [ "Benjamin Gilbert <bgilbert@redhat.com>" ]
 description = "Installer for Fedora CoreOS and RHEL CoreOS"
-version = "0.24.0"
+version = "0.25.0"
 
 [package.metadata.release]
 sign-commit = true
