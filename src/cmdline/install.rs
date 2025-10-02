@@ -145,7 +145,7 @@ pub struct InstallConfig {
     // This used to be for configuring networking from the cmdline, but it has
     // been obsoleted by the nicer `--copy-network` approach. We still need it
     // for now though. It's used at least by `coreos-installer.service`.
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "is_default")]
     #[arg(long, hide = true, value_name = "args")]
     pub firstboot_args: Option<String>,
     /// Append default kernel arg
@@ -272,28 +272,85 @@ impl InstallConfig {
             return Ok(self);
         }
 
-        let args = self
+        // Collect firstboot-args from all sources
+        let mut firstboot_args = Vec::new();
+
+        // Get firstboot-args from config files
+        for path in &self.config_file {
+            let config: InstallConfig = serde_yaml::from_reader(
+                OpenOptions::new()
+                    .read(true)
+                    .open(path)
+                    .with_context(|| format!("opening config file {path}"))?,
+            )
+            .with_context(|| format!("parsing config file {path}"))?;
+
+            if let Some(args) = config.firstboot_args {
+                firstboot_args.push(args);
+            }
+        }
+
+        // Get firstboot-args from command line
+        if let Some(args) = &self.firstboot_args {
+            firstboot_args.push(args.clone());
+        }
+
+        // Build the final firstboot-args string
+        let combined_firstboot_args = if firstboot_args.is_empty() {
+            None
+        } else {
+            Some(firstboot_args.join(" "))
+        };
+
+        // Serialize everything else normally
+        let mut args = self
             .config_file
             .iter()
             .map(|path| {
-                serde_yaml::from_reader::<_, InstallConfig>(
+                let mut config: InstallConfig = serde_yaml::from_reader(
                     OpenOptions::new()
                         .read(true)
                         .open(path)
                         .with_context(|| format!("opening config file {path}"))?,
                 )
-                .with_context(|| format!("parsing config file {path}"))?
-                .to_args()
-                .with_context(|| format!("serializing config file {path}"))
+                .with_context(|| format!("parsing config file {path}"))?;
+
+                // Clear firstboot-args from config files since we handle them separately
+                config.firstboot_args = None;
+                config
+                    .to_args()
+                    .with_context(|| format!("serializing config file {path}"))
             })
             .collect::<Result<Vec<Vec<_>>>>()?
             .into_iter()
             .flatten()
-            .chain(
-                self.to_args()
-                    .context("serializing command-line arguments")?,
-            )
             .collect::<Vec<_>>();
+
+        // Add command line args (excluding firstboot-args)
+        let cmdline_args = self
+            .to_args()
+            .context("serializing command-line arguments")?;
+
+        // Remove firstboot-args from command line args
+        let mut filtered_cmdline_args = Vec::new();
+        let mut i = 0;
+        while i < cmdline_args.len() {
+            if cmdline_args[i] == "--firstboot-args" && i + 1 < cmdline_args.len() {
+                // Skip --firstboot-args and its value
+                i += 2;
+            } else {
+                filtered_cmdline_args.push(cmdline_args[i].clone());
+                i += 1;
+            }
+        }
+
+        args.extend(filtered_cmdline_args);
+
+        // Add the combined firstboot-args at the end
+        if let Some(combined_args) = combined_firstboot_args {
+            args.push("--firstboot-args".to_string());
+            args.push(combined_args);
+        }
 
         println!("Running with arguments: {}", args.join(" "));
         Self::from_args(&args)
@@ -390,6 +447,8 @@ mod test {
             "ttyS0,9600n8",
             "--console",
             "ttyS1,115200n8",
+            "--firstboot-args",
+            "j",
             "--append-karg",
             "k",
             "--append-karg",
@@ -532,6 +591,31 @@ dest-device: u
         let expected = ["/dev/missing"];
         let config = InstallConfig::from_args(&expected).unwrap();
         assert_eq!(config.to_args().unwrap(), expected);
+    }
+
+    /// Test that firstboot-args are preserved when using config files
+    #[test]
+    fn test_firstboot_args_with_config_file() {
+        let mut f = NamedTempFile::new().unwrap();
+        f.as_file_mut()
+            .write_all(b"dest-device: /dev/sda\nfirstboot-args: rd.multipath=default")
+            .unwrap();
+
+        let config = InstallConfig::from_args(&[
+            "--config-file",
+            f.path().to_str().unwrap(),
+            "--firstboot-args",
+            "ip=dhcp",
+        ])
+        .unwrap()
+        .expand_config_files()
+        .unwrap();
+
+        // Should preserve both firstboot-args
+        assert!(config.firstboot_args.is_some());
+        let args = config.firstboot_args.unwrap();
+        assert!(args.contains("rd.multipath=default"));
+        assert!(args.contains("ip=dhcp"));
     }
 
     /// Test multiple config files overlapping with command-line arguments

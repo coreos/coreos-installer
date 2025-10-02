@@ -10,6 +10,8 @@ Major changes:
 
 Minor changes:
 
+- Fixed --firstboot-args being lost when using --config-file by changing the field serialization to only skip empty values.
+
 Internal changes:
 
 Packaging changes:
