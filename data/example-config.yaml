@@ -19,6 +19,8 @@ architecture: name
 platform: name
 # Kernel and bootloader console
 console: [spec, spec]
+# Additional kernel args for the first boot
+firstboot-args: args
 # Append default kernel arguments
 append-karg: [arg, arg]
 # Delete default kernel arguments
