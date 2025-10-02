@@ -274,7 +274,7 @@ impl InstallConfig {
 
         // Collect firstboot-args from all sources
         let mut firstboot_args = Vec::new();
-        
+
         // Get firstboot-args from config files
         for path in &self.config_file {
             let config: InstallConfig = serde_yaml::from_reader(
@@ -284,12 +284,12 @@ impl InstallConfig {
                     .with_context(|| format!("opening config file {path}"))?,
             )
             .with_context(|| format!("parsing config file {path}"))?;
-            
+
             if let Some(args) = config.firstboot_args {
                 firstboot_args.push(args);
             }
         }
-        
+
         // Get firstboot-args from command line
         if let Some(args) = &self.firstboot_args {
             firstboot_args.push(args.clone());
@@ -314,10 +314,11 @@ impl InstallConfig {
                         .with_context(|| format!("opening config file {path}"))?,
                 )
                 .with_context(|| format!("parsing config file {path}"))?;
-                
+
                 // Clear firstboot-args from config files since we handle them separately
                 config.firstboot_args = None;
-                config.to_args()
+                config
+                    .to_args()
                     .with_context(|| format!("serializing config file {path}"))
             })
             .collect::<Result<Vec<Vec<_>>>>()?
@@ -326,9 +327,10 @@ impl InstallConfig {
             .collect::<Vec<_>>();
 
         // Add command line args (excluding firstboot-args)
-        let cmdline_args = self.to_args()
+        let cmdline_args = self
+            .to_args()
             .context("serializing command-line arguments")?;
-        
+
         // Remove firstboot-args from command line args
         let mut filtered_cmdline_args = Vec::new();
         let mut i = 0;
@@ -341,9 +343,9 @@ impl InstallConfig {
                 i += 1;
             }
         }
-        
+
         args.extend(filtered_cmdline_args);
-        
+
         // Add the combined firstboot-args at the end
         if let Some(combined_args) = combined_firstboot_args {
             args.push("--firstboot-args".to_string());
@@ -598,15 +600,17 @@ dest-device: u
         f.as_file_mut()
             .write_all(b"dest-device: /dev/sda\nfirstboot-args: rd.multipath=default")
             .unwrap();
-        
+
         let config = InstallConfig::from_args(&[
-            "--config-file", f.path().to_str().unwrap(),
-            "--firstboot-args", "ip=dhcp"
+            "--config-file",
+            f.path().to_str().unwrap(),
+            "--firstboot-args",
+            "ip=dhcp",
         ])
         .unwrap()
         .expand_config_files()
         .unwrap();
-        
+
         // Should preserve both firstboot-args
         assert!(config.firstboot_args.is_some());
         let args = config.firstboot_args.unwrap();

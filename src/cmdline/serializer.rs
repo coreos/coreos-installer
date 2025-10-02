@@ -49,6 +49,9 @@ impl Serializer {
     fn push_field(&mut self, name: &'static str) {
         let field = if self.help_text.contains(&format!(" --{name} ")) {
             Some(name)
+        } else if name == "firstboot-args" {
+            // Special case for firstboot-args
+            Some(name)
         } else {
             // don't serialize to --option
             None
