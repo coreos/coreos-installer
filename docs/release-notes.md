@@ -12,6 +12,8 @@ Minor changes:
 
 Internal changes:
 
+- install: Simplify firstboot-args handling in config file expansion
+
 Packaging changes:
 
 ## coreos-installer 0.25.0 (2025-09-29)
