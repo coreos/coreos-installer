@@ -272,7 +272,7 @@ impl InstallConfig {
             return Ok(self);
         }
 
-        let args = self
+        let mut args = self
             .config_file
             .iter()
             .map(|path| {
@@ -294,6 +294,12 @@ impl InstallConfig {
                     .context("serializing command-line arguments")?,
             )
             .collect::<Vec<_>>();
+
+        // If firstboot-args is defined, add it manually
+        if let Some(firstboot_args) = &self.firstboot_args {
+            args.push("--firstboot-args".to_string());
+            args.push(firstboot_args.clone());
+        }
 
         println!("Running with arguments: {}", args.join(" "));
         Self::from_args(&args)
