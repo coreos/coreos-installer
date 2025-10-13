@@ -584,4 +584,30 @@ dest-device: u
         .expand_config_files()
         .unwrap_err();
     }
+
+    /// Test that firstboot-args is manually added to args list when defined
+    #[test]
+    fn test_firstboot_args_manually_added() {
+        let mut f = NamedTempFile::new().unwrap();
+        f.as_file_mut().write_all(b"dest-device: /dev/sda").unwrap();
+
+        let config = InstallConfig::from_args(&[
+            "--config-file",
+            f.path().to_str().unwrap(),
+            "--firstboot-args",
+            "ip=dhcp",
+        ])
+        .unwrap();
+
+        // Verify firstboot-args is defined
+        assert!(config.firstboot_args.is_some());
+        assert_eq!(config.firstboot_args.as_ref().unwrap(), "ip=dhcp");
+
+        // Test expand_config_files to verify manual addition
+        let expanded = config.expand_config_files().unwrap();
+
+        // Should still have firstboot-args
+        assert!(expanded.firstboot_args.is_some());
+        assert_eq!(expanded.firstboot_args.unwrap(), "ip=dhcp");
+    }
 }
