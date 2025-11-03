@@ -125,21 +125,6 @@ Push access to the upstream repository is required in order to publish the new t
   - [ ] [submit a fast-track](https://github.com/coreos/fedora-coreos-config/actions/workflows/add-override.yml) for FCOS testing-devel
   - [ ] [submit a fast-track](https://github.com/coreos/fedora-coreos-config/actions/workflows/add-override.yml) for FCOS next-devel if it is [open](https://github.com/coreos/fedora-coreos-pipeline/blob/main/next-devel/README.md)
 
-- RHCOS packaging:
-  - [ ] update the [spec file](https://gitlab.com/redhat/rhel/rpms/coreos-installer)
-    - bump the `Version`
-    - switch the `Release` back to `1%{?dist}`
-    - remove any patches obsoleted by the new release
-    - update changelog
-  - [ ] run `spectool -g -S coreos-installer.spec`
-  - [ ] run `kinit your_account@IPA.REDHAT.COM`
-  - [ ] run `rhpkg new-sources $(spectool -S coreos-installer.spec | sed 's:.*/::')`
-  - [ ] PR the changes
-  - [ ] get the PR reviewed and merge it
-  - [ ] update your local repo and run `rhpkg build`
-  - [ ] file ticket similar to [this one](https://issues.redhat.com/browse/ART-3772) to sync the new version to mirror.openshift.com
-  - [ ] wait until mirror.openshift.com is updated and confirm the new version is correct
-
 CentOS Stream 9 packaging:
   - [ ] Create a `rebase-c9s-coreos-installer` issue in the internal team-operations repo and follow the steps there
 
