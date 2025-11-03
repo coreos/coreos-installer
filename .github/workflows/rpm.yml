@@ -27,7 +27,7 @@ jobs:
       - name: Install packages
         run: dnf install -y git make mock
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         # fetch tags for versioning
         with:
           fetch-depth: 0
