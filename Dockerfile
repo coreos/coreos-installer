@@ -1,4 +1,4 @@
-FROM quay.io/fedora/fedora:42 AS builder
+FROM quay.io/fedora/fedora:43 AS builder
 RUN dnf install -y cargo git-core libzstd-devel openssl-devel xz-devel
 WORKDIR /build
 COPY Cargo.* ./
@@ -13,7 +13,7 @@ RUN if [ $(uname -p) != x86_64 ]; then sed -i "s/^debug = false$/debug = false\n
 RUN mkdir -p .cargo && echo -e '[net]\ngit-fetch-with-cli = true' > .cargo/config.toml
 RUN cargo build --release
 
-FROM quay.io/fedora/fedora:42
+FROM quay.io/fedora/fedora:43
 RUN dnf install -y /usr/bin/gpg /usr/bin/kpartx /usr/bin/lsblk \
     /usr/bin/udevadm && \
     dnf clean all
