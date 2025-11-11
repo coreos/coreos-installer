@@ -260,9 +260,9 @@ pub struct CommonCustomizeConfig {
     /// Install destination device
     ///
     /// Automatically run installer, installing to the specified destination
-    /// device.  The resulting boot media will overwrite the destination
-    /// device without confirmation.
-    #[arg(long, value_name = "path")]
+    /// device that the user must provide.  The resulting boot media will
+    /// overwrite the destination device without confirmation.
+    #[arg(long, value_name = "path", required_unless_present = "installer_config")]
     pub dest_device: Option<String>,
     /// Kernel and bootloader console for dest
     ///
