@@ -16,7 +16,6 @@ use anyhow::{bail, Context, Result};
 use nix::unistd::isatty;
 use std::fs::{write, File, OpenOptions};
 use std::io::{self, copy, BufWriter, Seek, Write};
-use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
 use crate::io::*;
@@ -104,7 +103,7 @@ pub(super) fn copy_file_from_iso(
 }
 
 pub(super) fn verify_stdout_not_tty() -> Result<()> {
-    if isatty(io::stdout().as_raw_fd()).context("checking if stdout is a TTY")? {
+    if isatty(io::stdout()).context("checking if stdout is a TTY")? {
         bail!("Refusing to write binary data to terminal");
     }
     Ok(())

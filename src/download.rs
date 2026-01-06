@@ -19,7 +19,6 @@ use reqwest::Url;
 use std::fs::{remove_file, File, OpenOptions};
 use std::io::{self, copy, stderr, BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::num::{NonZeroU32, NonZeroU64};
-use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -424,7 +423,7 @@ struct ProgressReader<'a, R: Read> {
 
 impl<'a, R: Read> ProgressReader<'a, R> {
     fn new(source: R, length: Option<u64>, artifact_type: &'a str) -> Self {
-        let tty = isatty(stderr().as_raw_fd()).unwrap_or_else(|e| {
+        let tty = isatty(stderr()).unwrap_or_else(|e| {
             eprintln!("checking if stderr is a TTY: {e}");
             false
         });
