@@ -18,6 +18,8 @@ Internal changes:
 
 Packaging changes:
 
+- Require Rust ≥ 1.90.0
+
 ## coreos-installer 0.25.0 (2025-09-29)
 
 Major changes:
