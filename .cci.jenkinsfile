@@ -14,15 +14,15 @@ buildPod {
     }
 }
 
-cosaPod(runAsUser: 0) {
+cosaPod {
     checkout scm
 
     unstash name: 'build'
 
-    // Delete the OS copy of coreos-installer so we don't test it by mistake
-    shwrap("rm /usr/bin/coreos-installer")
-    // Make sure cosa is using the binary we just built.
-    shwrap("rsync -rlv install/usr/ /usr/")
+    // Overwrite the `coreos-installer` that was a part of the COSA
+    // container with the one built here. This ensures we test the
+    // one that was built and not the one delivered by COSA.
+    shwrap("cp install/usr/bin/coreos-installer /usr/bin/coreos-installer")
 
     cosaBuild(skipKola: true, overlays: ["install"])
     // Skipping kdump.crash due to CI failure in coreos-installer repo
@@ -42,6 +42,9 @@ cosaPod(runAsUser: 0) {
         )
     }
     stage("Image tests") {
+        // Update the perms of the generated ISO so our tests can modify in place.
+        shwrap("find /srv/coreos/builds/ -name '*.iso' | xargs chmod -v 666")
+        // Run the tests!
         shwrap("COREOS_INSTALLER_TEST_INSTALLED_BINARY=1 tests/images.sh /srv/coreos/builds/latest/x86_64")
     }
 }
