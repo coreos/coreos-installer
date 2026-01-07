@@ -14,7 +14,7 @@ buildPod {
     }
 }
 
-cosaPod(buildroot: true, runAsUser: 0) {
+cosaPod(runAsUser: 0) {
     checkout scm
 
     unstash name: 'build'
