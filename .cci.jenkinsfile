@@ -24,10 +24,7 @@ cosaPod {
     // one that was built and not the one delivered by COSA.
     shwrap("cp install/usr/bin/coreos-installer /usr/bin/coreos-installer")
 
-    cosaBuild(skipKola: true, overlays: ["install"])
-    // Skipping kdump.crash due to CI failure in coreos-installer repo
-    // https://github.com/coreos/fedora-coreos-tracker/issues/1075
-    kola(extraArgs: "--denylist-test ext.config.kdump.crash")
+    cosaBuild(overlays: ["install"])
 
     stage("Build metal+live") {
         shwrap("cd /srv/coreos && cosa osbuild metal metal4k live")
