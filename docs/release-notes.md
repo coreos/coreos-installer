@@ -8,6 +8,8 @@ nav_order: 8
 
 Major changes:
 
+- Add Fedora 45 signing key
+
 Minor changes:
 
 - install: Don't require the network by default
