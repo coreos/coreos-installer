@@ -8,7 +8,7 @@ nav_order: 8
 
 Major changes:
 
-- Add Fedora 45 signing key
+- Add Fedora 45 signing key; drop Fedora 42 signing key
 
 Minor changes:
 
