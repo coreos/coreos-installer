@@ -22,7 +22,10 @@ cosaPod {
     // Overwrite the `coreos-installer` that was a part of the COSA
     // container with the one built here. This ensures we test the
     // one that was built and not the one delivered by COSA.
-    shwrap("cp install/usr/bin/coreos-installer /usr/bin/coreos-installer")
+    shwrap("""
+        rm -f /usr/bin/coreos-installer
+        cp install/usr/bin/coreos-installer /usr/bin/coreos-installer
+    """)
 
     cosaBuild(overlays: ["install"])
 
