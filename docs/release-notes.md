@@ -4,7 +4,20 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.26.0 (unreleased)
+## Upcoming coreos-installer 0.27.0 (unreleased)
+
+Major changes:
+
+
+Minor changes:
+
+
+Internal changes:
+
+
+Packaging changes:
+
+## Upcoming coreos-installer 0.26.0 (2026-02-27)
 
 Major changes:
 
@@ -19,6 +32,8 @@ Internal changes:
 - install: Simplify firstboot-args handling in config file expansion
 
 Packaging changes:
+
+- Bump minimum supported Rust version (MSRV) to 1.85.0
 
 ## coreos-installer 0.25.0 (2025-09-29)
 
