@@ -14,9 +14,13 @@
 
 use anyhow::{bail, Context, Result};
 use nix::mount;
+#[cfg(not(target_arch = "s390x"))]
 use regex::{Captures, Regex};
+#[cfg(not(target_arch = "s390x"))]
 use serde::Deserialize;
+#[cfg(not(target_arch = "s390x"))]
 use std::collections::HashMap;
+
 use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, BufReader, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
@@ -33,6 +37,7 @@ use crate::source::*;
 
 // Match the grub.cfg console settings commands in
 // https://github.com/coreos/coreos-assembler/blob/main/src/grub.cfg
+#[cfg(not(target_arch = "s390x"))]
 const GRUB_CFG_CONSOLE_SETTINGS_RE: &str = r"(?P<prefix>\n# CONSOLE-SETTINGS-START\n)(?P<commands>([^\n]*\n)*)(?P<suffix># CONSOLE-SETTINGS-END\n)";
 
 pub fn install(config: InstallConfig) -> Result<()> {
@@ -417,6 +422,10 @@ fn write_disk(
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
         }
+
+        // On s390x, "coreos-installer install --console" tries to look for a GRUB config that doesn't exist and fails the install.
+        // Also s390x doesn't have any configuration in platforms.yaml, so platforms.json is not included in the image
+        #[cfg(not(target_arch = "s390x"))]
         if config.platform.is_some() || !config.console.is_empty() {
             write_console(
                 mount.mountpoint(),
@@ -432,7 +441,10 @@ fn write_disk(
         if !config.append_karg.is_empty() || !config.delete_karg.is_empty() {
             eprintln!("Modifying kernel arguments");
 
+            // On s390x there is no GRUB config, so skip this check to avoid a user warning.
+            #[cfg(not(target_arch = "s390x"))]
             Console::maybe_warn_on_kargs(&config.append_karg, "--append-karg", "--console");
+
             visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
                 KargsEditor::new()
                     .append(config.append_karg.as_slice())
@@ -446,6 +458,17 @@ fn write_disk(
         }
         #[cfg(target_arch = "s390x")]
         {
+            // Since there's no GRUB config, set console kargs by updating the BLS config
+            if !config.console.is_empty() {
+                eprintln!("Adding console kernel arguments");
+                let console_kargs = config.console.iter().map(|c| c.karg()).collect::<Vec<_>>();
+                visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
+                    KargsEditor::new()
+                        .append_if_missing(console_kargs.as_slice())
+                        .maybe_apply_to(orig_options)
+                })
+                .context("appending console kargs")?;
+            }
             s390x::zipl(
                 mount.mountpoint(),
                 None,
@@ -548,6 +571,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "s390x"))]
 #[derive(Clone, Default, Deserialize)]
 struct PlatformSpec {
     #[serde(default)]
@@ -581,6 +605,7 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 }
 
 /// Configure console kernel arguments and GRUB commands.
+#[cfg(not(target_arch = "s390x"))]
 fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]) -> Result<()> {
     // read platforms table
     let platforms = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
@@ -653,6 +678,7 @@ fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]
 
 /// Rewrite the grub.cfg CONSOLE-SETTINGS block to use the specified GRUB
 /// commands, and return the result.
+#[cfg(not(target_arch = "s390x"))]
 fn update_grub_cfg_console_settings(grub_cfg: &str, commands: &[String]) -> Result<String> {
     let mut new_commands = commands.join("\n");
     if !new_commands.is_empty() {
@@ -821,6 +847,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_arch = "s390x"))]
     #[test]
     fn test_update_grub_cfg() {
         let base_cfgs = vec![
