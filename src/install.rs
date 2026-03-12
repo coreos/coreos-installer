@@ -14,9 +14,6 @@
 
 use anyhow::{bail, Context, Result};
 use nix::mount;
-use regex::{Captures, Regex};
-use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, BufReader, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
@@ -31,8 +28,16 @@ use crate::io::*;
 use crate::s390x;
 use crate::source::*;
 
+#[cfg(not(target_arch = "s390x"))]
+use {
+    regex::{Captures, Regex},
+    serde::Deserialize,
+    std::collections::HashMap,
+};
+
 // Match the grub.cfg console settings commands in
 // https://github.com/coreos/coreos-assembler/blob/main/src/grub.cfg
+#[cfg(not(target_arch = "s390x"))]
 const GRUB_CFG_CONSOLE_SETTINGS_RE: &str = r"(?P<prefix>\n# CONSOLE-SETTINGS-START\n)(?P<commands>([^\n]*\n)*)(?P<suffix># CONSOLE-SETTINGS-END\n)";
 
 pub fn install(config: InstallConfig) -> Result<()> {
@@ -417,6 +422,10 @@ fn write_disk(
         if let Some(platform) = config.platform.as_ref() {
             write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
         }
+
+        // On s390x, "coreos-installer install --console" tries to look for a GRUB config that doesn't exist and fails the install.
+        // Also s390x doesn't have any configuration in platforms.yaml, so platforms.json is not included in the image
+        #[cfg(not(target_arch = "s390x"))]
         if config.platform.is_some() || !config.console.is_empty() {
             write_console(
                 mount.mountpoint(),
@@ -425,25 +434,21 @@ fn write_disk(
             )
             .context("configuring console")?;
         }
-        if let Some(firstboot_args) = config.firstboot_args.as_ref() {
-            write_firstboot_kargs(mount.mountpoint(), firstboot_args)
-                .context("writing firstboot kargs")?;
-        }
-        if !config.append_karg.is_empty() || !config.delete_karg.is_empty() {
-            eprintln!("Modifying kernel arguments");
 
-            Console::maybe_warn_on_kargs(&config.append_karg, "--append-karg", "--console");
-            visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-                KargsEditor::new()
-                    .append(config.append_karg.as_slice())
-                    .delete(config.delete_karg.as_slice())
-                    .maybe_apply_to(orig_options)
-            })
-            .context("deleting and appending kargs")?;
-        }
+        apply_karg_modifications(
+            mount.mountpoint(),
+            config.firstboot_args.as_deref(),
+            &config.append_karg,
+            &config.delete_karg,
+            #[cfg(target_arch = "s390x")]
+            &config.console,
+        )
+        .context("applying kargs modifications")?;
+
         if let Some(network_config) = network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
         }
+
         #[cfg(target_arch = "s390x")]
         {
             s390x::zipl(
@@ -462,6 +467,56 @@ fn write_disk(
 
     // detect any latent write errors
     dest.sync_all().context("syncing data to disk")?;
+
+    Ok(())
+}
+
+/// Apply kernel argument modifications to BLS entries.
+///
+/// This function handles:
+/// - Firstboot kernel arguments (applied once on first boot)
+/// - Explicit karg modifications (--append-karg, --delete-karg)
+/// - Architecture-specific console configuration (s390x only)
+///
+/// On s390x, console arguments are applied to BLS entries since there's
+/// no GRUB configuration (s390x uses zipl instead).
+fn apply_karg_modifications(
+    mountpoint: &Path,
+    firstboot_args: Option<&str>,
+    append_kargs: &[String],
+    delete_kargs: &[String],
+    #[cfg(target_arch = "s390x")] consoles: &[Console],
+) -> Result<()> {
+    if let Some(firstboot_args) = firstboot_args {
+        write_firstboot_kargs(mountpoint, firstboot_args).context("writing firstboot kargs")?;
+    }
+
+    let mut kargs_editor = KargsEditor::new();
+    if !append_kargs.is_empty() {
+        kargs_editor.append(append_kargs);
+    }
+    if !delete_kargs.is_empty() {
+        kargs_editor.delete(delete_kargs);
+    }
+    #[cfg(target_arch = "s390x")]
+    {
+        if !consoles.is_empty() {
+            let console_kargs: Vec<_> = consoles.iter().map(|c| c.karg()).collect();
+            kargs_editor.append_if_missing(&console_kargs);
+        }
+    }
+    if kargs_editor != KargsEditor::default() {
+        eprintln!("Modifying kernel arguments");
+
+        // On s390x there is no GRUB config, so skip this check to avoid a user warning.
+        #[cfg(not(target_arch = "s390x"))]
+        Console::maybe_warn_on_kargs(append_kargs, "--append-karg", "--console");
+
+        visit_bls_entry_options(mountpoint, |orig_options: &str| {
+            kargs_editor.maybe_apply_to(orig_options)
+        })
+        .context("modifying kernel arguments")?;
+    }
 
     Ok(())
 }
@@ -548,6 +603,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "s390x"))]
 #[derive(Clone, Default, Deserialize)]
 struct PlatformSpec {
     #[serde(default)]
@@ -581,6 +637,7 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
 }
 
 /// Configure console kernel arguments and GRUB commands.
+#[cfg(not(target_arch = "s390x"))]
 fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]) -> Result<()> {
     // read platforms table
     let platforms = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
@@ -653,6 +710,7 @@ fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]
 
 /// Rewrite the grub.cfg CONSOLE-SETTINGS block to use the specified GRUB
 /// commands, and return the result.
+#[cfg(not(target_arch = "s390x"))]
 fn update_grub_cfg_console_settings(grub_cfg: &str, commands: &[String]) -> Result<String> {
     let mut new_commands = commands.join("\n");
     if !new_commands.is_empty() {
@@ -821,6 +879,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_arch = "s390x"))]
     #[test]
     fn test_update_grub_cfg() {
         let base_cfgs = vec![
