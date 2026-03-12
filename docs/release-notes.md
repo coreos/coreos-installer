@@ -14,6 +14,7 @@ Minor changes:
 
 Internal changes:
 
+- install: Fix '--console' flag on s390x by writing console kargs to BLS entries instead of GRUB config
 
 Packaging changes:
 
