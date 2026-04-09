@@ -14,6 +14,7 @@
 
 use anyhow::{bail, Context, Result};
 use nix::mount;
+#[cfg(not(target_arch = "s390x"))]
 use regex::{Captures, Regex};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -33,6 +34,7 @@ use crate::source::*;
 
 // Match the grub.cfg console settings commands in
 // https://github.com/coreos/coreos-assembler/blob/main/src/grub.cfg
+#[cfg(not(target_arch = "s390x"))]
 const GRUB_CFG_CONSOLE_SETTINGS_RE: &str = r"(?P<prefix>\n# CONSOLE-SETTINGS-START\n)(?P<commands>([^\n]*\n)*)(?P<suffix># CONSOLE-SETTINGS-END\n)";
 
 pub fn install(config: InstallConfig) -> Result<()> {
@@ -425,6 +427,7 @@ fn write_disk(
         )
         .context("configuring kernel arguments")?;
 
+        #[cfg(not(target_arch = "s390x"))]
         configure_grub(
             mount.mountpoint(),
             config.platform.as_deref(),
@@ -503,6 +506,7 @@ fn configure_kernel_arguments(
 }
 
 /// Configure GRUB console settings.
+#[cfg(not(target_arch = "s390x"))]
 fn configure_grub(mountpoint: &Path, platform: Option<&str>, console: &[Console]) -> Result<()> {
     // custom console settings completely override platform-specific defaults
     if !console.is_empty() {
@@ -602,6 +606,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
 #[derive(Clone, Default, Deserialize)]
 struct PlatformSpec {
     #[serde(default)]
+    #[cfg(not(target_arch = "s390x"))]
     grub_commands: Vec<String>,
     #[serde(default)]
     kernel_arguments: Vec<String>,
@@ -672,6 +677,7 @@ fn configure_platform_console_kargs(mountpoint: &Path, platform: &str) -> Result
 }
 
 /// Configure platform-specific GRUB console settings.
+#[cfg(not(target_arch = "s390x"))]
 fn configure_platform_grub_console(mountpoint: &Path, platform: &str) -> Result<()> {
     let platforms = read_platform_specs(mountpoint)?;
     let spec = platforms.get(platform).cloned().unwrap_or_default();
@@ -710,6 +716,7 @@ fn configure_console_kargs(mountpoint: &Path, consoles: &[Console]) -> Result<()
 }
 
 /// Build GRUB console commands from console specifications.
+#[cfg(not(target_arch = "s390x"))]
 fn build_grub_console_commands(consoles: &[Console]) -> Vec<String> {
     let mut grub_commands = Vec::new();
     let mut grub_terminals = Vec::new();
@@ -732,6 +739,7 @@ fn build_grub_console_commands(consoles: &[Console]) -> Vec<String> {
 }
 
 /// Update GRUB console settings in grub.cfg or console.cfg.
+#[cfg(not(target_arch = "s390x"))]
 fn update_grub_console_settings(mountpoint: &Path, commands: &[String]) -> Result<()> {
     // Prefer the new grub2/console.cfg, but fallback to grub2/grub.cfg
     let mut name = "grub2/console.cfg";
@@ -751,6 +759,7 @@ fn update_grub_console_settings(mountpoint: &Path, commands: &[String]) -> Resul
 
 /// Rewrite the grub.cfg CONSOLE-SETTINGS block to use the specified GRUB
 /// commands, and return the result.
+#[cfg(not(target_arch = "s390x"))]
 fn apply_grub_console_commands(grub_cfg: &str, commands: &[String]) -> Result<String> {
     let mut new_commands = commands.join("\n");
     if !new_commands.is_empty() {
@@ -920,6 +929,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_arch = "s390x"))]
     fn test_update_grub_cfg() {
         let base_cfgs = vec![
             // no existing commands
