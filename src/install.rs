@@ -466,10 +466,13 @@ fn configure_kernel_arguments(
     delete_kargs: &[String],
 ) -> Result<()> {
     if let Some(platform) = platform {
-        write_platform(mountpoint, platform).context("writing platform ID")?;
+        // custom console settings completely override platform-specific defalts
+        configure_platform(mountpoint, platform, !console.is_empty())
+            .context("configuring platform")?;
     }
-    if platform.is_some() || !console.is_empty() {
-        write_console(mountpoint, platform, console).context("configuring console")?;
+
+    if !console.is_empty() {
+        configure_console(mountpoint, console).context("configuring console")?;
     }
 
     if let Some(firstboot_args) = firstboot_args {
@@ -582,13 +585,28 @@ struct PlatformSpec {
     kernel_arguments: Vec<String>,
 }
 
-/// Override the platform ID.
-fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
-    // early return if setting the platform to the default value, since
-    // otherwise we'll think we failed to set it
+/// Read the platform specifications from the platforms.json file.
+fn read_platform_specs(mountpoint: &Path) -> Result<HashMap<String, PlatformSpec>> {
+    match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
+        Ok(json) => serde_json::from_str::<HashMap<String, PlatformSpec>>(&json)
+            .context("parsing platform table"),
+        // no table for this image?
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Default::default()),
+        Err(e) => Err(e).context("reading platform table"),
+    }
+}
+
+/// Configure platform-specific settings including kernel arguments and GRUB commands.
+fn configure_platform(
+    mountpoint: &Path,
+    platform: &str,
+    skip_console_settings: bool,
+) -> Result<()> {
+    // Early return if setting the platform to the default value
     if platform == "metal" {
         return Ok(());
     }
+
     eprintln!("Setting platform to {platform}");
 
     // We assume that we will only install from metal images and that the
@@ -603,83 +621,112 @@ fn write_platform(mountpoint: &Path, platform: &str) -> Result<()> {
         }
         Ok(Some(new_options))
     })?;
+
+    // Apply platform-specific console settings only if user didn't provide explicit console settings
+    if !skip_console_settings {
+        apply_platform_console_settings(mountpoint, platform)?;
+    }
+
     Ok(())
 }
 
-/// Configure console kernel arguments and GRUB commands.
-fn write_console(mountpoint: &Path, platform: Option<&str>, consoles: &[Console]) -> Result<()> {
-    // read platforms table
-    let platforms = match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
-        Ok(json) => serde_json::from_str::<HashMap<String, PlatformSpec>>(&json)
-            .context("parsing platform table")?,
-        // no table for this image?
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
-        Err(e) => return Err(e).context("reading platform table"),
-    };
+/// Apply platform-specific console kernel arguments and GRUB commands.
+fn apply_platform_console_settings(mountpoint: &Path, platform: &str) -> Result<()> {
+    let platforms = read_platform_specs(mountpoint)?;
+    let spec = platforms.get(platform).cloned().unwrap_or_default();
+    let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
 
-    let mut kargs = Vec::new();
-    let mut grub_commands = Vec::new();
-    if !consoles.is_empty() {
-        // custom console settings completely override platform-specific
-        // defaults
-        let mut grub_terminals = Vec::new();
-        for console in consoles {
-            kargs.push(console.karg());
-            if let Some(cmd) = console.grub_command() {
-                grub_commands.push(cmd);
-            }
-            grub_terminals.push(console.grub_terminal());
-        }
-        grub_terminals.sort_unstable();
-        grub_terminals.dedup();
-        for direction in ["input", "output"] {
-            grub_commands.push(format!("terminal_{direction} {}", grub_terminals.join(" ")));
-        }
-    } else if let Some(platform) = platform {
-        // platform-specific defaults
-        if platform == "metal" {
-            // we're just being asked to apply the defaults which are already
-            // applied
-            return Ok(());
-        }
-        let spec = platforms.get(platform).cloned().unwrap_or_default();
-        kargs.extend(spec.kernel_arguments);
-        grub_commands.extend(spec.grub_commands);
-    } else {
-        // nothing to do and the caller shouldn't have called us
-        unreachable!();
+    // Apply platform-specific kernel arguments
+    if !spec.kernel_arguments.is_empty() || !metal_spec.kernel_arguments.is_empty() {
+        visit_bls_entry_options(mountpoint, |orig_options: &str| {
+            KargsEditor::new()
+                .append(&spec.kernel_arguments)
+                .delete(&metal_spec.kernel_arguments)
+                .maybe_apply_to(orig_options)
+                .context("setting platform kernel arguments")
+        })?;
     }
 
-    // set kargs, removing any metal-specific ones
+    // Apply platform-specific GRUB commands
+    if spec.grub_commands != metal_spec.grub_commands {
+        update_grub_console_settings(mountpoint, &spec.grub_commands)?;
+    }
+
+    Ok(())
+}
+
+/// Configure console-specific settings including kernel arguments and GRUB commands.
+fn configure_console(mountpoint: &Path, consoles: &[Console]) -> Result<()> {
+    eprintln!("Configuring console settings");
+
+    let platforms = read_platform_specs(mountpoint)?;
     let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
+
+    // Build console kernel arguments
+    let mut kargs = Vec::new();
+    for console in consoles {
+        kargs.push(console.karg());
+    }
+
+    // Apply console kernel arguments, removing metal-specific ones
     visit_bls_entry_options(mountpoint, |orig_options: &str| {
         KargsEditor::new()
             .append(&kargs)
             .delete(&metal_spec.kernel_arguments)
             .maybe_apply_to(orig_options)
-            .context("setting platform kernel arguments")
+            .context("setting console kernel arguments")
     })?;
 
-    // set grub commands
-    if grub_commands != metal_spec.grub_commands {
-        // prefer the new grub2/console.cfg, but fallback to grub2/grub.cfg
-        let mut name = "grub2/console.cfg";
-        let mut path = mountpoint.join(name);
-        if !path.exists() {
-            name = "grub2/grub.cfg";
-            path = mountpoint.join(name);
+    // Build and apply GRUB console commands
+    let grub_commands = build_grub_console_commands(consoles);
+    update_grub_console_settings(mountpoint, &grub_commands)?;
+
+    Ok(())
+}
+
+/// Build GRUB console commands from console specifications.
+fn build_grub_console_commands(consoles: &[Console]) -> Vec<String> {
+    let mut grub_commands = Vec::new();
+    let mut grub_terminals = Vec::new();
+
+    for console in consoles {
+        if let Some(cmd) = console.grub_command() {
+            grub_commands.push(cmd);
         }
-        let grub_cfg = fs::read_to_string(&path).with_context(|| format!("reading {name}"))?;
-        let new_grub_cfg = update_grub_cfg_console_settings(&grub_cfg, &grub_commands)
-            .with_context(|| format!("updating {name}"))?;
-        fs::write(&path, new_grub_cfg).with_context(|| format!("writing {name}"))?;
+        grub_terminals.push(console.grub_terminal());
     }
+
+    grub_terminals.sort_unstable();
+    grub_terminals.dedup();
+
+    for direction in ["input", "output"] {
+        grub_commands.push(format!("terminal_{direction} {}", grub_terminals.join(" ")));
+    }
+
+    grub_commands
+}
+
+/// Update GRUB console settings in grub.cfg or console.cfg.
+fn update_grub_console_settings(mountpoint: &Path, commands: &[String]) -> Result<()> {
+    // Prefer the new grub2/console.cfg, but fallback to grub2/grub.cfg
+    let mut name = "grub2/console.cfg";
+    let mut path = mountpoint.join(name);
+    if !path.exists() {
+        name = "grub2/grub.cfg";
+        path = mountpoint.join(name);
+    }
+
+    let grub_cfg = fs::read_to_string(&path).with_context(|| format!("reading {name}"))?;
+    let new_grub_cfg = apply_grub_console_commands(&grub_cfg, commands)
+        .with_context(|| format!("updating {name}"))?;
+    fs::write(&path, new_grub_cfg).with_context(|| format!("writing {name}"))?;
+
     Ok(())
 }
 
 /// Rewrite the grub.cfg CONSOLE-SETTINGS block to use the specified GRUB
 /// commands, and return the result.
-fn update_grub_cfg_console_settings(grub_cfg: &str, commands: &[String]) -> Result<String> {
+fn apply_grub_console_commands(grub_cfg: &str, commands: &[String]) -> Result<String> {
     let mut new_commands = commands.join("\n");
     if !new_commands.is_empty() {
         new_commands.push('\n');
@@ -860,22 +907,22 @@ mod tests {
         for cfg in base_cfgs {
             // no new commands
             assert_eq!(
-                update_grub_cfg_console_settings(cfg, &[]).unwrap(),
+                apply_grub_console_commands(cfg, &[]).unwrap(),
                 "a\nb\n# CONSOLE-SETTINGS-START\n# CONSOLE-SETTINGS-END\nc\nd"
             );
             // one new command
             assert_eq!(
-                update_grub_cfg_console_settings(cfg, &["first".into()]).unwrap(),
+                apply_grub_console_commands(cfg, &["first".into()]).unwrap(),
                 "a\nb\n# CONSOLE-SETTINGS-START\nfirst\n# CONSOLE-SETTINGS-END\nc\nd"
             );
             // multiple new commands
             assert_eq!(
-                update_grub_cfg_console_settings(cfg, &["first".into(), "sec ond".into(), "third".into()]).unwrap(),
+                apply_grub_console_commands(cfg, &["first".into(), "sec ond".into(), "third".into()]).unwrap(),
                 "a\nb\n# CONSOLE-SETTINGS-START\nfirst\nsec ond\nthird\n# CONSOLE-SETTINGS-END\nc\nd"
             );
         }
 
         // missing substitution marker
-        update_grub_cfg_console_settings("a\nb\nc\nd", &[]).unwrap_err();
+        apply_grub_console_commands("a\nb\nc\nd", &[]).unwrap_err();
     }
 }
