@@ -425,6 +425,13 @@ fn write_disk(
         )
         .context("configuring kernel arguments")?;
 
+        configure_grub(
+            mount.mountpoint(),
+            config.platform.as_deref(),
+            &config.console,
+        )
+        .context("configuring GRUB")?;
+
         if let Some(network_config) = network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
         }
@@ -450,11 +457,11 @@ fn write_disk(
     Ok(())
 }
 
-/// Configure kernel arguments and related boot loader settings.
+/// Configure kernel arguments.
 ///
 /// This function handles:
 /// - Platform ID configuration
-/// - Console configuration
+/// - Console kernel arguments
 /// - Firstboot kernel arguments
 /// - Explicit kernel argument modifications (--append-karg, --delete-karg)
 fn configure_kernel_arguments(
@@ -466,13 +473,13 @@ fn configure_kernel_arguments(
     delete_kargs: &[String],
 ) -> Result<()> {
     if let Some(platform) = platform {
-        // custom console settings completely override platform-specific defalts
-        configure_platform(mountpoint, platform, !console.is_empty())
+        // custom console settings completely override platform-specific defaults
+        configure_platform_kargs(mountpoint, platform, !console.is_empty())
             .context("configuring platform")?;
     }
 
     if !console.is_empty() {
-        configure_console(mountpoint, console).context("configuring console")?;
+        configure_console_kargs(mountpoint, console).context("configuring console kargs")?;
     }
 
     if let Some(firstboot_args) = firstboot_args {
@@ -490,6 +497,21 @@ fn configure_kernel_arguments(
                 .maybe_apply_to(orig_options)
         })
         .context("modifying kernel arguments")?;
+    }
+
+    Ok(())
+}
+
+/// Configure GRUB console settings.
+fn configure_grub(mountpoint: &Path, platform: Option<&str>, console: &[Console]) -> Result<()> {
+    // custom console settings completely override platform-specific defaults
+    if !console.is_empty() {
+        let grub_commands = build_grub_console_commands(console);
+        update_grub_console_settings(mountpoint, &grub_commands)
+            .context("configuring GRUB console")?;
+    } else if let Some(platform) = platform {
+        configure_platform_grub_console(mountpoint, platform)
+            .context("configuring platform GRUB console")?;
     }
 
     Ok(())
@@ -596,11 +618,11 @@ fn read_platform_specs(mountpoint: &Path) -> Result<HashMap<String, PlatformSpec
     }
 }
 
-/// Configure platform-specific settings including kernel arguments and GRUB commands.
-fn configure_platform(
+/// Configure platform-specific kernel arguments
+fn configure_platform_kargs(
     mountpoint: &Path,
     platform: &str,
-    skip_console_settings: bool,
+    skip_console_kargs: bool,
 ) -> Result<()> {
     // Early return if setting the platform to the default value
     if platform == "metal" {
@@ -622,21 +644,20 @@ fn configure_platform(
         Ok(Some(new_options))
     })?;
 
-    // Apply platform-specific console settings only if user didn't provide explicit console settings
-    if !skip_console_settings {
-        apply_platform_console_settings(mountpoint, platform)?;
+    // Apply platform-specific console kernel arguments unless overridden by user
+    if !skip_console_kargs {
+        configure_platform_console_kargs(mountpoint, platform)?;
     }
 
     Ok(())
 }
 
-/// Apply platform-specific console kernel arguments and GRUB commands.
-fn apply_platform_console_settings(mountpoint: &Path, platform: &str) -> Result<()> {
+/// Configure platform-specific console kernel arguments.
+fn configure_platform_console_kargs(mountpoint: &Path, platform: &str) -> Result<()> {
     let platforms = read_platform_specs(mountpoint)?;
     let spec = platforms.get(platform).cloned().unwrap_or_default();
     let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
 
-    // Apply platform-specific kernel arguments
     if !spec.kernel_arguments.is_empty() || !metal_spec.kernel_arguments.is_empty() {
         visit_bls_entry_options(mountpoint, |orig_options: &str| {
             KargsEditor::new()
@@ -647,7 +668,15 @@ fn apply_platform_console_settings(mountpoint: &Path, platform: &str) -> Result<
         })?;
     }
 
-    // Apply platform-specific GRUB commands
+    Ok(())
+}
+
+/// Configure platform-specific GRUB console settings.
+fn configure_platform_grub_console(mountpoint: &Path, platform: &str) -> Result<()> {
+    let platforms = read_platform_specs(mountpoint)?;
+    let spec = platforms.get(platform).cloned().unwrap_or_default();
+    let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
+
     if spec.grub_commands != metal_spec.grub_commands {
         update_grub_console_settings(mountpoint, &spec.grub_commands)?;
     }
@@ -655,8 +684,8 @@ fn apply_platform_console_settings(mountpoint: &Path, platform: &str) -> Result<
     Ok(())
 }
 
-/// Configure console-specific settings including kernel arguments and GRUB commands.
-fn configure_console(mountpoint: &Path, consoles: &[Console]) -> Result<()> {
+/// Configure console kernel arguments.
+fn configure_console_kargs(mountpoint: &Path, consoles: &[Console]) -> Result<()> {
     eprintln!("Configuring console settings");
 
     let platforms = read_platform_specs(mountpoint)?;
@@ -676,10 +705,6 @@ fn configure_console(mountpoint: &Path, consoles: &[Console]) -> Result<()> {
             .maybe_apply_to(orig_options)
             .context("setting console kernel arguments")
     })?;
-
-    // Build and apply GRUB console commands
-    let grub_commands = build_grub_console_commands(consoles);
-    update_grub_console_settings(mountpoint, &grub_commands)?;
 
     Ok(())
 }
