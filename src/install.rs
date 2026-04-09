@@ -414,33 +414,17 @@ fn write_disk(
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .context("writing Ignition configuration")?;
         }
-        if let Some(platform) = config.platform.as_ref() {
-            write_platform(mount.mountpoint(), platform).context("writing platform ID")?;
-        }
-        if config.platform.is_some() || !config.console.is_empty() {
-            write_console(
-                mount.mountpoint(),
-                config.platform.as_deref(),
-                &config.console,
-            )
-            .context("configuring console")?;
-        }
-        if let Some(firstboot_args) = config.firstboot_args.as_ref() {
-            write_firstboot_kargs(mount.mountpoint(), firstboot_args)
-                .context("writing firstboot kargs")?;
-        }
-        if !config.append_karg.is_empty() || !config.delete_karg.is_empty() {
-            eprintln!("Modifying kernel arguments");
 
-            Console::maybe_warn_on_kargs(&config.append_karg, "--append-karg", "--console");
-            visit_bls_entry_options(mount.mountpoint(), |orig_options: &str| {
-                KargsEditor::new()
-                    .append(config.append_karg.as_slice())
-                    .delete(config.delete_karg.as_slice())
-                    .maybe_apply_to(orig_options)
-            })
-            .context("deleting and appending kargs")?;
-        }
+        configure_kernel_arguments(
+            mount.mountpoint(),
+            config.firstboot_args.as_deref(),
+            config.platform.as_deref(),
+            &config.console,
+            &config.append_karg,
+            &config.delete_karg,
+        )
+        .context("configuring kernel arguments")?;
+
         if let Some(network_config) = network_config.as_ref() {
             copy_network_config(mount.mountpoint(), network_config)?;
         }
@@ -462,6 +446,48 @@ fn write_disk(
 
     // detect any latent write errors
     dest.sync_all().context("syncing data to disk")?;
+
+    Ok(())
+}
+
+/// Configure kernel arguments and related boot loader settings.
+///
+/// This function handles:
+/// - Platform ID configuration
+/// - Console configuration
+/// - Firstboot kernel arguments
+/// - Explicit kernel argument modifications (--append-karg, --delete-karg)
+fn configure_kernel_arguments(
+    mountpoint: &Path,
+    firstboot_args: Option<&str>,
+    platform: Option<&str>,
+    console: &[Console],
+    append_kargs: &[String],
+    delete_kargs: &[String],
+) -> Result<()> {
+    if let Some(platform) = platform {
+        write_platform(mountpoint, platform).context("writing platform ID")?;
+    }
+    if platform.is_some() || !console.is_empty() {
+        write_console(mountpoint, platform, console).context("configuring console")?;
+    }
+
+    if let Some(firstboot_args) = firstboot_args {
+        write_firstboot_kargs(mountpoint, firstboot_args).context("writing firstboot kargs")?;
+    }
+
+    if !append_kargs.is_empty() || !delete_kargs.is_empty() {
+        eprintln!("Modifying kernel arguments");
+        Console::maybe_warn_on_kargs(append_kargs, "--append-karg", "--console");
+
+        visit_bls_entry_options(mountpoint, |orig_options: &str| {
+            KargsEditor::new()
+                .append(append_kargs)
+                .delete(delete_kargs)
+                .maybe_apply_to(orig_options)
+        })
+        .context("modifying kernel arguments")?;
+    }
 
     Ok(())
 }
