@@ -27,20 +27,25 @@ cosaPod {
         cp install/usr/bin/coreos-installer /usr/bin/coreos-installer
     """)
 
-    cosaBuild(overlays: ["install"])
+    // Don't run tests until all artifacts are built.
+    stage("Build") {
+        cosaBuild(skipKola: true, overlays: ["install"])
+    }
 
-    stage("Build metal+live") {
+    stage("Build artifacts") {
         shwrap("cd /srv/coreos && cosa osbuild metal metal4k live")
         // Test metal with an uncompressed image and metal4k with a
         // compressed one
         shwrap("cd /srv/coreos && cosa compress --fast --artifact=metal4k")
     }
-    stage("Test ISO") {
+
+    stage("Kola") {
         // No need to run the iso-live-login/iso-as-disk scenarios
-        kolaTestIso(
-            extraArgs: "--denylist-test iso-as-disk.* --denylist-test iso-live-login.*"
+        kola(
+            extraArgs: "--denylist-test iso.iso-as-disk* --denylist-test iso.iso-live-login*"
         )
     }
+
     stage("Image tests") {
         // Update the perms of the generated ISO so our tests can modify in place.
         shwrap("find /srv/coreos/builds/ -name '*.iso' | xargs chmod -v 666")
