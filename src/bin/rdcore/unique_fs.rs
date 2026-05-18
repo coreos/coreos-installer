@@ -21,6 +21,18 @@ pub fn verify_unique_fs(config: VerifyUniqueFsLabelConfig) -> Result<()> {
     let pts = get_filesystems_with_label(&config.label, config.rereadpt)?;
     let count = pts.len();
     if count != 1 {
+        if count == 0 {
+            // rereadpt already done by get_filesystems_with_label above
+            let raid_members = get_raid_members_with_label(&config.label, false)?;
+            if !raid_members.is_empty() {
+                bail!(
+                    "No assembled filesystem labeled '{}', but found RAID member \
+                     devices {:?}. Is the RAID array degraded or failed to assemble?",
+                    config.label,
+                    raid_members
+                );
+            }
+        }
         bail!(
             "System has {} devices with a filesystem labeled '{}': {:?}",
             count,
