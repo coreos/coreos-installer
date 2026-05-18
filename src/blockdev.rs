@@ -882,6 +882,19 @@ pub fn get_filesystems_with_label(label: &str, rereadpt: bool) -> Result<Vec<Str
     Ok(result)
 }
 
+/// Returns RAID member devices with the given filesystem label.
+/// Used to produce better diagnostics when an expected filesystem is missing
+/// but RAID members carrying its label exist (e.g. array failed to assemble).
+pub fn get_raid_members_with_label(label: &str, rereadpt: bool) -> Result<Vec<String>> {
+    let result = get_all_filesystems(rereadpt)?
+        .iter()
+        .filter(|v| v.get("LABEL").map(|l| l.as_str()) == Some(label))
+        .filter(|v| v.get("USAGE").map(|u| u.as_str()) == Some("raid"))
+        .filter_map(|v| v.get("NAME").map(<_>::to_owned))
+        .collect();
+    Ok(result)
+}
+
 pub fn lsblk(dev: &Path, with_deps: bool) -> Result<Vec<HashMap<String, String>>> {
     let mut cmd = Command::new("lsblk");
     // Older lsblk, e.g. in CentOS 7.6, doesn't support PATH, but --paths option
