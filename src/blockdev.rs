@@ -857,11 +857,16 @@ fn get_all_filesystems(rereadpt: bool) -> Result<Vec<HashMap<String, String>>> {
 
 /// Returns filesystems with given label.
 /// If multiple filesystems with the label have the same UUID, we only return one of them.
+/// RAID member devices are excluded since they carry the assembled array's label
+/// but are not directly usable filesystems.
 pub fn get_filesystems_with_label(label: &str, rereadpt: bool) -> Result<Vec<String>> {
     let mut uuids = HashSet::new();
     let result = get_all_filesystems(rereadpt)?
         .iter()
         .filter(|v| v.get("LABEL").map(|l| l.as_str()) == Some(label))
+        // Exclude RAID member devices whose superblocks carry the
+        // assembled array's filesystem label (e.g. /dev/sdb1 vs /dev/md127).
+        .filter(|v| v.get("USAGE").map(|u| u.as_str()) != Some("raid"))
         .filter(|v| match v.get("UUID") {
             Some(uuid) => {
                 if !uuid.is_empty() {
@@ -1343,6 +1348,39 @@ mod tests {
                 String::from("TYPE") => String::from("crypto_LUKS"),
                 String::from("PARTLABEL") => String::from("root"),
                 String::from("PARTUUID") => String::from("835753cb-d7f0-465e-84db-07860d3da2f6"),
+            }
+        );
+    }
+
+    #[test]
+    fn blkid_split_raid_member() {
+        assert_eq!(
+            split_blkid_line(
+                r#"/dev/sdb1: LABEL="boot" UUID="12345678-1234-1234-1234-123456789abc" TYPE="linux_raid_member" USAGE="raid""#
+            ),
+            hashmap! {
+                String::from("NAME") => String::from("/dev/sdb1"),
+                String::from("LABEL") => String::from("boot"),
+                String::from("UUID") => String::from("12345678-1234-1234-1234-123456789abc"),
+                String::from("TYPE") => String::from("linux_raid_member"),
+                String::from("USAGE") => String::from("raid"),
+            }
+        );
+    }
+
+    #[test]
+    fn blkid_split_filesystem_usage() {
+        assert_eq!(
+            split_blkid_line(
+                r#"/dev/md127: LABEL="boot" UUID="abcdef01-2345-6789-abcd-ef0123456789" BLOCK_SIZE="4096" TYPE="ext4" USAGE="filesystem""#
+            ),
+            hashmap! {
+                String::from("NAME") => String::from("/dev/md127"),
+                String::from("LABEL") => String::from("boot"),
+                String::from("UUID") => String::from("abcdef01-2345-6789-abcd-ef0123456789"),
+                String::from("BLOCK_SIZE") => String::from("4096"),
+                String::from("TYPE") => String::from("ext4"),
+                String::from("USAGE") => String::from("filesystem"),
             }
         );
     }
