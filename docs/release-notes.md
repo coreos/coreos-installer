@@ -11,6 +11,7 @@ Major changes:
 
 Minor changes:
 
+- verify-unique-fs-label: Fix false failure on RAID1 mirrored boot setups
 
 Internal changes:
 
