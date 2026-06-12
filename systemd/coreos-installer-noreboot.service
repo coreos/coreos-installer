@@ -3,6 +3,11 @@ Description=Give Login Shell After CoreOS Installer
 Requires=coreos-installer.target
 After=coreos-installer.target
 ConditionPathExists=!/run/coreos-installer-reboot
+# If the users passed coreos.inst.skip_reboot karg and they provided SSH
+# keys in an Ignition config then let's leave a path to get in to the
+# system remotely. They can then inspect the system and send it down
+# for a reboot manually.
+Wants=sshd.service systemd-user-sessions.service
 
 [Service]
 Type=oneshot
