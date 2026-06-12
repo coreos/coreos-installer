@@ -13,6 +13,7 @@ Minor changes:
 
 - verify-unique-fs-label: Fix false failure on RAID1 mirrored boot setups
 - verify-unique-fs-label: Improve diagnostics for unassembled RAID arrays
+- systemd: bring up ssh if coreos.inst.skip_reboot karg was set
 
 Internal changes:
 
