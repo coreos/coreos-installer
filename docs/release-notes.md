@@ -19,6 +19,7 @@ Internal changes:
 
 - install: Fix '--console' flag handling on s390x
 - install: Disable GRUB configuration on s390x
+- s390x: Use `pvimg` instead of obsolete `genprotimg`
 
 Packaging changes:
 
