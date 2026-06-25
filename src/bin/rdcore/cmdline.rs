@@ -136,8 +136,8 @@ pub struct ZiplConfig {
     pub secex_mode: s390x::ZiplSecexMode,
 
     /// Path to hostkey
-    #[arg(long, value_name = "HOSTKEY")]
-    pub hostkey: Option<String>,
+    #[arg(short = 'k', long = "hostkey", value_name = "HOSTKEY")]
+    pub hostkeys: Option<Vec<String>>,
 
     /// Append kernel argument
     #[arg(long, value_name = "KARG")]

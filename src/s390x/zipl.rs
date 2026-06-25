@@ -226,7 +226,7 @@ fn get_info_from_bls(boot: &Path) -> Result<(String, String, String)> {
 fn generate_sdboot(
     mountpoint: &Path,
     boot: &Path,
-    hostkey: Option<String>,
+    hostkeys: Option<Vec<String>>,
     kargs: Option<String>,
     files: Option<Vec<String>>,
 ) -> Result<PathBuf> {
@@ -268,15 +268,14 @@ fn generate_sdboot(
     let initrd = new_initrd.as_ref().map(|v| v.path()).unwrap_or(&initrd);
 
     // during cosa-build we override hostkey(s) with a universal one
-    let hostkeys = if let Some(hostkey) = hostkey {
-        vec![PathBuf::from(hostkey)]
-    } else {
-        find_files("/etc/se-hostkeys", |e: &DirEntry| {
+    let hostkeys = match hostkeys {
+        Some(keys) => keys.iter().map(PathBuf::from).collect(),
+        None => find_files("/etc/se-hostkeys", |e: &DirEntry| {
             Ok(e.file_name()
                 .to_str()
                 .map(|p| p.starts_with("ibm-z-hostkey-"))
                 .unwrap_or_default())
-        })?
+        })?,
     };
 
     // finally, Secure Execution sd-boot image
@@ -304,7 +303,7 @@ fn generate_sdboot(
 /// Runs `zipl` based on Ignition and BLS configuration in `boot`.
 pub fn zipl<P: AsRef<Path>>(
     boot: P,
-    hostkey: Option<String>,
+    hostkeys: Option<Vec<String>>,
     kargs: Option<String>,
     mode: ZiplSecexMode,
     files: Option<Vec<String>>,
@@ -320,7 +319,7 @@ pub fn zipl<P: AsRef<Path>>(
     if secex {
         // Secure Execution is only supported with pre-built qemu-secex image
         let target = Mount::try_mount("/dev/disk/by-label/se", "ext4", MsFlags::empty())?;
-        let sdboot = generate_sdboot(target.mountpoint(), boot, hostkey, kargs, files)?;
+        let sdboot = generate_sdboot(target.mountpoint(), boot, hostkeys, kargs, files)?;
 
         runcmd!(
             "zipl",

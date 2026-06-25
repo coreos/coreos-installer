@@ -98,7 +98,7 @@ pub fn zipl(config: ZiplConfig) -> Result<()> {
     let boot = Mount::from_existing(&config.boot_mount)?;
     s390x::zipl(
         boot.mountpoint(),
-        config.hostkey,
+        config.hostkeys,
         config.append_karg.as_ref().map(|v| v.join(" ")),
         config.secex_mode,
         config.append_file,
