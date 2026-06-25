@@ -8,6 +8,7 @@ nav_order: 8
 
 Major changes:
 
+- rdcore: Allow multiple hostkeys in `zipl` command via `--hostkey` or `-k`
 
 Minor changes:
 
