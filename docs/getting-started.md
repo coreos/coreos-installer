@@ -29,6 +29,26 @@ sudo podman run --pull=always --privileged --rm \
     install /dev/vdb -i config.ign
 ```
 
+You may also add the following alias your shell configuration:
+
+```sh
+alias coreos-installer='podman run --pull=always            \
+                        --rm --interactive                  \
+                        --security-opt label=disable        \
+                        --volume ${PWD}:/pwd --workdir /pwd \
+                        quay.io/coreos/coreos-installer:release'
+```
+
+If you want to be able to cancel `coreos-installer` downloads, you
+will have to add the `--tty` option to your podman comand line or shell alias:
+
+```sh
+podmand run ... --rm --interactive --tty ...
+```
+
+This will however prevent you from using stdin redirection to embed a
+configuration file and stdout capture to get the downloaded image file name.
+
 ## Via a Fedora RPM
 
 `coreos-installer` is packaged in Fedora:
