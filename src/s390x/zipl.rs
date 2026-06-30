@@ -248,7 +248,7 @@ fn generate_sdboot(
         .write_all(options.as_bytes())
         .context("writing zipl se cmdline")?;
 
-    let mut appendies = files.map_or_else(Vec::new, |v| v.iter().map(PathBuf::from).collect());
+    let mut appendies = files.map_or_else(Vec::new, |v| v.into_iter().map(PathBuf::from).collect());
 
     let lukskeys_path = PathBuf::from("/etc/luks");
     let crypttab_path = PathBuf::from("/etc/crypttab");
@@ -269,7 +269,7 @@ fn generate_sdboot(
 
     // during cosa-build we override hostkey(s) with a universal one
     let hostkeys = match hostkeys {
-        Some(keys) => keys.iter().map(PathBuf::from).collect(),
+        Some(keys) => keys.into_iter().map(PathBuf::from).collect(),
         None => find_files("/etc/se-hostkeys", |e: &DirEntry| {
             Ok(e.file_name()
                 .to_str()

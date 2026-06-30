@@ -22,6 +22,7 @@ Internal changes:
 - install: Disable GRUB configuration on s390x
 - s390x: Use `pvimg` instead of obsolete `genprotimg`
 - s390x: Fix `write()` to `write_all()` in initrd generation to prevent silent truncation
+- s390x: Minor code cleanups in dasd and zipl handling
 
 Packaging changes:
 
