@@ -193,7 +193,7 @@ fn generate_initrd<P: AsRef<Path>>(source: P, files: &[PathBuf]) -> Result<Named
     // appending
     let initrd = initrd.to_bytes()?;
     dest.as_file_mut()
-        .write(&initrd)
+        .write_all(&initrd)
         .with_context(|| format!("appending luks-initrd to {}", dest.path().display()))?;
     Ok(dest)
 }
