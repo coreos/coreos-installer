@@ -23,6 +23,7 @@ Internal changes:
 - s390x: Use `pvimg` instead of obsolete `genprotimg`
 - s390x: Fix `write()` to `write_all()` in initrd generation to prevent silent truncation
 - s390x: Minor code cleanups in dasd and zipl handling
+- s390x: Fix lszdev bus ID regex: escape dots and add parser tests
 
 Packaging changes:
 

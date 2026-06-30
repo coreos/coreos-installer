@@ -35,6 +35,7 @@ pub fn chreipl<P: AsRef<Path>>(dev: P) -> Result<()> {
 }
 
 /// Secure boot (Secure IPL) includes support of SCSI and ECKD DASD boot devices
+#[derive(Debug, PartialEq)]
 enum Loaddev {
     Eckd(String),
     Scsi(String, String, String),
@@ -42,10 +43,15 @@ enum Loaddev {
 
 fn parse_lszdev_eckd(line: &str) -> Result<Loaddev> {
     // ECKD ID looks like: 0.0.5223, we need only last part of it (5223)
+    // Format: cssid . ssid . devno — all hex fields, dots are literal separators.
+    // See https://github.com/torvalds/linux/blob/master/arch/s390/include/asm/cio.h
+    // See https://github.com/ibm-s390-linux/s390-tools/blob/master/libccw/ccw.c
+    // We accept any hex value from lszdev; ID validation is the kernel's responsibility.
     lazy_static! {
-        static ref REGEX: Regex = Regex::new(r#"[[:digit:]].[[:digit:]].([[:xdigit:]]+)"#).unwrap();
+        static ref REGEX: Regex =
+            Regex::new(r#"^[[:xdigit:]]{1,2}\.[[:xdigit:]]\.([[:xdigit:]]{1,4})$"#).unwrap();
     }
-    if let Some(cap) = REGEX.captures_iter(line).next() {
+    if let Some(cap) = REGEX.captures(line) {
         return Ok(Loaddev::Eckd(cap[1].to_string()));
     }
     bail!("bad ECKD id: {}", line);
@@ -53,14 +59,15 @@ fn parse_lszdev_eckd(line: &str) -> Result<Loaddev> {
 
 fn parse_lszdev_zfcp(line: &str) -> Result<Loaddev> {
     // SCSI ID looks like: 0.0.8000:0x500507630400d1e3:0x4000401d00000000
-    // So here is regex to parse required ids: 8000,500507630400d1e3,4000401d00000000
+    // Format: cssid . ssid . devno : 0x wwpn : 0x lun — same bus ID scheme as ECKD,
+    // followed by 64-bit WWPN and LUN. We accept any hex value from lszdev.
     lazy_static! {
         static ref REGEX: Regex = Regex::new(
-            r#"[[:digit:]].[[:digit:]].([[:xdigit:]]+):0x([[:xdigit:]]+):0x([[:xdigit:]]+)"#
+            r#"^[[:xdigit:]]{1,2}\.[[:xdigit:]]\.([[:xdigit:]]{1,4}):0x([[:xdigit:]]+):0x([[:xdigit:]]+)$"#
         )
         .unwrap();
     }
-    if let Some(cap) = REGEX.captures_iter(line).next() {
+    if let Some(cap) = REGEX.captures(line) {
         return Ok(Loaddev::Scsi(
             cap[1].to_string(),
             cap[2].to_string(),
@@ -90,6 +97,7 @@ fn parse_lszdev<P: AsRef<Path>>(dev: P) -> Result<Loaddev> {
         .trim()
         .split_once(' ')
         .with_context(|| format!("parsing lszdev {output}"))?;
+    let id = id.trim();
     match devtype {
         "dasd-eckd" => parse_lszdev_eckd(id),
         "zfcp-lun" => parse_lszdev_zfcp(id),
@@ -388,6 +396,49 @@ fn extract_firstboot_kargs(s: &str) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_lszdev_eckd() {
+        assert_eq!(
+            parse_lszdev_eckd("0.0.5223").unwrap(),
+            Loaddev::Eckd("5223".into())
+        );
+        // short devno
+        assert_eq!(
+            parse_lszdev_eckd("0.0.ff").unwrap(),
+            Loaddev::Eckd("ff".into())
+        );
+        // 2-digit cssid
+        assert_eq!(
+            parse_lszdev_eckd("ff.f.ffff").unwrap(),
+            Loaddev::Eckd("ffff".into())
+        );
+        // dots must be literal
+        assert!(parse_lszdev_eckd("0X0X5223").is_err());
+        assert!(parse_lszdev_eckd("0,0,5223").is_err());
+        assert!(parse_lszdev_eckd("not-an-id").is_err());
+        assert!(parse_lszdev_eckd("0.0.gggg").is_err());
+        assert!(parse_lszdev_eckd("0.0.").is_err());
+        // anchored — devno > 4 hex digits must not partially match
+        assert!(parse_lszdev_eckd("0.0.12345").is_err());
+    }
+
+    #[test]
+    fn test_parse_lszdev_zfcp() {
+        assert_eq!(
+            parse_lszdev_zfcp("0.0.800e:0x500507630400d1e3:0x4000409a00000000").unwrap(),
+            Loaddev::Scsi(
+                "800e".into(),
+                "500507630400d1e3".into(),
+                "4000409a00000000".into(),
+            )
+        );
+        // dots must be literal
+        assert!(parse_lszdev_zfcp("0X0X800e:0x500507630400d1e3:0x4000409a00000000").is_err());
+        // zfcp-host line has no lun — must fail
+        assert!(parse_lszdev_zfcp(" 0.0.800e").is_err());
+        assert!(parse_lszdev_zfcp("not-an-id").is_err());
+    }
 
     #[test]
     fn test_extract_firstboot_kargs() {
