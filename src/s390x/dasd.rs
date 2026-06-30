@@ -49,13 +49,14 @@ enum DasdType {
 
 fn get_dasd_type<P: AsRef<Path>>(device: P) -> Result<DasdType> {
     let device = device.as_ref();
-    let device = device
+    let canonical = device
         .canonicalize()
-        .with_context(|| format!("getting absolute path to {}", device.display()))?
+        .with_context(|| format!("getting absolute path to {}", device.display()))?;
+    let device = canonical
         .file_name()
         .with_context(|| format!("getting name of {}", device.display()))?
-        .to_string_lossy()
-        .to_string();
+        .to_str()
+        .with_context(|| format!("device name is not UTF-8: {}", device.display()))?;
     if device.starts_with("vd") {
         return Ok(DasdType::Virt);
     }
@@ -92,15 +93,17 @@ pub fn image_copy_s390x(
     dest_path: &Path,
     _saved: Option<&SavedPartitions>,
 ) -> Result<()> {
+    let dest_path = dest_path
+        .to_str()
+        .with_context(|| format!("device path is not UTF-8: {}", dest_path.display()))?;
+
     let ranges = match get_dasd_type(dest_path)? {
-        DasdType::Fba => fba_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?,
-        DasdType::Eckd | DasdType::Virt => {
-            eckd_make_partitions(&dest_path.to_string_lossy(), dest_file, first_mb)?
-        }
+        DasdType::Fba => fba_make_partitions(dest_path, dest_file, first_mb)?,
+        DasdType::Eckd | DasdType::Virt => eckd_make_partitions(dest_path, dest_file, first_mb)?,
     };
 
     // copy each partition
-    eprintln!("Installing to {}", dest_path.display());
+    eprintln!("Installing to {dest_path}");
     let mut buf = [0u8; 1024 * 1024];
     // there shouldn't be any partition data in the first MiB, so don't
     // worry about copying first_mb
