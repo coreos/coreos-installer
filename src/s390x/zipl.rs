@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::blockdev::Mount;
-use crate::io::{get_bls_info, Initrd};
+use crate::io::{get_bls_info, resolve_bls_path, Initrd};
 use crate::s390x::ZiplSecexMode;
 use crate::util::cmd_output;
 use crate::{runcmd, runcmd_output};
@@ -216,8 +216,8 @@ fn generate_sdboot(
     let (kernel, initrd, mut options) = get_bls_info(boot)?;
 
     // we need a full path to kernel and initrd
-    let kernel = boot.join(&kernel[1..]);
-    let initrd = boot.join(&initrd[1..]);
+    let kernel = resolve_bls_path(boot, &kernel)?;
+    let initrd = resolve_bls_path(boot, &initrd)?;
 
     // write all kargs to a tmpfile, so genprotimg can append them to sd-boot
     if let Some(kargs) = kargs {
@@ -318,8 +318,8 @@ pub fn zipl<P: AsRef<Path>>(
         let firstboot_file = boot.join("ignition.firstboot");
         let (kernel, initrd, mut options) = get_bls_info(boot)?;
         // we need a full path to kernel and initrd
-        let kernel = boot.join(&kernel[1..]);
-        let initrd = boot.join(&initrd[1..]);
+        let kernel = resolve_bls_path(boot, &kernel)?;
+        let initrd = resolve_bls_path(boot, &initrd)?;
 
         if firstboot_file.exists() {
             options.push_str(" ignition.firstboot");

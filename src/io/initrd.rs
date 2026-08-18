@@ -16,9 +16,11 @@ use anyhow::{anyhow, bail, Context, Result};
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
-use std::fs;
-use std::io::{BufRead, Cursor, Read};
+use std::fs::{self, File};
+use std::io::{self, BufRead, Cursor, Read, Write};
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use tempfile::NamedTempFile;
 use xz2::stream::{Check, Stream};
 use xz2::write::XzEncoder;
 
@@ -180,6 +182,41 @@ impl Initrd {
         self.members.is_empty()
     }
 
+    pub fn write_append_tmp(&self, source: &Path) -> Result<NamedTempFile> {
+        let initrd_bytes = self.to_bytes().context("building initrd")?;
+
+        let dir = source
+            .parent()
+            .expect("initrd file must have a parent directory");
+        let metadata = fs::metadata(source)
+            .with_context(|| format!("statting initramfs {}", source.display()))?;
+        let mut tmp = tempfile::Builder::new()
+            .prefix(".coreos-installer-initrd.")
+            .append(true)
+            .tempfile_in(dir)
+            .with_context(|| format!("creating temp file in {}", dir.display()))?;
+
+        let mut src = File::open(source)
+            .with_context(|| format!("opening initramfs for reading: {}", source.display()))?;
+        io::copy(&mut src, &mut tmp)
+            .with_context(|| format!("copying initramfs to temp file: {}", source.display()))?;
+        drop(src);
+
+        tmp.as_file_mut()
+            .write_all(&initrd_bytes)
+            .with_context(|| format!("appending data to initramfs: {}", source.display()))?;
+        std::os::unix::fs::fchown(tmp.as_file(), Some(metadata.uid()), Some(metadata.gid()))
+            .with_context(|| format!("preserving ownership of {}", source.display()))?;
+        tmp.as_file()
+            .set_permissions(metadata.permissions())
+            .with_context(|| format!("preserving permissions of {}", source.display()))?;
+        tmp.as_file()
+            .sync_all()
+            .context("syncing temp initramfs to disk")?;
+
+        Ok(tmp)
+    }
+
     pub fn embed_network_files(&mut self, keyfiles: &[String]) -> Result<()> {
         for path in keyfiles {
             let data = fs::read(path).with_context(|| format!("reading {path}"))?;
@@ -187,11 +224,11 @@ impl Initrd {
                 .file_name()
                 .with_context(|| format!("missing filename in {path}"))?
                 .to_string_lossy();
-            let path = format!("{INITRD_NETWORK_DIR}/{name}");
-            if self.get(&path).is_some() {
+            let dest = format!("{INITRD_NETWORK_DIR}/{name}");
+            if self.get(&dest).is_some() {
                 bail!("multiple input files named '{name}'");
             }
-            self.add(&path, data);
+            self.add(&dest, data);
         }
         Ok(())
     }

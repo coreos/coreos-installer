@@ -781,33 +781,48 @@ fn apply_grub_console_commands(grub_cfg: &str, commands: &[String]) -> Result<St
         .into_owned())
 }
 
-/// Copy networking config if asked to do so
+/// Embed networking config into the in-memory initramfs at /etc/coreos-firstboot-network
+/// so it is available in RAM before target disks are initialized.
 fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
+    if fs::read_dir(net_config_src)
+        .with_context(|| format!("reading directory {net_config_src}"))?
+        .next()
+        .is_none()
+    {
+        eprintln!("No networking configuration files found in {net_config_src}, skipping");
+        return Ok(());
+    }
+
     eprintln!("Copying networking configuration from {net_config_src}");
 
-    // get the path to the destination directory
-    let net_config_dest = mountpoint.join("coreos-firstboot-network");
-
-    // make the directory if it doesn't exist
-    fs::create_dir_all(&net_config_dest).with_context(|| {
-        format!(
-            "creating destination networking config directory {}",
-            net_config_dest.display()
-        )
-    })?;
-
-    // copy files from source to destination directories
+    let mut keyfiles = Vec::new();
     for entry in fs::read_dir(net_config_src)
         .with_context(|| format!("reading directory {net_config_src}"))?
     {
         let entry = entry.with_context(|| format!("reading directory {net_config_src}"))?;
         let srcpath = entry.path();
-        let destpath = net_config_dest.join(entry.file_name());
         if srcpath.is_file() {
-            eprintln!("Copying {} to installed system", srcpath.display());
-            fs::copy(&srcpath, destpath).context("Copying networking config")?;
+            eprintln!("Copying {} to initramfs", srcpath.display());
+            keyfiles.push(srcpath.to_string_lossy().into_owned());
         }
     }
+
+    let mut initrd = Initrd::default();
+    initrd.embed_network_files(&keyfiles)?;
+
+    let (_, initrd_rel, _) = get_bls_info(mountpoint)?;
+    let initrd_file = resolve_bls_path(mountpoint, &initrd_rel)?;
+
+    if !initrd_file.exists() {
+        bail!("initramfs file not found at {:?}", initrd_file);
+    }
+
+    let tmp = initrd.write_append_tmp(&initrd_file)?;
+
+    tmp.persist(&initrd_file)
+        .with_context(|| format!("replacing initramfs {initrd_rel} with updated copy"))?;
+
+    eprintln!("Appended network configuration to initramfs {initrd_rel}");
 
     Ok(())
 }

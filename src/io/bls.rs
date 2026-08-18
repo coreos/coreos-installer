@@ -18,7 +18,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::fs::read_dir;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Calls a function on the latest (default) BLS entry and optionally updates it if the function
 /// returns new content. Errors out if no BLS entry was found.
@@ -97,6 +97,51 @@ pub fn get_bls_info(mountpoint: &Path) -> Result<(String, String, String)> {
     let options = options.ok_or_else(|| anyhow!("missing 'options' key in default BLS config"))?;
 
     Ok((kernel, initrd, options))
+}
+
+/// Resolve a BLS absolute path (e.g. "/ostree/.../vmlinuz") to a filesystem
+/// path under `mountpoint`, ensuring it cannot escape the mountpoint.
+///
+/// BLS entries store paths like "/ostree/.../initramfs.img". We strip the
+/// leading "/" and join with the mountpoint to get a real filesystem path.
+/// We validate the result to ensure it does not point outside the
+/// mounted /boot partition.
+pub fn resolve_bls_path(mountpoint: &Path, bls_path: &str) -> Result<PathBuf> {
+    // BLS paths must be absolute; strip the leading "/" to make them
+    // relative for joining with the mountpoint.
+    let suffix = bls_path
+        .strip_prefix('/')
+        .ok_or_else(|| anyhow!("BLS path is not absolute: {bls_path}"))?;
+    if suffix.is_empty() {
+        bail!("BLS path is bare '/'");
+    }
+    // Reject ".." components to prevent directory traversal.
+    if Path::new(suffix)
+        .components()
+        .any(|c| matches!(c, Component::ParentDir))
+    {
+        bail!("BLS path contains '..': {bls_path}");
+    }
+    let resolved = mountpoint.join(suffix);
+    // The ".." check above doesn't catch symlinks pointing outside the
+    // mountpoint. If the path exists, resolve symlinks and verify the
+    // real destination is still inside the mountpoint.
+    if resolved.exists() {
+        let canonical_mount = mountpoint
+            .canonicalize()
+            .with_context(|| format!("canonicalizing mountpoint {}", mountpoint.display()))?;
+        let canonical = resolved
+            .canonicalize()
+            .with_context(|| format!("canonicalizing BLS path {}", resolved.display()))?;
+        if !canonical.starts_with(&canonical_mount) {
+            bail!(
+                "BLS path {} resolves outside mountpoint to {}",
+                bls_path,
+                canonical.display()
+            );
+        }
+    }
+    Ok(resolved)
 }
 
 /// Wrapper around `visit_bls_entry` to specifically visit just the BLS entry's `options` line and
