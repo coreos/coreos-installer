@@ -1,0 +1,188 @@
+language: "en-US"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: true
+  high_level_summary: false
+  high_level_summary_in_walkthrough: false
+  poem: false
+  in_progress_fortune: false
+  review_status: true
+  review_details: true
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  auto_apply_labels: false
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  enable_prompt_for_ai_agents: true
+  abort_on_close: true
+
+  path_filters:
+    - "!target/**"
+
+  path_instructions:
+    - path: "src/cmdline/**"
+      instructions: >
+        Command-line argument parsing and serialization. Preserve compatibility
+        with existing coreos-installer invocations and generated help output.
+    - path: "src/io/**"
+      instructions: >
+        Low-level image and initramfs I/O is security-sensitive. Preserve
+        streaming, size-limit, integrity-verification, and error-handling
+        behavior when reviewing changes.
+    - path: "src/s390x/**"
+      instructions: >
+        Architecture-specific code for IBM Z. Preserve compatibility with
+        supported DASD, FBA, ECKD, zIPL, and pvimg workflows.
+    - path: "tests/**"
+      instructions: >
+        Integration and image tests. Keep shell and TMT tests compatible with
+        the existing CI environments and extend coverage for behavioral
+        changes where practical.
+    - path: "docs/**"
+      instructions: >
+        Documentation served via GitHub Pages. Keep generated command
+        documentation and release notes consistent with user-visible changes.
+    - path: ".github/workflows/**"
+      instructions: >
+        CI workflows use containerized Rust tooling and architecture-specific
+        test jobs. Preserve least-privilege permissions, pinned toolchains,
+        and coverage for both x86_64 and s390x unless a change explicitly
+        updates the CI strategy.
+    - path: ".copr/**"
+      instructions: >
+        COPR configuration is synchronized from the CoreOS repository
+        templates. Do not modify it unless the change explicitly updates the
+        synchronization or packaging workflow.
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+      - "DNM"
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: true
+    autofix:
+      enabled: true
+
+  pre_merge_checks:
+    title:
+      mode: "warning"
+      requirements: >
+        PR title must follow the format 'subsystem: lowercase description'.
+        Examples: 's390x/zipl: fix lszdev bus ID regex and add parser tests',
+        'docs: update installation documentation', '*: add coderabbit
+        configuration'. Use imperative mood, lowercase after colon, no
+        trailing period.
+    description:
+      mode: "warning"
+    custom_checks:
+      - name: "Commit message convention"
+        mode: "warning"
+        instructions: >
+          Check that every non-merge commit message in this PR follows the
+          format 'subsystem: lowercase description'. The subsystem is
+          typically a path prefix (e.g., 's390x/zipl', 'src/io', 'docs'), a
+          component name (e.g., 'cargo', 'ci'), or '*' for cross-cutting
+          changes. After the colon and space, use imperative mood (e.g.,
+          'add', 'fix', 'update', not 'Added', 'Fixes', 'Updates'). There must
+          be no trailing period. Merge commits (starting with 'Merge') should
+          be ignored. Flag any commit that does not conform.
+      - name: "Release notes"
+        mode: "warning"
+        instructions: >
+          Unless the PR has the skip-notes label, flag PRs that change
+          user-visible behavior, command-line options, supported platforms,
+          systemd or dracut units, or packaging without updating
+          docs/release-notes.md.
+
+  tools:
+    clippy:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    hadolint:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    # Disable tools irrelevant to this Rust project
+    golangci-lint:
+      enabled: false
+    checkov:
+      enabled: false
+    clang:
+      enabled: false
+    cppcheck:
+      enabled: false
+    ruff:
+      enabled: false
+    biome:
+      enabled: false
+    eslint:
+      enabled: false
+    phpstan:
+      enabled: false
+    phpmd:
+      enabled: false
+    phpcs:
+      enabled: false
+    swiftlint:
+      enabled: false
+    detekt:
+      enabled: false
+    rubocop:
+      enabled: false
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    oxc:
+      enabled: false
+    stylelint:
+      enabled: false
+    htmlhint:
+      enabled: false
+    brakeman:
+      enabled: false
+    fortitudeLint:
+      enabled: false
+    shopifyThemeCheck:
+      enabled: false
+    luacheck:
+      enabled: false
+    prismaLint:
+      enabled: false
+    sqlfluff:
+      enabled: false
+    squawk:
+      enabled: false
+    dotenvLint:
+      enabled: false
+    buf:
+      enabled: false
+
+chat:
+  auto_reply: true
