@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::blockdev::Mount;
-use crate::io::{visit_bls_entry, Initrd};
+use crate::io::{get_bls_info, Initrd};
 use crate::s390x::ZiplSecexMode;
 use crate::util::cmd_output;
 use crate::{runcmd, runcmd_output};
@@ -206,31 +206,6 @@ fn generate_initrd<P: AsRef<Path>>(source: P, files: &[PathBuf]) -> Result<Named
     Ok(dest)
 }
 
-fn get_info_from_bls(boot: &Path) -> Result<(String, String, String)> {
-    let mut kernel = None;
-    let mut initrd = None;
-    let mut options = None;
-
-    let read_opts = |contents: &str| {
-        for l in contents.lines() {
-            match l.split_once(' ') {
-                Some(("linux", s)) => kernel = Some(s.trim().to_owned()),
-                Some(("initrd", s)) => initrd = Some(s.trim().to_owned()),
-                Some(("options", s)) => options = Some(s.trim().to_owned()),
-                _ => {}
-            }
-        }
-        Ok(None)
-    };
-    visit_bls_entry(boot, read_opts)?;
-
-    let kernel = kernel.ok_or_else(|| anyhow!("missing 'linux' key in default BLS config"))?;
-    let initrd = initrd.ok_or_else(|| anyhow!("missing 'initrd' key in default BLS config"))?;
-    let options = options.ok_or_else(|| anyhow!("missing 'options' key in default BLS config"))?;
-
-    Ok((kernel, initrd, options))
-}
-
 fn generate_sdboot(
     mountpoint: &Path,
     boot: &Path,
@@ -238,7 +213,7 @@ fn generate_sdboot(
     kargs: Option<String>,
     files: Option<Vec<String>>,
 ) -> Result<PathBuf> {
-    let (kernel, initrd, mut options) = get_info_from_bls(boot)?;
+    let (kernel, initrd, mut options) = get_bls_info(boot)?;
 
     // we need a full path to kernel and initrd
     let kernel = boot.join(&kernel[1..]);
@@ -341,7 +316,7 @@ pub fn zipl<P: AsRef<Path>>(
         // This branch could be also executed during installation, that's why
         // we have to take care of ignition.firstboot karg
         let firstboot_file = boot.join("ignition.firstboot");
-        let (kernel, initrd, mut options) = get_info_from_bls(boot)?;
+        let (kernel, initrd, mut options) = get_bls_info(boot)?;
         // we need a full path to kernel and initrd
         let kernel = boot.join(&kernel[1..]);
         let initrd = boot.join(&initrd[1..]);

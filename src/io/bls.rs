@@ -14,7 +14,7 @@
 
 //! Utilities for reading/writing BLS configs, including kernel arguments.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::fs::read_dir;
@@ -72,6 +72,31 @@ pub fn visit_bls_entry(
     }
 
     Ok(changed)
+}
+
+/// Parse the default BLS entry and return the `linux`, `initrd`, and `options` values.
+pub fn get_bls_info(mountpoint: &Path) -> Result<(String, String, String)> {
+    let mut kernel = None;
+    let mut initrd = None;
+    let mut options = None;
+
+    visit_bls_entry(mountpoint, |contents: &str| {
+        for l in contents.lines() {
+            match l.split_once(' ') {
+                Some(("linux", s)) => kernel = Some(s.trim().to_owned()),
+                Some(("initrd", s)) => initrd = Some(s.trim().to_owned()),
+                Some(("options", s)) => options = Some(s.trim().to_owned()),
+                _ => {}
+            }
+        }
+        Ok(None)
+    })?;
+
+    let kernel = kernel.ok_or_else(|| anyhow!("missing 'linux' key in default BLS config"))?;
+    let initrd = initrd.ok_or_else(|| anyhow!("missing 'initrd' key in default BLS config"))?;
+    let options = options.ok_or_else(|| anyhow!("missing 'options' key in default BLS config"))?;
+
+    Ok((kernel, initrd, options))
 }
 
 /// Wrapper around `visit_bls_entry` to specifically visit just the BLS entry's `options` line and
