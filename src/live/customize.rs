@@ -25,7 +25,7 @@ use crate::cmdline::*;
 use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 
-use super::embed::{INITRD_IGNITION_PATH, INITRD_NETWORK_DIR};
+use super::embed::INITRD_IGNITION_PATH;
 use super::util::filename;
 
 pub(super) const INITRD_FEATURES_PATH: &str = "etc/coreos/features.json";
