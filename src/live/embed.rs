@@ -25,7 +25,7 @@ use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 
 pub(super) const INITRD_IGNITION_PATH: &str = "config.ign";
-pub(super) const INITRD_NETWORK_DIR: &str = "etc/coreos-firstboot-network";
+pub(super) use crate::io::INITRD_NETWORK_DIR;
 
 lazy_static! {
     pub(super) static ref INITRD_IGNITION_GLOB: GlobMatcher =

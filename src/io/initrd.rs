@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use cpio::{write_cpio, NewcBuilder, NewcReader};
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
+use std::fs;
 use std::io::{BufRead, Cursor, Read};
+use std::path::Path;
 use xz2::stream::{Check, Stream};
 use xz2::write::XzEncoder;
 
 use crate::io::*;
+
+pub const INITRD_NETWORK_DIR: &str = "etc/coreos-firstboot-network";
 
 lazy_static! {
     static ref ALL_GLOB: GlobMatcher = GlobMatcher::new(&["*"]).unwrap();
@@ -174,6 +178,22 @@ impl Initrd {
 
     pub fn is_empty(&self) -> bool {
         self.members.is_empty()
+    }
+
+    pub fn embed_network_files(&mut self, keyfiles: &[String]) -> Result<()> {
+        for path in keyfiles {
+            let data = fs::read(path).with_context(|| format!("reading {path}"))?;
+            let name = Path::new(path)
+                .file_name()
+                .with_context(|| format!("missing filename in {path}"))?
+                .to_string_lossy();
+            let path = format!("{INITRD_NETWORK_DIR}/{name}");
+            if self.get(&path).is_some() {
+                bail!("multiple input files named '{name}'");
+            }
+            self.add(&path, data);
+        }
+        Ok(())
     }
 }
 
