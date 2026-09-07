@@ -28,6 +28,7 @@ use crate::util::set_die_on_sigpipe;
 
 mod customize;
 mod embed;
+pub(crate) use self::customize::OsFeatures;
 mod util;
 
 use self::customize::*;
