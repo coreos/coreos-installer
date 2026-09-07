@@ -30,6 +30,7 @@ use crate::download::*;
 use crate::io::*;
 #[cfg(target_arch = "s390x")]
 use crate::s390x;
+use crate::live::OsFeatures;
 use crate::source::*;
 
 // Match the grub.cfg console settings commands in
@@ -793,6 +794,19 @@ fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
     }
 
     eprintln!("Copying networking configuration from {net_config_src}");
+
+    let features_path = mountpoint.join("coreos/features.json");
+    let features: OsFeatures = match std::fs::read(&features_path) {
+        Ok(data) => serde_json::from_slice(&data).context("parsing OS features")?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => OsFeatures::default(),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", features_path.display())),
+    };
+    if !features.initrd_copy_network {
+        bail!(
+            "This OS image does not support --copy-network via initramfs. \
+             Please use a newer OS image."
+        );
+    }
 
     let mut keyfiles = Vec::new();
     for entry in fs::read_dir(net_config_src)
