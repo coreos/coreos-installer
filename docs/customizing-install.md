@@ -132,9 +132,9 @@ stream: name
 image-url: URL
 # Manually specify a local image file
 image-file: path
-# Embed an Ignition config from a file
+# Embed an Ignition or Butane config from a file
 ignition-file: path
-# Embed an Ignition config from a URL
+# Embed an Ignition or Butane config from a URL
 ignition-url: URL
 # Digest (type-value) of the Ignition config
 ignition-hash: digest

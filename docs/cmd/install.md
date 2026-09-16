@@ -47,15 +47,17 @@ Options:
           exist and be valid.  A missing signature can be ignored with --insecure.
 
   -i, --ignition-file <path>
-          Embed an Ignition config from a file
+          Embed an Ignition or Butane config from a file
 
-          Embed the specified Ignition config in the installed system.
+          Embed the specified Ignition JSON config or Butane YAML config in the installed
+          system.  Butane configs are identified by a top-level "variant" key and are passed
+          through as-is; installed Ignition handles transpilation at first boot.
 
   -I, --ignition-url <URL>
-          Embed an Ignition config from a URL
+          Embed an Ignition or Butane config from a URL
 
-          Immediately fetch the Ignition config from the URL and embed it in the installed
-          system.
+          Immediately fetch the Ignition JSON config or Butane YAML config from the URL and
+          embed it in the installed system.
 
       --ignition-hash <digest>
           Digest (type-value) of the Ignition config
