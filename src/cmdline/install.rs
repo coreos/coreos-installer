@@ -100,17 +100,20 @@ pub struct InstallConfig {
     pub image_file: Option<String>,
 
     // postprocessing options
-    /// Embed an Ignition config from a file
+    /// Embed an Ignition or Butane config from a file
     ///
-    /// Embed the specified Ignition config in the installed system.
+    /// Embed the specified Ignition JSON config or Butane YAML config in
+    /// the installed system.  Butane configs are identified by a top-level
+    /// "variant" key and are passed through as-is; installed Ignition
+    /// handles transpilation at first boot.
     // deprecated long name from <= 0.1.2
     #[arg(short, long, alias = "ignition", value_name = "path")]
     #[arg(conflicts_with = "ignition_url")]
     pub ignition_file: Option<String>,
-    /// Embed an Ignition config from a URL
+    /// Embed an Ignition or Butane config from a URL
     ///
-    /// Immediately fetch the Ignition config from the URL and embed it in
-    /// the installed system.
+    /// Immediately fetch the Ignition JSON config or Butane YAML config
+    /// from the URL and embed it in the installed system.
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[arg(short = 'I', long, value_name = "URL")]
     #[arg(conflicts_with = "ignition_file")]
