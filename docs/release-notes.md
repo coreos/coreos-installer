@@ -8,6 +8,7 @@ nav_order: 8
 
 Major changes:
 
+- install: Accept Butane YAML configs via `--ignition-file`/`--ignition-url`
 - Add Fedora 46 signing key; drop Fedora 43 signing key
 - rdcore: Allow multiple hostkeys in `zipl` command via `--hostkey` or `-k`
 
