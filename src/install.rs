@@ -19,7 +19,7 @@ use regex::{Captures, Regex};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, Permissions};
-use std::io::{self, BufReader, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -71,15 +71,27 @@ pub fn install(config: InstallConfig) -> Result<()> {
         None
     };
     if let Some(mut file) = ignition.as_mut() {
-        // make sure we have valid JSON and not e.g. an HTML page.
+        // make sure we have a recognizable config and not e.g. an HTML page.
         // we don't parse with the ignition-config crate because its parser
         // rejects unrecognized config versions, and we want to allow those.
         // iso/pxe customize are more restrictive because they want to
         // manipulate the config, but for us it's an opaque blob.
-        let reader = BufReader::with_capacity(BUFFER_SIZE, &mut file);
-        serde_json::from_reader::<_, serde_json::Value>(reader)
-            .context("parsing specified Ignition config")?;
-        file.rewind().context("rewinding Ignition config file")?;
+        // We accept Ignition JSON or Butane YAML (identified by a top-level
+        // "variant" key), since installed Ignition parses both transparently.
+        let mut buf = Vec::new();
+        BufReader::with_capacity(BUFFER_SIZE, &mut file)
+            .read_to_end(&mut buf)
+            .context("reading config file")?;
+        let is_ignition = serde_json::from_slice::<serde_json::Value>(&buf).is_ok();
+        let is_butane = !is_ignition
+            && serde_yaml::from_slice::<serde_yaml::Value>(&buf)
+                .ok()
+                .and_then(|v| v.get("variant").cloned())
+                .is_some();
+        if !is_ignition && !is_butane {
+            bail!("specified file is not a valid Ignition JSON config or Butane YAML config");
+        }
+        file.rewind().context("rewinding config file")?;
     }
 
     // find network config
