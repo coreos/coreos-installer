@@ -4,7 +4,17 @@ nav_order: 8
 
 # Release notes
 
-## Upcoming coreos-installer 0.27.0 (unreleased)
+## Upcoming coreos-installer 0.28.0 (unreleased)
+
+Major changes:
+
+Minor changes:
+
+Internal changes:
+
+Packaging changes:
+
+## coreos-installer 0.27.0 (2026-09-17)
 
 Major changes:
 
@@ -27,9 +37,7 @@ Internal changes:
 - s390x: Minor code cleanups in dasd and zipl handling
 - s390x: Fix lszdev bus ID regex: escape dots and add parser tests
 
-Packaging changes:
-
-## Upcoming coreos-installer 0.26.0 (2026-02-27)
+## coreos-installer 0.26.0 (2026-02-27)
 
 Major changes:
 
