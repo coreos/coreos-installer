@@ -14,6 +14,8 @@ Internal changes:
 
 Packaging changes:
 
+- Bump minimum supported Rust version (MSRV) to 1.87.0 
+
 ## coreos-installer 0.27.0 (2026-09-17)
 
 Major changes:
