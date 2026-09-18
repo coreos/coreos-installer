@@ -251,7 +251,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "coreos-installer"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -274,7 +274,7 @@ dependencies = [
  "nmstate",
  "openssl",
  "pipe",
- "rand 0.9.5",
+ "rand 0.8.8",
  "regex",
  "reqwest",
  "serde",
