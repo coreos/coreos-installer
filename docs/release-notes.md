@@ -38,6 +38,7 @@ Internal changes:
 - s390x: Fix `write()` to `write_all()` in initrd generation to prevent silent truncation
 - s390x: Minor code cleanups in dasd and zipl handling
 - s390x: Fix lszdev bus ID regex: escape dots and add parser tests
+- s390x: Clear LOADDEV before setting it to avoid conflicts when multiple disks were previously used as LOADDEV
 
 ## coreos-installer 0.26.0 (2026-02-27)
 
