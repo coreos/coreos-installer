@@ -25,7 +25,7 @@ use crate::cmdline::*;
 use crate::io::*;
 use crate::iso9660::{self, IsoFs};
 
-use super::embed::{INITRD_IGNITION_PATH, INITRD_NETWORK_DIR};
+use super::embed::INITRD_IGNITION_PATH;
 use super::util::filename;
 
 pub(super) const INITRD_FEATURES_PATH: &str = "etc/coreos/features.json";
@@ -37,18 +37,20 @@ const COREOS_ISO_FEATURES_PATH: &str = "COREOS/FEATURES.JSO";
 /// cosa buildextend-live.
 #[derive(Default, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-pub(super) struct OsFeatures {
+pub(crate) struct OsFeatures {
     /// Installer reads config files from /etc/coreos/installer.d
     pub installer_config: bool,
     /// Directives supported in installer config files
     pub installer_config_directives: InstallerDirectives,
     /// Live initrd reads NM keyfiles from /etc/coreos-firstboot-network
     pub live_initrd_network: bool,
+    /// Installed system's initramfs supports --copy-network via /etc/
+    pub initrd_copy_network: bool,
 }
 
 #[derive(Default, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-pub(super) struct InstallerDirectives {
+pub(crate) struct InstallerDirectives {
     pub console: bool,
 }
 

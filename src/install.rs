@@ -30,6 +30,7 @@ use crate::download::*;
 use crate::io::*;
 #[cfg(target_arch = "s390x")]
 use crate::s390x;
+use crate::live::OsFeatures;
 use crate::source::*;
 
 // Match the grub.cfg console settings commands in
@@ -793,33 +794,68 @@ fn apply_grub_console_commands(grub_cfg: &str, commands: &[String]) -> Result<St
         .into_owned())
 }
 
-/// Copy networking config if asked to do so
+/// Embed networking config into the in-memory initramfs at /etc/coreos-firstboot-network
+/// so it is available in RAM before target disks are initialized.
 fn copy_network_config(mountpoint: &Path, net_config_src: &str) -> Result<()> {
+    if fs::read_dir(net_config_src)
+        .with_context(|| format!("reading directory {net_config_src}"))?
+        .next()
+        .is_none()
+    {
+        bail!("No networking configuration files found in {net_config_src}");
+    }
+
     eprintln!("Copying networking configuration from {net_config_src}");
 
-    // get the path to the destination directory
-    let net_config_dest = mountpoint.join("coreos-firstboot-network");
+    let features_path = mountpoint.join("coreos/features.json");
+    let features: OsFeatures = match std::fs::read(&features_path) {
+        Ok(data) => serde_json::from_slice(&data).context("parsing OS features")?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => OsFeatures::default(),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", features_path.display())),
+    };
+    if !features.initrd_copy_network {
+        bail!(
+            "This OS image does not support --copy-network via initramfs. \
+             Please use a newer OS image."
+        );
+    }
 
-    // make the directory if it doesn't exist
-    fs::create_dir_all(&net_config_dest).with_context(|| {
-        format!(
-            "creating destination networking config directory {}",
-            net_config_dest.display()
-        )
-    })?;
-
-    // copy files from source to destination directories
+    let mut keyfiles = Vec::new();
     for entry in fs::read_dir(net_config_src)
         .with_context(|| format!("reading directory {net_config_src}"))?
     {
         let entry = entry.with_context(|| format!("reading directory {net_config_src}"))?;
         let srcpath = entry.path();
-        let destpath = net_config_dest.join(entry.file_name());
         if srcpath.is_file() {
-            eprintln!("Copying {} to installed system", srcpath.display());
-            fs::copy(&srcpath, destpath).context("Copying networking config")?;
+            eprintln!("Copying {} to initramfs", srcpath.display());
+            keyfiles.push(srcpath.to_string_lossy().into_owned());
         }
     }
+
+    let mut initrd = Initrd::default();
+    initrd.embed_network_files(&keyfiles)?;
+
+    let initrd_bytes = initrd
+        .to_bytes()
+        .context("building network config initrd")?;
+
+    let (_, initrd_rel, _) = get_bls_info(mountpoint)?;
+    let initrd_file = mountpoint.join(&initrd_rel[1..]);
+
+    if !initrd_file.exists() {
+        bail!("initramfs file not found at {:?}", initrd_file);
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(&initrd_file)
+        .with_context(|| format!("opening initramfs {initrd_rel} for appending"))?;
+
+    file.write_all(&initrd_bytes)
+        .with_context(|| format!("appending network config to initramfs {initrd_rel}"))?;
+
+    eprintln!("Appended network configuration to initramfs {initrd_rel}");
 
     Ok(())
 }

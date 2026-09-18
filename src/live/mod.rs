@@ -28,6 +28,7 @@ use crate::util::set_die_on_sigpipe;
 
 mod customize;
 mod embed;
+pub(crate) use self::customize::OsFeatures;
 mod util;
 
 use self::customize::*;
@@ -137,7 +138,7 @@ pub fn iso_network_embed(config: IsoNetworkEmbedConfig) -> Result<()> {
     }
 
     iso.remove_network();
-    initrd_network_embed(iso.initrd_mut(), &config.keyfile)?;
+    iso.initrd_mut().embed_network_files(&config.keyfile)?;
 
     write_live_iso(&iso, &mut iso_file, config.output.as_ref())
 }
@@ -213,22 +214,9 @@ pub fn pxe_network_wrap(config: PxeNetworkWrapConfig) -> Result<()> {
     }
 
     let mut initrd = Initrd::default();
-    initrd_network_embed(&mut initrd, &config.keyfile)?;
+    initrd.embed_network_files(&config.keyfile)?;
 
     write_live_pxe(&initrd, config.output.as_ref())
-}
-
-fn initrd_network_embed(initrd: &mut Initrd, keyfiles: &[String]) -> Result<()> {
-    for path in keyfiles {
-        let data = read(path).with_context(|| format!("reading {path}"))?;
-        let name = filename(path)?;
-        let path = format!("{INITRD_NETWORK_DIR}/{name}");
-        if initrd.get(&path).is_some() {
-            bail!("multiple input files named '{}'", name);
-        }
-        initrd.add(&path, data);
-    }
-    Ok(())
 }
 
 pub fn pxe_network_unwrap(config: PxeNetworkUnwrapConfig) -> Result<()> {
