@@ -23,6 +23,7 @@ Major changes:
 - install: Accept Butane YAML configs via `--ignition-file`/`--ignition-url`
 - Add Fedora 46 signing key; drop Fedora 43 signing key
 - rdcore: Allow multiple hostkeys in `zipl` command via `--hostkey` or `-k`
+- install: inject network config into initramfs instead of copying to disk
 
 Minor changes:
 
