@@ -9,6 +9,7 @@ nav_order: 8
 Major changes:
 
 - rdcore: Allow multiple hostkeys in `zipl` command via `--hostkey` or `-k`
+- install: inject network config into initramfs instead of copying to disk
 
 Minor changes:
 
