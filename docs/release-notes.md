@@ -14,9 +14,7 @@ Internal changes:
 
 Packaging changes:
 
-- Bump minimum supported Rust version (MSRV) to 1.87.0 
-
-## coreos-installer 0.27.0 (2026-09-17)
+## coreos-installer 0.27.0 (2026-09-30)
 
 Major changes:
 
@@ -39,6 +37,10 @@ Internal changes:
 - s390x: Fix `write()` to `write_all()` in initrd generation to prevent silent truncation
 - s390x: Minor code cleanups in dasd and zipl handling
 - s390x: Fix lszdev bus ID regex: escape dots and add parser tests
+
+Packaging changes:
+
+- Bump minimum supported Rust version (MSRV) to 1.87.0 
 
 ## coreos-installer 0.26.0 (2026-02-27)
 
