@@ -738,11 +738,26 @@ impl SavedPartitions {
         let mut gpt =
             GPT::find_from(source).context("couldn't read partition table from source")?;
         Self::verify_gpt_sector_size(&gpt, self.sector_size)?;
+
+        // Save the source images first usable LBA so that we can
+        // restore the GPT table alignment after updating the sizing
+        let source_first_usable_lba = gpt.header.first_usable_lba;
+
         // The GPT thinks the disk is the size of the install image.
         // Update sizing.
         gpt.header
             .update_from(disk, self.sector_size)
             .context("updating GPT header")?;
+
+        // `update_from` re-computes the first usable lba as well as
+        // the last usable lba using GPTs minimums, instead, we want
+        // to persevere the source images alignment.  Otherwise, we
+        // will have differently formatted GPT tables depending on
+        // whether or not we preserved a partition, and this will lead
+        // to issues with ignition.
+        //
+        // See: https://github.com/coreos/coreos-installer/issues/1761
+        adjust_gpt_alignment(&mut gpt, source_first_usable_lba);
 
         // merge saved partitions into partition table
         // find partition number one larger than the largest used one
@@ -792,6 +807,11 @@ impl SavedPartitions {
     pub fn is_saved(&self) -> bool {
         !self.partitions.is_empty()
     }
+}
+
+fn adjust_gpt_alignment(gpt: &mut GPT, source_first_usable_lba: u64) {
+    gpt.header.first_usable_lba = source_first_usable_lba;
+    gpt.header.last_usable_lba = gpt.header.backup_lba + 1 - source_first_usable_lba;
 }
 
 fn read_sysfs_dev_block_value_u64(maj: u64, min: u64, field: &str) -> Result<u64> {
