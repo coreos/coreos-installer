@@ -114,6 +114,14 @@ pub fn set_loaddev<P: AsRef<Path>>(dev: P) -> Result<()> {
     if !Path::new("/dev/vmcp").exists() {
         return Ok(());
     }
+    // If several disks are attached to zVM, more than one may have been used as LOADDEV,
+    // which would cause an error like:
+    //   HCPFCL1613E An attempt was made to set both SCSI and ECKD parameters for a future IPL. These are conflicting parameters.
+    // Ignore any error; the subsequent set will fail if this is a real problem.
+    eprintln!("Clearing LOADDEV");
+    if let Err(e) = runcmd!("vmcp", "set", "loaddev", "clear") {
+        eprintln!("Clearing LOADDEV failed: {e}");
+    }
     eprintln!("Setting LOADDEV");
     let mut cmd = Command::new("vmcp");
     cmd.arg("set").arg("loaddev");
