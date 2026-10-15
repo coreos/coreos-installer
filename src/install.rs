@@ -424,6 +424,20 @@ fn write_disk(
         || cfg!(target_arch = "s390x")
     {
         let mount = Disk::new(device)?.mount_partition_by_label("boot", mount::MsFlags::empty())?;
+
+        // Resolve the platform/console specs we need, borrowing straight out
+        // of the platform table rather than cloning: both live in this scope
+        // for as long as they're needed below.
+        let platform_specs = read_platform_specs_from_device(device, config)?;
+        let default_spec = PlatformSpec::default();
+        let spec = config
+            .platform
+            .as_deref()
+            .and_then(|platform| platform_specs.get(platform))
+            .unwrap_or(&default_spec);
+        let metal_spec = platform_specs.get("metal").unwrap_or(&default_spec);
+        let specs = PlatformConsoleSpecs { spec, metal_spec };
+
         if let Some(ignition) = ignition.as_ref() {
             write_ignition(mount.mountpoint(), &config.ignition_hash, ignition)
                 .context("writing Ignition configuration")?;
@@ -436,6 +450,7 @@ fn write_disk(
             &config.console,
             &config.append_karg,
             &config.delete_karg,
+            &specs,
         )
         .context("configuring kernel arguments")?;
 
@@ -444,6 +459,7 @@ fn write_disk(
             mount.mountpoint(),
             config.platform.as_deref(),
             &config.console,
+            &specs,
         )
         .context("configuring GRUB")?;
 
@@ -472,6 +488,30 @@ fn write_disk(
     Ok(())
 }
 
+/// Read the platform table from the installed root filesystem, if needed.
+///
+/// Platform-specific kernel/GRUB arguments are sourced from platforms.json,
+/// which we pull from the installed root filesystem.  We only need this when
+/// `--platform` or `--console` was given, in which case we mount the root
+/// partition read-only just long enough to read the file into memory.
+fn read_platform_specs_from_device(
+    device: &str,
+    config: &InstallConfig,
+) -> Result<HashMap<String, PlatformSpec>> {
+    if config.platform.is_none() && config.console.is_empty() {
+        return Ok(Default::default());
+    }
+
+    let root_mount = Disk::new(device)?
+        .mount_partition_by_label("root", mount::MsFlags::MS_RDONLY)
+        .context("mounting root partition to read platform specifications")?;
+    let paths = PLATFORMS_JSON_ROOTFS_PATHS
+        .iter()
+        .map(|p| root_mount.mountpoint().join(p))
+        .collect::<Vec<_>>();
+    read_platform_specs(&paths)
+}
+
 /// Configure kernel arguments.
 ///
 /// This function handles:
@@ -486,15 +526,23 @@ fn configure_kernel_arguments(
     console: &[Console],
     append_kargs: &[String],
     delete_kargs: &[String],
+    specs: &PlatformConsoleSpecs,
 ) -> Result<()> {
     if let Some(platform) = platform {
         // custom console settings completely override platform-specific defaults
-        configure_platform_kargs(mountpoint, platform, !console.is_empty())
-            .context("configuring platform")?;
+        configure_platform_kargs(
+            mountpoint,
+            platform,
+            !console.is_empty(),
+            specs.spec,
+            specs.metal_spec,
+        )
+        .context("configuring platform")?;
     }
 
     if !console.is_empty() {
-        configure_console_kargs(mountpoint, console).context("configuring console kargs")?;
+        configure_console_kargs(mountpoint, console, specs.metal_spec)
+            .context("configuring console kargs")?;
     }
 
     if let Some(firstboot_args) = firstboot_args {
@@ -519,14 +567,19 @@ fn configure_kernel_arguments(
 
 /// Configure GRUB console settings.
 #[cfg(not(target_arch = "s390x"))]
-fn configure_grub(mountpoint: &Path, platform: Option<&str>, console: &[Console]) -> Result<()> {
+fn configure_grub(
+    mountpoint: &Path,
+    platform: Option<&str>,
+    console: &[Console],
+    specs: &PlatformConsoleSpecs,
+) -> Result<()> {
     // custom console settings completely override platform-specific defaults
     if !console.is_empty() {
         let grub_commands = build_grub_console_commands(console);
         update_grub_console_settings(mountpoint, &grub_commands)
             .context("configuring GRUB console")?;
-    } else if let Some(platform) = platform {
-        configure_platform_grub_console(mountpoint, platform)
+    } else if platform.is_some() {
+        configure_platform_grub_console(mountpoint, specs.spec, specs.metal_spec)
             .context("configuring platform GRUB console")?;
     }
 
@@ -615,7 +668,7 @@ fn write_firstboot_kargs(mountpoint: &Path, args: &str) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct PlatformSpec {
     #[serde(default)]
     #[cfg(not(target_arch = "s390x"))]
@@ -624,15 +677,47 @@ struct PlatformSpec {
     kernel_arguments: Vec<String>,
 }
 
-/// Read the platform specifications from the platforms.json file.
-fn read_platform_specs(mountpoint: &Path) -> Result<HashMap<String, PlatformSpec>> {
-    match fs::read_to_string(mountpoint.join("coreos/platforms.json")) {
-        Ok(json) => serde_json::from_str::<HashMap<String, PlatformSpec>>(&json)
-            .context("parsing platform table"),
-        // no table for this image?
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Default::default()),
-        Err(e) => Err(e).context("reading platform table"),
+/// The specs needed to configure platform-specific kernel/GRUB console
+/// settings: the spec for the platform being installed (if any; empty if
+/// unknown or not applicable), and the "metal" spec, which is always needed
+/// as the baseline to diff against when applying or removing console kargs.
+///
+/// Bundled into a single struct so callers only need to resolve these once
+/// from the platform table, instead of passing the whole table around and
+/// re-doing the same two lookups at every call site.
+struct PlatformConsoleSpecs<'a> {
+    spec: &'a PlatformSpec,
+    metal_spec: &'a PlatformSpec,
+}
+
+/// Candidate locations of platforms.json within the installed root filesystem,
+/// in priority order. The first one found is used.
+const PLATFORMS_JSON_ROOTFS_PATHS: &[&str] = &[
+    "usr/share/coreos/platforms.json",
+    // This is the legacy path, kept for compatibility
+    // with older images.
+    "usr/share/coreos-assembler/platforms.json",
+];
+
+/// Read the platform specifications from platforms.json, trying each of the
+/// given candidate paths in turn and using the first found.
+fn read_platform_specs(paths: &[PathBuf]) -> Result<HashMap<String, PlatformSpec>> {
+    for path in paths {
+        match fs::read_to_string(path) {
+            Ok(json) => {
+                return serde_json::from_str::<HashMap<String, PlatformSpec>>(&json)
+                    .with_context(|| format!("parsing platform table from {}", path.display()));
+            }
+            // no file at this location; try the next candidate
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("reading platform specs from {}", path.display()))
+            }
+        }
     }
+    // no table in the deployment image
+    Ok(Default::default())
 }
 
 /// Configure platform-specific kernel arguments
@@ -640,6 +725,8 @@ fn configure_platform_kargs(
     mountpoint: &Path,
     platform: &str,
     skip_console_kargs: bool,
+    spec: &PlatformSpec,
+    metal_spec: &PlatformSpec,
 ) -> Result<()> {
     // Early return if setting the platform to the default value
     if platform == "metal" {
@@ -663,18 +750,18 @@ fn configure_platform_kargs(
 
     // Apply platform-specific console kernel arguments unless overridden by user
     if !skip_console_kargs {
-        configure_platform_console_kargs(mountpoint, platform)?;
+        configure_platform_console_kargs(mountpoint, spec, metal_spec)?;
     }
 
     Ok(())
 }
 
 /// Configure platform-specific console kernel arguments.
-fn configure_platform_console_kargs(mountpoint: &Path, platform: &str) -> Result<()> {
-    let platforms = read_platform_specs(mountpoint)?;
-    let spec = platforms.get(platform).cloned().unwrap_or_default();
-    let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
-
+fn configure_platform_console_kargs(
+    mountpoint: &Path,
+    spec: &PlatformSpec,
+    metal_spec: &PlatformSpec,
+) -> Result<()> {
     if !spec.kernel_arguments.is_empty() || !metal_spec.kernel_arguments.is_empty() {
         visit_bls_entry_options(mountpoint, |orig_options: &str| {
             KargsEditor::new()
@@ -690,11 +777,11 @@ fn configure_platform_console_kargs(mountpoint: &Path, platform: &str) -> Result
 
 /// Configure platform-specific GRUB console settings.
 #[cfg(not(target_arch = "s390x"))]
-fn configure_platform_grub_console(mountpoint: &Path, platform: &str) -> Result<()> {
-    let platforms = read_platform_specs(mountpoint)?;
-    let spec = platforms.get(platform).cloned().unwrap_or_default();
-    let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
-
+fn configure_platform_grub_console(
+    mountpoint: &Path,
+    spec: &PlatformSpec,
+    metal_spec: &PlatformSpec,
+) -> Result<()> {
     if spec.grub_commands != metal_spec.grub_commands {
         update_grub_console_settings(mountpoint, &spec.grub_commands)?;
     }
@@ -703,11 +790,12 @@ fn configure_platform_grub_console(mountpoint: &Path, platform: &str) -> Result<
 }
 
 /// Configure console kernel arguments.
-fn configure_console_kargs(mountpoint: &Path, consoles: &[Console]) -> Result<()> {
+fn configure_console_kargs(
+    mountpoint: &Path,
+    consoles: &[Console],
+    metal_spec: &PlatformSpec,
+) -> Result<()> {
     eprintln!("Configuring console settings");
-
-    let platforms = read_platform_specs(mountpoint)?;
-    let metal_spec = platforms.get("metal").cloned().unwrap_or_default();
 
     // Build console kernel arguments
     let mut kargs = Vec::new();
@@ -986,5 +1074,57 @@ mod tests {
 
         // missing substitution marker
         apply_grub_console_commands("a\nb\nc\nd", &[]).unwrap_err();
+    }
+
+    #[test]
+    fn test_read_platform_specs() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let first = dir.path().join("first.json");
+        let second = dir.path().join("second.json");
+        let missing = dir.path().join("missing.json");
+
+        // neither candidate exists: fall back to an empty table
+        assert!(read_platform_specs(std::slice::from_ref(&missing))
+            .unwrap()
+            .is_empty());
+        assert!(read_platform_specs(&[missing.clone(), missing.clone()])
+            .unwrap()
+            .is_empty());
+
+        // first candidate exists and is used
+        fs::write(
+            &first,
+            r#"{"aws": {"kernel_arguments": ["console=ttyS0,115200n8"]}}"#,
+        )
+        .unwrap();
+        let specs = read_platform_specs(&[first.clone(), second.clone()]).unwrap();
+        assert_eq!(
+            specs.get("aws").unwrap().kernel_arguments,
+            vec!["console=ttyS0,115200n8".to_string()]
+        );
+
+        // first candidate missing, falls back to second
+        fs::write(
+            &second,
+            r#"{"gcp": {"kernel_arguments": ["console=ttyS0,38400n8"]}}"#,
+        )
+        .unwrap();
+        let specs = read_platform_specs(&[missing.clone(), second.clone()]).unwrap();
+        assert_eq!(
+            specs.get("gcp").unwrap().kernel_arguments,
+            vec!["console=ttyS0,38400n8".to_string()]
+        );
+        assert!(!specs.contains_key("aws"));
+
+        // first candidate takes priority over second when both exist
+        let specs = read_platform_specs(&[first.clone(), second.clone()]).unwrap();
+        assert!(specs.contains_key("aws"));
+        assert!(!specs.contains_key("gcp"));
+
+        // invalid JSON produces an error
+        let invalid = dir.path().join("invalid.json");
+        fs::write(&invalid, "not json").unwrap();
+        read_platform_specs(&[invalid]).unwrap_err();
     }
 }

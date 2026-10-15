@@ -10,6 +10,12 @@ Major changes:
 
 Minor changes:
 
+- install: Read platform-specific kernel/GRUB arguments from the canonical
+  `platforms.json` file embedded in the installed root filesystem
+  (`/usr/share/coreos/platforms.json` or `/usr/share/coreos-assembler/platforms.json`)
+  instead of the boot partition copy (`/boot/coreos/platforms.json`).
+  This is in preparation for dropping the `boot` copy in the future.
+
 Internal changes:
 
 Packaging changes:
