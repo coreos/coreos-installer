@@ -27,9 +27,10 @@ jobs:
       - name: Install packages
         run: dnf install -y git make mock
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         # fetch tags for versioning
         with:
+          persist-credentials: false
           fetch-depth: 0
       # https://github.com/actions/checkout/issues/766
       - name: Mark git checkout as safe
