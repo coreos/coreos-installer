@@ -10,6 +10,8 @@ Major changes:
 
 Minor changes:
 
+- rootmap: Also emit kargs for /boot backing devices (OCPBUGS-142835)
+
 Internal changes:
 
 Packaging changes:
